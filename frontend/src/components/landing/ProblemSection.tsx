@@ -1,61 +1,78 @@
+"use client";
+
 import { AlertTriangle, Clock, Mail } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { SectionHeading } from "@/components/landing/SectionHeading";
+import { Reveal, RevealStagger, RevealItem } from "@/components/motion";
 
 const problems = [
   {
     icon: Mail,
-    title: "Fragmented Communication",
+    title: "Fragmented communication",
     description:
-      "Submissions scattered across email threads, PDFs, and spreadsheets. No single source of truth for proposal status.",
+      "Submissions scattered across email, PDFs, and spreadsheets — no single source of truth for status.",
   },
   {
     icon: Clock,
-    title: "Weeks of Delays",
+    title: "Hidden delays",
     description:
-      "IRB admins spend 10+ hours per week coaching researchers on rewrites, chasing documents, and drafting revision letters manually.",
+      "Admins lose hours coaching rewrites, chasing documents, and drafting revision letters by hand.",
   },
   {
     icon: AlertTriangle,
-    title: "Inconsistent Reviews",
+    title: "Inconsistent reviews",
     description:
-      "Different reviewers interpret guidelines differently. No standardized process leads to unpredictable outcomes for researchers.",
+      "Guidelines interpreted differently across reviewers — unpredictable outcomes for investigators.",
   },
 ];
 
+function ProblemCard({ item }: { item: (typeof problems)[0] }) {
+  const reduced = useReducedMotion();
+  return (
+    <motion.div
+      whileHover={
+        reduced
+          ? undefined
+          : { y: -2, transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] } }
+      }
+      className="group cursor-pointer rounded-2xl border border-border/80 bg-card p-8 shadow-sm transition-shadow duration-200 hover:border-primary/20 hover:shadow-md"
+    >
+      <div className="mb-5 inline-flex rounded-xl border border-border/60 bg-muted/50 p-3 transition-colors duration-200 group-hover:border-primary/15 group-hover:bg-primary/[0.06]">
+        <item.icon className="h-5 w-5 text-primary" strokeWidth={1.75} />
+      </div>
+      <h3 className="mb-3 font-[var(--font-heading)] text-lg font-semibold tracking-tight text-foreground">
+        {item.title}
+      </h3>
+      <p className="text-sm leading-relaxed text-muted-foreground md:text-[0.9375rem]">
+        {item.description}
+      </p>
+    </motion.div>
+  );
+}
+
 export function ProblemSection() {
   return (
-    <section className="py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-wider text-primary">
-            The Problem
-          </p>
-          <h2 className="mt-3 font-[var(--font-heading)] text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            IRB review is broken
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
-            Most institutions rely on tools built decades ago, patched together
-            with email and spreadsheets.
-          </p>
-        </div>
+    <section className="py-24 md:py-32">
+      <div className="mx-auto max-w-6xl px-6">
+        <SectionHeading
+          eyebrow="The gap"
+          title="Legacy IRB workflows weren’t built for today"
+          description="Most teams still stitch together tools from another era — patched with email and spreadsheets."
+        />
 
-        <div className="mt-16 grid gap-8 md:grid-cols-3">
+        <RevealStagger className="mt-20 grid gap-6 md:grid-cols-3 md:gap-8">
           {problems.map((item) => (
-            <div
-              key={item.title}
-              className="group cursor-pointer rounded-2xl border border-border bg-card p-8 transition-all duration-200 hover:border-primary/30 hover:shadow-lg"
-            >
-              <div className="mb-5 inline-flex rounded-xl bg-destructive/10 p-3">
-                <item.icon className="h-6 w-6 text-destructive" />
-              </div>
-              <h3 className="mb-3 font-[var(--font-heading)] text-lg font-semibold text-foreground">
-                {item.title}
-              </h3>
-              <p className="leading-relaxed text-muted-foreground">
-                {item.description}
-              </p>
-            </div>
+            <RevealItem key={item.title}>
+              <ProblemCard item={item} />
+            </RevealItem>
           ))}
-        </div>
+        </RevealStagger>
+
+        <Reveal className="mx-auto mt-16 max-w-2xl text-center">
+          <p className="text-sm text-muted-foreground">
+            Clargate replaces that patchwork with one governed workspace — built for compliance and speed.
+          </p>
+        </Reveal>
       </div>
     </section>
   );

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Shield,
   FileText,
   Inbox,
   Users,
@@ -75,56 +74,72 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const filteredNav = navItems.filter((item) => user && item.roles.includes(user.role));
-  const initials = user?.name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "?";
+  const initials =
+    user?.name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?";
 
   function SidebarContent() {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 px-6 py-5">
-          <Shield className="h-6 w-6 text-primary" />
-          <span className="font-[var(--font-heading)] text-lg font-bold">Clargate</span>
+        <div className="flex items-center gap-3 px-5 py-6">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+            C
+          </span>
+          <div>
+            <span className="font-[var(--font-heading)] text-base font-semibold tracking-tight">Clargate</span>
+            <p className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Workspace
+            </p>
+          </div>
         </div>
-        <Separator />
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <Separator className="opacity-60" />
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           {filteredNav.map((item) => {
             const isActive =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                className={`relative flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
-                <item.icon className="h-4 w-4" />
+                {isActive && (
+                  <span
+                    className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary"
+                    aria-hidden
+                  />
+                )}
+                <item.icon className="h-4 w-4 shrink-0 opacity-90" />
                 {item.label}
               </Link>
             );
           })}
         </nav>
-        <Separator />
-        <div className="p-4">
+        <Separator className="opacity-60" />
+        <div className="p-3">
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <button className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-accent cursor-pointer">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm transition-colors hover:bg-accent"
+              >
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 text-left">
-                  <div className="font-medium text-foreground truncate">{user?.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-foreground">{user?.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
                 </div>
               </button>
             </DropdownMenuTrigger>
@@ -136,7 +151,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -146,27 +161,29 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-sidebar md:block">
+    <div className="flex min-h-screen bg-background">
+      <aside className="hidden w-[17rem] shrink-0 border-r border-border/80 bg-sidebar/95 backdrop-blur-sm md:block">
         <SidebarContent />
       </aside>
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center gap-4 border-b border-border bg-card px-4 md:hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/80 bg-card/80 px-4 backdrop-blur-md md:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger render={<Button variant="ghost" size="icon" />}>
-                <Menu className="h-5 w-5" />
+            <SheetTrigger render={<Button variant="ghost" size="icon" className="cursor-pointer" />}>
+              <Menu className="h-5 w-5" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
+            <SheetContent side="left" className="w-[17rem] border-r-border/80 p-0">
               <SidebarContent />
             </SheetContent>
           </Sheet>
-          <Shield className="h-5 w-5 text-primary" />
-          <span className="font-[var(--font-heading)] font-semibold">Clargate</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[0.65rem] font-semibold text-primary-foreground">
+            C
+          </span>
+          <span className="font-[var(--font-heading)] text-sm font-semibold">Clargate</span>
         </header>
 
-        <main className="flex-1 overflow-auto bg-background p-6 md:p-8">
-          {children}
+        <main className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,oklch(0.99_0.006_252)_0%,oklch(0.985_0.008_252)_100%)] p-5 md:p-8">
+          <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
     </div>

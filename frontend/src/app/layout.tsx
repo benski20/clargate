@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
-import { Poppins, Open_Sans } from "next/font/google";
-import { Geist_Mono } from "next/font/google";
+import { Figtree, Noto_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const poppins = Poppins({
+const figtree = Figtree({
   variable: "--font-heading",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-const openSans = Open_Sans({
+const notoSans = Noto_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -34,7 +33,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${openSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${figtree.variable} ${notoSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

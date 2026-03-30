@@ -3,12 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shield, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthBrand } from "@/components/auth/AuthBrand";
+import { authCardClassName } from "@/components/auth/auth-styles";
+import { createClient, getAppOrigin } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -35,21 +38,18 @@ export default function LoginPage() {
   async function handleSSOLogin(provider: "google" | "azure") {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/callback` },
+      options: { redirectTo: `${getAppOrigin()}/callback` },
     });
     if (error) setError(error.message);
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
+      <Card className={authCardClassName}>
         <CardHeader className="text-center">
-          <Link href="/" className="mx-auto mb-4 flex items-center gap-2">
-            <Shield className="h-8 w-8 text-primary" />
-            <span className="font-[var(--font-heading)] text-2xl font-bold">Clargate</span>
-          </Link>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to your account to continue</CardDescription>
+          <AuthBrand />
+          <CardTitle className="mt-4 text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
+          <CardDescription className="text-base">Sign in to continue to your workspace</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -61,6 +61,7 @@ export default function LoginPage() {
                 placeholder="you@institution.edu"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="h-11 rounded-xl"
                 required
               />
             </div>
@@ -69,7 +70,7 @@ export default function LoginPage() {
                 <Label htmlFor="password">Password</Label>
                 <Link
                   href="/forgot-password"
-                  className="text-sm text-primary hover:underline"
+                  className="cursor-pointer text-sm font-medium text-primary transition-colors hover:underline"
                 >
                   Forgot password?
                 </Link>
@@ -79,54 +80,55 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="h-11 rounded-xl"
                 required
               />
             </div>
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="w-full cursor-pointer" disabled={loading}>
+            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign In
+              Sign in
             </Button>
           </form>
 
-          <div className="relative my-6">
+          <div className="relative my-8">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-border" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+            <div className="relative flex justify-center text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+              <span className="bg-card px-3">Or continue with</span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
-              className="cursor-pointer"
+              type="button"
+              className="h-11 cursor-pointer rounded-full"
               onClick={() => handleSSOLogin("google")}
             >
               Google
             </Button>
             <Button
               variant="outline"
-              className="cursor-pointer"
+              type="button"
+              className="h-11 cursor-pointer rounded-full"
               onClick={() => handleSSOLogin("azure")}
             >
               Microsoft
             </Button>
           </div>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
+          <p className="mt-8 text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
-              Sign up
+            <Link href="/signup" className="font-medium text-primary transition-colors hover:underline">
+              Create one
             </Link>
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthShell>
   );
 }

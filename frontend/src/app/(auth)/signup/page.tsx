@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Shield, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthBrand } from "@/components/auth/AuthBrand";
+import { authCardClassName } from "@/components/auth/auth-styles";
+import { createClient, getAppOrigin } from "@/lib/supabase";
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
@@ -17,7 +19,6 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const router = useRouter();
   const supabase = createClient();
 
   async function handleSignup(e: React.FormEvent) {
@@ -30,7 +31,7 @@ export default function SignupPage() {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/callback`,
+        emailRedirectTo: `${getAppOrigin()}/callback`,
       },
     });
 
@@ -45,46 +46,46 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md text-center">
+      <AuthShell>
+        <Card className={`${authCardClassName} text-center`}>
           <CardHeader>
-            <Shield className="mx-auto h-12 w-12 text-primary" />
-            <CardTitle className="mt-4">Check your email</CardTitle>
-            <CardDescription>
-              We sent a confirmation link to <strong>{email}</strong>. Click the
-              link to verify your account and get started.
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Check className="h-6 w-6 text-primary" strokeWidth={2.5} aria-hidden />
+            </div>
+            <CardTitle className="text-2xl font-semibold tracking-tight">Check your email</CardTitle>
+            <CardDescription className="text-base">
+              We sent a confirmation link to <strong className="text-foreground">{email}</strong>.
+              Click the link to verify your account.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" className="cursor-pointer" render={<Link href="/login" />}>
-              Back to Login
+            <Button variant="outline" className="h-11 w-full cursor-pointer rounded-full" render={<Link href="/login" />}>
+              Back to sign in
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
+    <AuthShell>
+      <Card className={authCardClassName}>
         <CardHeader className="text-center">
-          <Link href="/" className="mx-auto mb-4 flex items-center gap-2">
-            <Shield className="h-8 w-8 text-primary" />
-            <span className="font-[var(--font-heading)] text-2xl font-bold">Clargate</span>
-          </Link>
-          <CardTitle className="text-2xl">Create your account</CardTitle>
-          <CardDescription>Get started with Clargate for your institution</CardDescription>
+          <AuthBrand />
+          <CardTitle className="mt-4 text-2xl font-semibold tracking-tight">Create your account</CardTitle>
+          <CardDescription className="text-base">Start with Clargate for your institution</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
+              <Label htmlFor="name">Full name</Label>
               <Input
                 id="name"
                 placeholder="Dr. Jane Smith"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                className="h-11 rounded-xl"
                 required
               />
             </div>
@@ -96,6 +97,7 @@ export default function SignupPage() {
                 placeholder="you@institution.edu"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="h-11 rounded-xl"
                 required
               />
             </div>
@@ -107,6 +109,7 @@ export default function SignupPage() {
                 placeholder="Minimum 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="h-11 rounded-xl"
                 minLength={8}
                 required
               />
@@ -114,20 +117,20 @@ export default function SignupPage() {
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="w-full cursor-pointer" disabled={loading}>
+            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Account
+              Create account
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
+          <p className="mt-8 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-primary hover:underline">
+            <Link href="/login" className="font-medium text-primary transition-colors hover:underline">
               Sign in
             </Link>
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthShell>
   );
 }

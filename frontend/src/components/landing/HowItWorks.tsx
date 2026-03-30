@@ -1,4 +1,9 @@
+"use client";
+
 import { FileUp, Search, CheckCircle2 } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { SectionHeading } from "@/components/landing/SectionHeading";
+import { Reveal, RevealStagger, RevealItem } from "@/components/motion";
 
 const steps = [
   {
@@ -6,58 +11,69 @@ const steps = [
     step: "01",
     title: "Submit",
     description:
-      "PIs complete a guided multi-step form with AI assistance. Upload documents, answer questions, and submit — all in one place.",
+      "Investigators complete guided intake with AI help — documents and answers in one place.",
   },
   {
     icon: Search,
     step: "02",
     title: "Review",
     description:
-      "Admins triage with AI-generated summaries. Assign reviewers, track progress, and draft revision letters with AI assistance.",
+      "Admins triage with summaries, assign reviewers, and draft revision letters with assistance.",
   },
   {
     icon: CheckCircle2,
     step: "03",
-    title: "Approve",
+    title: "Decide",
     description:
-      "Reviewers submit structured evaluations. Admins issue decisions and generate approval letters with automatic renewal reminders.",
+      "Structured evaluations, clear decisions, and renewal reminders — without the email chase.",
   },
 ];
 
 export function HowItWorks() {
-  return (
-    <section id="how-it-works" className="py-20 md:py-28">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-wider text-primary">
-            How It Works
-          </p>
-          <h2 className="mt-3 font-[var(--font-heading)] text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            From submission to approval in three steps
-          </h2>
-        </div>
+  const reduced = useReducedMotion();
 
-        <div className="mt-16 grid gap-12 md:grid-cols-3">
-          {steps.map((item, i) => (
-            <div key={item.step} className="relative text-center">
-              {i < steps.length - 1 && (
-                <div className="absolute top-12 left-[calc(50%+40px)] hidden h-0.5 w-[calc(100%-80px)] bg-gradient-to-r from-primary/30 to-primary/10 md:block" />
-              )}
-              <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl bg-primary/10">
-                <item.icon className="h-10 w-10 text-primary" />
+  return (
+    <section id="how-it-works" className="py-24 md:py-32">
+      <div className="mx-auto max-w-6xl px-6">
+        <SectionHeading
+          eyebrow="Workflow"
+          title="From submission to decision in three calm steps"
+        />
+
+        <RevealStagger className="relative mt-20 grid gap-14 md:grid-cols-3 md:gap-8">
+          {steps.map((item) => (
+            <RevealItem key={item.step}>
+              <div className="relative text-center md:text-left">
+                <motion.div
+                  className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-border/80 bg-card shadow-sm md:mx-0"
+                  whileHover={
+                    reduced
+                      ? undefined
+                      : { scale: 1.02, transition: { duration: 0.2 } }
+                  }
+                >
+                  <item.icon className="h-9 w-9 text-primary" strokeWidth={1.5} />
+                </motion.div>
+                <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-primary">
+                  Step {item.step}
+                </p>
+                <h3 className="mb-3 font-[var(--font-heading)] text-xl font-semibold tracking-tight text-foreground">
+                  {item.title}
+                </h3>
+                <p className="text-sm leading-relaxed text-muted-foreground md:text-[0.9375rem]">
+                  {item.description}
+                </p>
               </div>
-              <div className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
-                Step {item.step}
-              </div>
-              <h3 className="mb-3 font-[var(--font-heading)] text-xl font-semibold text-foreground">
-                {item.title}
-              </h3>
-              <p className="leading-relaxed text-muted-foreground">
-                {item.description}
-              </p>
-            </div>
+            </RevealItem>
           ))}
-        </div>
+        </RevealStagger>
+
+        <Reveal className="mx-auto mt-16 max-w-2xl text-center">
+          <p className="text-sm text-muted-foreground">
+            Every step is logged — so compliance and audit teams can answer “who did what, when”
+            without digging through inboxes.
+          </p>
+        </Reveal>
       </div>
     </section>
   );

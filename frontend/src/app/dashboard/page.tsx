@@ -30,61 +30,79 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-10">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-[var(--font-heading)] text-2xl font-bold text-foreground">
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Overview
+          </p>
+          <h1 className="mt-2 font-[var(--font-heading)] text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
             Dashboard
           </h1>
-          <p className="mt-1 text-muted-foreground">
-            Welcome back. Here&apos;s an overview of your proposals.
+          <p className="mt-1.5 max-w-lg text-sm text-muted-foreground">
+            Welcome back. Here&apos;s a concise view of your proposals.
           </p>
         </div>
-        <Button className="gap-2 cursor-pointer" render={<Link href="/dashboard/proposals/new" />}>
+        <Button
+          className="h-11 shrink-0 cursor-pointer gap-2 rounded-full px-6 shadow-md shadow-primary/10"
+          render={<Link href="/dashboard/proposals/new" />}
+        >
           <Plus className="h-4 w-4" />
-          New Proposal
+          New proposal
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="rounded-2xl border-border/80 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Proposals
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Total
             </CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <FileText className="h-4 w-4 text-primary" strokeWidth={1.75} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="font-[var(--font-heading)] text-3xl font-semibold tabular-nums tracking-tight">
+              {stats.total}
+            </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-2xl border-border/80 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Under Review
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Under review
             </CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <Clock className="h-4 w-4 text-primary" strokeWidth={1.75} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.active}</div>
+            <div className="font-[var(--font-heading)] text-3xl font-semibold tabular-nums tracking-tight">
+              {stats.active}
+            </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-2xl border-border/80 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Needs Your Action
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Needs action
             </CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+              <MessageSquare className="h-4 w-4 text-amber-700 dark:text-amber-400" strokeWidth={1.75} />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{stats.needsAction}</div>
+            <div className="font-[var(--font-heading)] text-3xl font-semibold tabular-nums tracking-tight text-amber-700 dark:text-amber-400">
+              {stats.needsAction}
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
+      <Card className="rounded-2xl border-border/80 shadow-sm">
         <CardHeader>
-          <CardTitle>Recent Proposals</CardTitle>
+          <CardTitle className="font-[var(--font-heading)] text-lg font-semibold">Recent proposals</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -96,11 +114,11 @@ export default function DashboardPage() {
                 No proposals yet. Create your first proposal to get started.
               </p>
               <Button
-                className="mt-4 gap-2 cursor-pointer"
+                className="mt-4 gap-2 cursor-pointer rounded-full"
                 render={<Link href="/dashboard/proposals/new" />}
               >
                 <Plus className="h-4 w-4" />
-                New Proposal
+                New proposal
               </Button>
             </div>
           ) : (
@@ -109,7 +127,7 @@ export default function DashboardPage() {
                 <Link
                   key={p.id}
                   href={`/dashboard/proposals/${p.id}`}
-                  className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors duration-150 hover:bg-accent cursor-pointer"
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-border/80 p-4 transition-colors duration-200 hover:border-primary/20 hover:bg-accent/50"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground truncate">{p.title}</p>
