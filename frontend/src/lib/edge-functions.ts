@@ -1,5 +1,34 @@
 import { createClient } from "@/lib/supabase";
 
+/**
+ * Prefer JSON body from the Edge Function over the generic invoke message.
+ * Avoid `instanceof FunctionsHttpError` — Next can duplicate `@supabase/functions-js`,
+ * which breaks instanceof and leaves users seeing only "non-2xx status code".
+ */
+async function unwrapFunctionError(error: unknown): Promise<never> {
+  const errCtx = error instanceof Error ? (error as Error & { context?: unknown }).context : null;
+  const isFunctionsHttp =
+    error instanceof Error &&
+    errCtx instanceof Response &&
+    (error.name === "FunctionsHttpError" ||
+      error.message === "Edge Function returned a non-2xx status code");
+
+  if (isFunctionsHttp) {
+    const res = errCtx;
+    const raw = await res.clone().text().catch(() => "");
+    let detail: string | undefined;
+    try {
+      const parsed = JSON.parse(raw) as { error?: string; message?: string };
+      detail = parsed.error?.trim() || parsed.message?.trim();
+    } catch {
+      detail = raw?.trim() || undefined;
+    }
+    if (detail) throw new Error(detail);
+    throw new Error(`Edge Function ${res.status} ${res.statusText}`.trim());
+  }
+  throw error instanceof Error ? error : new Error(String(error));
+}
+
 export async function invokeEdgeFunction<T = unknown>(
   functionName: string,
   body: Record<string, unknown>,
@@ -8,7 +37,7 @@ export async function invokeEdgeFunction<T = unknown>(
   const { data, error } = await supabase.functions.invoke(functionName, {
     body,
   });
-  if (error) throw error;
+  if (error) await unwrapFunctionError(error);
   return data as T;
 }
 

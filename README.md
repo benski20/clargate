@@ -118,7 +118,7 @@ clargate/
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local   # Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+cp .env.example .env.local   # Set NEXT_PUBLIC_SUPABASE_* and NEXT_PUBLIC_APP_URL (e.g. http://localhost:3000)
 npm run dev
 ```
 
@@ -127,6 +127,20 @@ Open [http://localhost:3000](http://localhost:3000) for the app (landing and aut
 ### Supabase
 
 To run or deploy Edge Functions and apply migrations, use the [Supabase CLI](https://supabase.com/docs/guides/cli) against your project. Function code under `supabase/functions/` expects project secrets (e.g. AI keys, storage, email) to be set in the Supabase dashboard or CLI.
+
+**Auth redirect URLs:** In the Supabase project → **Authentication** → **URL Configuration**, set **Site URL** to your deployed origin (or `http://localhost:3000` for local dev). Under **Redirect URLs**, add each origin you use with path `/callback` (Supabase matches the callback URL your app sends). For example: `http://localhost:3000/callback`, `https://<production-domain>/callback`, and optionally the same URLs with `?next=/onboarding/redeem` if you list query strings explicitly. These must align with `NEXT_PUBLIC_APP_URL` and `getAppOrigin()` in `frontend/src/lib/supabase.ts`.
+
+#### Institutional signup codes
+
+New accounts must **redeem a code** so `public.users` is linked to an institution and role (RLS depends on this).
+
+1. Apply migrations `002_signup_codes.sql` (table + `redeem_signup_code` RPC) and `003_validate_signup_code_rpc.sql` (`validate_signup_code` for `/signup`; uses anon RPC, not an Edge Function). The frontend calls this RPC with **anon-only** `fetch` so an **expired browser session** does not send a bad JWT to PostgREST.
+2. Deploy Edge Functions: `create-signup-code`, `list-signup-codes` (admin-only). The `validate-signup-code` function is optional / legacy if you use migration `003`.
+3. **Admins** create codes under **Dashboard → Administration → Users** (“New signup code”). Share the code (e.g. `CLG-XXXXXXXX`) with people who should register.
+4. Users enter the code on **`/signup`** (optional query `?code=CLG-...`). After email confirmation, if needed they finish at **`/onboarding/redeem`**.
+5. If `redeem_signup_code` fails on migrate (e.g. `user_role` enum name differs), adjust the cast in the migration to match your schema.
+
+**Bootstrap:** The first app user must still be created by your usual process (e.g. SQL insert into `users` + Auth user, or a seed script). After that, admins can mint codes for self-serve signups.
 
 ---
 

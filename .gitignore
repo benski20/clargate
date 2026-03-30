@@ -42,3 +42,7 @@ htmlcov/
 
 # Design system (generated, re-generable)
 design-system/
+
+# MCP one-off Edge Function deploy payloads
+.deploy-*.json
+.mcp-deploy-*.json

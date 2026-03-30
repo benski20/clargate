@@ -26,7 +26,7 @@ export async function getCallerUser(authHeader: string) {
   const { data: appUser, error } = await svc
     .from("users")
     .select("*")
-    .eq("supabase_uid", authUser.id)
+    .eq("supabase_uid", String(authUser.id))
     .single();
 
   if (error || !appUser) throw new Error("User not found in app database");

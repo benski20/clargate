@@ -31,6 +31,26 @@ export interface User {
   created_at: string;
 }
 
+/** Institutional signup code (admin-created). */
+export interface SignupCodeRow {
+  id: string;
+  code: string;
+  role: UserRole;
+  max_uses: number | null;
+  uses_count: number;
+  expires_at: string | null;
+  label: string | null;
+  created_at: string;
+}
+
+export type RedeemSignupResult = {
+  ok: boolean;
+  error?: string;
+  already_redeemed?: boolean;
+  role?: UserRole;
+  institution_id?: string;
+};
+
 export interface Institution {
   id: string;
   name: string;

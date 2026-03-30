@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase";
-import type { Proposal } from "@/lib/types";
+import { createClient, rpcValidateSignupCodeAnonOnly } from "@/lib/supabase";
+import type { Proposal, RedeemSignupResult } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function getClient(): SupabaseClient {
@@ -235,7 +235,23 @@ export const db = {
       .from("users")
       .select("*")
       .eq("supabase_uid", user.id)
-      .single();
+      .maybeSingle();
     return data;
+  },
+
+  /** Validate an institutional signup code (anon-only fetch; avoids stale session JWT → Invalid JWT). */
+  async validateSignupCode(code: string) {
+    return rpcValidateSignupCodeAnonOnly(code.trim());
+  },
+
+  /** Link the signed-in Supabase user to an institution via signup code (RPC). */
+  async redeemSignupCode(code: string, fullName: string): Promise<RedeemSignupResult> {
+    const supabase = getClient();
+    const { data, error } = await supabase.rpc("redeem_signup_code", {
+      p_code: code.trim(),
+      p_full_name: fullName.trim(),
+    });
+    if (error) throw error;
+    return data as RedeemSignupResult;
   },
 };

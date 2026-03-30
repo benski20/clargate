@@ -13,6 +13,7 @@ import {
   Settings,
   Menu,
   ScrollText,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -25,7 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase";
-import type { UserRole } from "@/lib/types";
+import { db } from "@/lib/database";
+import type { User, UserRole } from "@/lib/types";
 
 interface NavItem {
   label: string;
@@ -52,21 +54,33 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const [user, setUser] = useState<{ email: string; name: string; role: UserRole } | null>(null);
+  const [appUser, setAppUser] = useState<User | null | undefined>(undefined);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUser({
-          email: data.user.email || "",
-          name: data.user.user_metadata?.full_name || data.user.email || "",
-          role: (data.user.user_metadata?.role as UserRole) || "pi",
-        });
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) {
+        if (!cancelled) setAppUser(null);
+        return;
       }
-    });
-  }, []);
+      const row = await db.getCurrentAppUser();
+      if (cancelled) return;
+      if (!row) {
+        router.replace("/onboarding/redeem");
+        setAppUser(null);
+        return;
+      }
+      setAppUser(row as User);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function handleLogout() {
     // `scope: "local"` signs out this browser session only; default `global` revokes all sessions and is slower.
@@ -75,9 +89,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     router.refresh();
   }
 
-  const filteredNav = navItems.filter((item) => user && item.roles.includes(user.role));
+  const filteredNav = navItems.filter((item) => appUser && item.roles.includes(appUser.role));
   const initials =
-    user?.name
+    appUser?.full_name
       ?.split(" ")
       .map((n) => n[0])
       .join("")
@@ -91,8 +105,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <AvatarFallback className="bg-muted text-xs font-medium text-foreground">{initials}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{user?.name || "—"}</p>
-          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          <p className="truncate text-sm font-medium text-foreground">{appUser?.full_name || "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{appUser?.email}</p>
         </div>
       </div>
     );
@@ -166,6 +180,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
+    );
+  }
+
+  if (appUser === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/50">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading workspace" />
+      </div>
+    );
+  }
+
+  if (appUser === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/50">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Redirecting" />
       </div>
     );
   }
