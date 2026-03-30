@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Build
+.next/
+out/
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.production
+.env*.local
+frontend/.env.local
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-data/
+
+# Testing
+coverage/
+htmlcov/
+.pytest_cache/
+.coverage
+
+# CDK
+infra/cdk.out/
+
+# Design system (generated, re-generable)
+design-system/

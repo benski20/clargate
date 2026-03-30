@@ -1,0 +1,16 @@
+{
+  "plugins": {
+    "supabase": {
+      "enabled": true
+    },
+    "aws-serverless": {
+      "enabled": true
+    },
+    "deploy-on-aws": {
+      "enabled": true
+    },
+    "aws-amplify": {
+      "enabled": true
+    }
+  }
+}
