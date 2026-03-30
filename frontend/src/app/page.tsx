@@ -1,27 +1,28 @@
+import { LandingShell } from "@/components/landing/LandingShell";
 import { Navbar } from "@/components/landing/Navbar";
 import { Hero } from "@/components/landing/Hero";
-import { ProblemSection } from "@/components/landing/ProblemSection";
-import { FeaturesSection } from "@/components/landing/FeaturesSection";
-import { HowItWorks } from "@/components/landing/HowItWorks";
+import { MarqueeSection } from "@/components/landing/MarqueeSection";
+import { GapSection } from "@/components/landing/GapSection";
+import { WorkflowSection } from "@/components/landing/WorkflowSection";
+import { CapabilitiesSection } from "@/components/landing/CapabilitiesSection";
 import { PricingSection } from "@/components/landing/PricingSection";
-import { CTASection } from "@/components/landing/CTASection";
-import { TrustSection } from "@/components/landing/TrustSection";
+import { ContactSection } from "@/components/landing/ContactSection";
 import { Footer } from "@/components/landing/Footer";
 
 export default function Home() {
   return (
-    <>
+    <LandingShell>
       <Navbar />
-      <main className="flex-1">
+      <main className="relative z-10 mt-[clamp(3.5rem,5vw,4.5rem)] bg-[#FDFBF7]">
         <Hero />
-        <ProblemSection />
-        <FeaturesSection />
-        <HowItWorks />
+        <MarqueeSection />
+        <GapSection />
+        <WorkflowSection />
+        <CapabilitiesSection />
         <PricingSection />
-        <CTASection />
-        <TrustSection />
+        <ContactSection />
       </main>
       <Footer />
-    </>
+    </LandingShell>
   );
 }

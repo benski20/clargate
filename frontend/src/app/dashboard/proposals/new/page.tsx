@@ -26,6 +26,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { streamEdgeFunction } from "@/lib/edge-functions";
 import type { Proposal } from "@/lib/types";
@@ -95,13 +96,16 @@ export default function NewProposalPage() {
   );
 
   async function handleSubmit() {
-    if (!proposalId) {
-      await autoSave(formData);
-    }
     setSubmitting(true);
     try {
-      const id = proposalId;
-      if (!id) return;
+      let id = proposalId;
+      if (!id) {
+        const title =
+          ((formData.study_info as Record<string, string>)?.title as string) || "Untitled Proposal";
+        const created = await db.createProposal(title, formData);
+        id = created.id as string;
+        setProposalId(id);
+      }
       const reviewType = (formData.study_info as Record<string, string>)?.review_type || null;
       await db.updateProposal(id, {
         title: (formData.study_info as Record<string, string>)?.title,
@@ -109,7 +113,8 @@ export default function NewProposalPage() {
         form_data: formData,
       });
       await db.submitProposal(id);
-      router.push(`/dashboard/proposals/${id}`);
+      router.replace(`/dashboard/proposals/${id}`);
+      router.refresh();
     } catch {
       setSubmitting(false);
     }
@@ -175,7 +180,7 @@ export default function NewProposalPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          <h1 className="font-[var(--font-heading)] text-2xl font-bold">New Proposal</h1>
+          <h1 className="font-[var(--font-heading)] text-2xl font-medium tracking-tight">New Proposal</h1>
           <p className="text-sm text-muted-foreground">
             Step {step + 1} of {STEPS.length}: {STEPS[step]}
           </p>
@@ -187,10 +192,10 @@ export default function NewProposalPage() {
         )}
       </div>
 
-      <Progress value={progress} className="h-2" />
+      <Progress value={progress} className="h-2 rounded-full" />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <Card>
+        <Card className={dashboardCardClass}>
           <CardContent className="pt-6">
             {step === 0 && (
               <div className="space-y-4">
@@ -507,10 +512,10 @@ export default function NewProposalPage() {
         </Card>
 
         <div className="hidden lg:block">
-          <Card className="sticky top-8">
+          <Card className={`${dashboardCardClass} sticky top-8`}>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="h-4 w-4 text-primary" />
+                <Sparkles className="h-4 w-4 text-foreground" />
                 AI Assistant
               </CardTitle>
             </CardHeader>
@@ -527,10 +532,10 @@ export default function NewProposalPage() {
                     {assistantMessages.map((msg, i) => (
                       <div
                         key={i}
-                        className={`rounded-lg p-3 text-sm ${
+                        className={`rounded-2xl p-3 text-sm ${
                           msg.role === "user"
-                            ? "ml-4 bg-primary/10 text-foreground"
-                            : "mr-4 bg-muted text-foreground"
+                            ? "ml-4 bg-muted text-foreground"
+                            : "mr-4 bg-muted/70 text-foreground"
                         }`}
                       >
                         {msg.content}
@@ -545,9 +550,9 @@ export default function NewProposalPage() {
                   placeholder="Ask a question..."
                   value={assistantInput}
                   onChange={(e) => setAssistantInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && askAssistant()}
+                  onKeyDown={(e) => e.key === "Enter" && !assistantLoading && askAssistant()}
                   disabled={assistantLoading}
-                  className="text-sm"
+                  className={`text-sm ${dashboardInputClass} rounded-full`}
                 />
                 <Button
                   size="icon"

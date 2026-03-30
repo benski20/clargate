@@ -1,136 +1,129 @@
-"use client";
-
 import { Check } from "lucide-react";
-import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { SectionHeading } from "@/components/landing/SectionHeading";
-import { Reveal, RevealStagger, RevealItem } from "@/components/motion";
 
 const tiers = [
   {
     name: "Starter",
     price: "$499",
-    period: "/month",
-    description: "For smaller institutions adopting modern IRB tooling.",
+    suffix: "/ mo",
+    desc: "For smaller institutions needing core capabilities and pipeline visibility.",
+    featured: false,
     features: [
-      "Up to 50 submissions/year",
-      "3 admin seats",
-      "AI proposal summaries",
-      "Unified messaging",
-      "Document storage",
+      "Capped yearly submissions",
+      "Core AI summaries",
+      "Unified messaging & storage",
       "Email notifications",
     ],
-    cta: "Start free trial",
-    highlighted: false,
   },
   {
     name: "Professional",
     price: "$999",
-    period: "/month",
-    description: "For mid-size institutions needing full workflow automation.",
+    suffix: "/ mo",
+    desc: "The complete workflow engine for active research organizations.",
+    featured: true,
+    badge: "Standard",
     features: [
       "Unlimited submissions",
-      "Unlimited admin & reviewer seats",
-      "AI revision letter drafting",
-      "PI assistant",
+      "Full AI PI Assistant",
+      "Revision letter drafting",
       "SSO / SAML integration",
-      "Audit log & compliance reporting",
-      "Priority support",
     ],
-    cta: "Start free trial",
-    highlighted: true,
   },
   {
     name: "Enterprise",
     price: "Custom",
-    period: "",
-    description: "For large research organizations with advanced requirements.",
+    suffix: "",
+    desc: "Dedicated architecture and custom compliance structures.",
+    featured: false,
     features: [
-      "Everything in Professional",
+      "BAA & Custom contracts",
       "Dedicated success manager",
-      "Custom SSO configuration",
-      "Advanced analytics",
-      "Data migration assistance",
-      "BAA & custom contracts",
-      "On-premise option available",
+      "Migration assistance",
+      "Optional on-premise deployment",
     ],
-    cta: "Contact sales",
-    highlighted: false,
   },
 ];
 
 export function PricingSection() {
-  const reduced = useReducedMotion();
-
   return (
-    <section id="pricing" className="border-y border-border/60 bg-muted/25 py-24 md:py-32">
-      <div className="mx-auto max-w-6xl px-6">
-        <SectionHeading
-          eyebrow="Pricing"
-          title="Simple institution-wide pricing"
-          description="One subscription covers your organization — predictable cost, no per-seat surprises."
-        />
+    <section
+      id="pricing"
+      className="relative border-b border-[#DCD8D0] bg-[#FDFBF7] py-[clamp(6rem,10vw,10rem)]"
+    >
+      <div className="relative z-10 mx-auto max-w-[clamp(90rem,95vw,120rem)] px-[clamp(1.5rem,5vw,4rem)]">
+        <div className="mb-[clamp(4rem,6vw,6rem)] flex flex-col items-start justify-between gap-8 md:flex-row md:items-end">
+          <div>
+            <div className="mb-6 font-mono text-xs tracking-[0.15em] text-[#555555] uppercase">
+              Institutional Access
+            </div>
+            <h2 className="font-[family-name:var(--font-heading)] text-[clamp(2rem,3.25vw,3.25rem)] leading-[0.95] font-light tracking-tighter text-[#0A0A0A]">
+              One subscription.
+              <br />
+              <span className="italic text-[#555555]">Zero per-seat math.</span>
+            </h2>
+          </div>
+        </div>
 
-        <RevealStagger className="mt-20 grid gap-6 lg:grid-cols-3 lg:gap-5">
+        <div className="grid grid-cols-1 gap-0 border border-[#DCD8D0] md:grid-cols-3">
           {tiers.map((tier) => (
-            <RevealItem key={tier.name}>
-              <motion.div
-                whileHover={
-                  reduced
-                    ? undefined
-                    : { y: -2, transition: { duration: 0.2 } }
-                }
-                className={`relative flex h-full flex-col rounded-2xl border p-8 transition-shadow duration-200 ${
-                  tier.highlighted
-                    ? "border-primary/40 bg-card shadow-lg shadow-primary/10 ring-2 ring-primary/15"
-                    : "border-border/80 bg-card/90 shadow-sm hover:border-primary/20 hover:shadow-md"
+            <div
+              key={tier.name}
+              className={`relative flex flex-col border-b border-[#DCD8D0] p-[clamp(2rem,3vw,3rem)] transition-colors duration-500 last:border-b-0 hover:bg-[#F4F1EA] md:border-r md:border-b-0 md:last:border-r-0 ${
+                tier.featured ? "bg-[#0A0A0A] text-[#FDFBF7] hover:bg-[#0A0A0A]" : ""
+              }`}
+            >
+              {tier.featured && tier.badge ? (
+                <div className="absolute top-0 right-0 bg-[#D9381E] px-4 py-2 font-mono text-[0.55rem] tracking-[0.15em] text-[#FDFBF7] uppercase">
+                  {tier.badge}
+                </div>
+              ) : null}
+              <div
+                className={`mb-4 font-mono text-xs tracking-[0.15em] uppercase ${
+                  tier.featured ? "text-white/70" : "text-[#0A0A0A]"
                 }`}
               >
-                {tier.highlighted && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-primary-foreground">
-                    Recommended
-                  </div>
-                )}
-                <h3 className="font-[var(--font-heading)] text-lg font-semibold text-foreground">
-                  {tier.name}
-                </h3>
-                <div className="mt-6 flex items-baseline gap-1">
-                  <span className="text-4xl font-semibold tracking-tight text-foreground">
-                    {tier.price}
+                {tier.name}
+              </div>
+              <div
+                className={`mb-4 font-[family-name:var(--font-heading)] text-[2.125rem] font-light tracking-tight md:text-[2.25rem] ${
+                  tier.featured ? "text-[#FDFBF7]" : "text-[#0A0A0A]"
+                }`}
+              >
+                {tier.price}{" "}
+                {tier.suffix ? (
+                  <span
+                    className={`font-sans text-base font-light ${
+                      tier.featured ? "text-white/50" : "text-[#555555]"
+                    }`}
+                  >
+                    {tier.suffix}
                   </span>
-                  <span className="text-sm text-muted-foreground">{tier.period}</span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  {tier.description}
-                </p>
-                <Button
-                  className="mt-8 w-full cursor-pointer rounded-full"
-                  variant={tier.highlighted ? "default" : "outline"}
-                  render={
-                    <Link href={tier.name === "Enterprise" ? "#" : "/signup"} />
-                  }
-                >
-                  {tier.cta}
-                </Button>
-                <ul className="mt-8 flex flex-1 flex-col gap-3">
-                  {tier.features.map((f) => (
-                    <li key={f} className="flex items-start gap-3 text-sm">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} />
-                      <span className="text-muted-foreground">{f}</span>
-                    </li>
-                  ))}
-                </ul>
-              </motion.div>
-            </RevealItem>
+                ) : null}
+              </div>
+              <p
+                className={`mb-8 border-b pb-8 font-sans text-[clamp(1rem,1.05vw,1.125rem)] font-light ${
+                  tier.featured
+                    ? "border-white/20 text-white/70"
+                    : "border-[#DCD8D0] text-[#555555]"
+                }`}
+              >
+                {tier.desc}
+              </p>
+              <ul className="mb-12 flex flex-grow flex-col gap-4 font-sans text-sm font-light">
+                {tier.features.map((f) => (
+                  <li key={f} className="flex items-center gap-3">
+                    <Check
+                      className={`size-4 shrink-0 ${
+                        tier.featured ? "text-[#D9381E]" : "text-[#555555]"
+                      }`}
+                      strokeWidth={1.5}
+                    />
+                    <span className={tier.featured ? "text-[#FDFBF7]" : "text-[#0A0A0A]"}>{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </RevealStagger>
-
-        <Reveal className="mx-auto mt-12 max-w-xl text-center">
-          <p className="text-xs text-muted-foreground">
-            Taxes and implementation may vary. Enterprise plans include custom terms.
-          </p>
-        </Reveal>
+        </div>
       </div>
     </section>
   );

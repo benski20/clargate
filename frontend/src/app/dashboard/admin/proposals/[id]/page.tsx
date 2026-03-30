@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type {
@@ -56,6 +57,8 @@ export default function AdminProposalDetailPage() {
   const [summarizing, setSummarizing] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -117,24 +120,32 @@ export default function AdminProposalDetailPage() {
 
   async function assignReviewer() {
     if (!selectedReviewer) return;
+    setAssigning(true);
     try {
       await invokeEdgeFunction("assign-reviewers", {
         proposal_id: proposalId,
         reviewer_user_ids: [selectedReviewer],
       });
       setSelectedReviewer("");
-    } catch {}
+    } catch {
+    } finally {
+      setAssigning(false);
+    }
   }
 
   async function sendMessage() {
     if (!newMessage.trim()) return;
+    setSending(true);
     try {
       const appUser = await db.getCurrentAppUser();
       if (!appUser) return;
       const msg = await db.sendMessage(proposalId, newMessage, appUser.id);
       setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
-    } catch {}
+    } catch {
+    } finally {
+      setSending(false);
+    }
   }
 
   if (loading) {
@@ -169,50 +180,57 @@ export default function AdminProposalDetailPage() {
       <div className="flex flex-wrap gap-2">
         {proposal.status === "submitted" && (
           <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("initial_review")} disabled={statusUpdating}>
+            {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Begin Review
           </Button>
         )}
         {proposal.status === "initial_review" && (
           <>
             <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("under_committee_review")} disabled={statusUpdating}>
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Send to Committee
             </Button>
             <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => updateStatus("revisions_requested")} disabled={statusUpdating}>
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Request Revisions
             </Button>
-            <Button size="sm" variant="outline" className="cursor-pointer bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Approve
+            <Button size="sm" variant="outline" className="cursor-pointer border-border bg-background hover:bg-muted" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}
+              Approve
             </Button>
           </>
         )}
         {proposal.status === "under_committee_review" && (
           <>
             <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => updateStatus("revisions_requested")} disabled={statusUpdating}>
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Request Revisions
             </Button>
-            <Button size="sm" variant="outline" className="cursor-pointer bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Approve
+            <Button size="sm" variant="outline" className="cursor-pointer border-border bg-background hover:bg-muted" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}
+              Approve
             </Button>
           </>
         )}
         {proposal.status === "resubmitted" && (
           <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("initial_review")} disabled={statusUpdating}>
+            {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Begin Re-Review
           </Button>
         )}
       </div>
 
       <Tabs defaultValue="summary">
-        <TabsList>
-          <TabsTrigger value="summary" className="cursor-pointer"><Brain className="mr-2 h-4 w-4" />AI Summary</TabsTrigger>
-          <TabsTrigger value="details" className="cursor-pointer">Details</TabsTrigger>
-          <TabsTrigger value="reviewers" className="cursor-pointer"><UserPlus className="mr-2 h-4 w-4" />Reviewers</TabsTrigger>
-          <TabsTrigger value="letter" className="cursor-pointer"><FileEdit className="mr-2 h-4 w-4" />Revision Letter</TabsTrigger>
-          <TabsTrigger value="messages" className="cursor-pointer"><MessageSquare className="mr-2 h-4 w-4" />Messages</TabsTrigger>
+        <TabsList className="h-auto flex-wrap rounded-2xl border border-border/80 bg-muted/50 p-1">
+          <TabsTrigger value="summary" className="cursor-pointer rounded-xl"><Brain className="mr-2 h-4 w-4" />AI Summary</TabsTrigger>
+          <TabsTrigger value="details" className="cursor-pointer rounded-xl">Details</TabsTrigger>
+          <TabsTrigger value="reviewers" className="cursor-pointer rounded-xl"><UserPlus className="mr-2 h-4 w-4" />Reviewers</TabsTrigger>
+          <TabsTrigger value="letter" className="cursor-pointer rounded-xl"><FileEdit className="mr-2 h-4 w-4" />Revision Letter</TabsTrigger>
+          <TabsTrigger value="messages" className="cursor-pointer rounded-xl"><MessageSquare className="mr-2 h-4 w-4" />Messages</TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="mt-6">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">AI-Generated Summary</CardTitle>
               <Button size="sm" className="gap-2 cursor-pointer" onClick={generateSummary} disabled={summarizing}>
@@ -244,7 +262,7 @@ export default function AdminProposalDetailPage() {
         <TabsContent value="details" className="mt-6">
           <div className="grid gap-4">
             {proposal.form_data && Object.entries(proposal.form_data).map(([section, data]) => (
-              <Card key={section}>
+              <Card className={dashboardCardClass} key={section}>
                 <CardHeader className="pb-3"><CardTitle className="text-base capitalize">{section.replace(/_/g, " ")}</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   {Object.entries(data as Record<string, string>).map(([key, value]) => value && (
@@ -260,7 +278,7 @@ export default function AdminProposalDetailPage() {
         </TabsContent>
 
         <TabsContent value="reviewers" className="mt-6 space-y-4">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardHeader><CardTitle className="text-base">Assign Reviewer</CardTitle></CardHeader>
             <CardContent>
               <div className="flex gap-2">
@@ -272,14 +290,15 @@ export default function AdminProposalDetailPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button className="cursor-pointer" onClick={assignReviewer} disabled={!selectedReviewer}>
-                  <UserPlus className="mr-2 h-4 w-4" /> Assign
+                <Button className="cursor-pointer" onClick={assignReviewer} disabled={!selectedReviewer || assigning}>
+                  {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                  Assign
                 </Button>
               </div>
             </CardContent>
           </Card>
           {reviews.length > 0 && (
-            <Card>
+            <Card className={dashboardCardClass}>
               <CardHeader><CardTitle className="text-base">Submitted Reviews</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {reviews.map((r) => (
@@ -303,7 +322,7 @@ export default function AdminProposalDetailPage() {
         </TabsContent>
 
         <TabsContent value="letter" className="mt-6">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Revision Letter</CardTitle>
               <Button size="sm" className="gap-2 cursor-pointer" onClick={draftRevisionLetter} disabled={drafting}>
@@ -326,7 +345,7 @@ export default function AdminProposalDetailPage() {
         </TabsContent>
 
         <TabsContent value="messages" className="mt-6">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardContent className="p-0">
               <ScrollArea className="h-[350px] p-4">
                 {messages.length === 0 ? (
@@ -347,8 +366,17 @@ export default function AdminProposalDetailPage() {
               </ScrollArea>
               <Separator />
               <div className="flex gap-2 p-4">
-                <Input placeholder="Type a message..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} />
-                <Button size="icon" className="cursor-pointer" onClick={sendMessage}><Send className="h-4 w-4" /></Button>
+                <Input
+                  placeholder="Type a message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !sending && sendMessage()}
+                  disabled={sending}
+                  className={`rounded-full ${dashboardInputClass}`}
+                />
+                <Button size="icon" className="cursor-pointer" onClick={sendMessage} disabled={sending}>
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
               </div>
             </CardContent>
           </Card>

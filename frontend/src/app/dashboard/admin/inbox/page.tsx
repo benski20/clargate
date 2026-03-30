@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Inbox, MessageSquare } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Inbox, Loader2, MessageSquare } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import type { InboxItem } from "@/lib/types";
 
@@ -13,26 +14,29 @@ export default function AdminInboxPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    db.getInbox().then(setItems)
+    db
+      .getInbox()
+      .then(setItems)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-[var(--font-heading)] text-2xl font-bold">Inbox</h1>
-        <p className="mt-1 text-muted-foreground">
-          All message threads across proposals.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <DashboardPageHeader
+        eyebrow="Administration"
+        title="Inbox"
+        description="All message threads across proposals."
+      />
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="flex justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
+        </div>
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center py-12">
-            <Inbox className="h-10 w-10 text-muted-foreground/50" />
+        <Card className={dashboardCardClass}>
+          <CardContent className="flex flex-col items-center py-14">
+            <Inbox className="h-10 w-10 text-muted-foreground/40" />
             <p className="mt-3 text-sm text-muted-foreground">No messages yet.</p>
           </CardContent>
         </Card>
@@ -40,25 +44,30 @@ export default function AdminInboxPage() {
         <div className="space-y-3">
           {items.map((item) => (
             <Link key={item.proposal_id} href={`/dashboard/admin/proposals/${item.proposal_id}`}>
-              <Card className="cursor-pointer transition-colors duration-150 hover:bg-accent">
-                <CardContent className="flex items-center gap-4 py-4">
-                  <MessageSquare className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
+              <Card
+                className={`${dashboardCardClass} cursor-pointer transition-colors duration-200 hover:bg-muted/40`}
+              >
+                <CardContent className="flex items-center gap-4 py-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-muted">
+                    <MessageSquare className="h-5 w-5 text-foreground" strokeWidth={1.5} />
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground truncate">
-                        {item.proposal_title}
-                      </p>
+                      <p className="truncate font-medium text-foreground">{item.proposal_title}</p>
                       {item.unread_count > 0 && (
-                        <Badge variant="default" className="text-xs">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full border-0 bg-foreground text-xs text-background"
+                        >
                           {item.unread_count}
                         </Badge>
                       )}
                     </div>
-                    <p className="mt-0.5 text-sm text-muted-foreground truncate">
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
                       {item.last_message_sender_name}: {item.last_message_body}
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {item.last_message_at
                       ? new Date(item.last_message_at).toLocaleDateString()
                       : "—"}

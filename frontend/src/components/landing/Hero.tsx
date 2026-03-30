@@ -1,120 +1,107 @@
-"use client";
-
-import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-
-const ease = [0.22, 1, 0.36, 1] as const;
+import { HeroCanvas } from "@/components/landing/HeroCanvas";
 
 export function Hero() {
-  const reduced = useReducedMotion();
-
   return (
-    <section className="relative overflow-hidden pt-28 pb-24 md:pt-36 md:pb-32">
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,oklch(0.99_0.015_252)_0%,oklch(0.985_0.008_252)_45%,oklch(0.98_0.006_252)_100%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.4] motion-reduce:opacity-[0.2]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, oklch(0.65 0.04 264 / 0.22) 1px, transparent 0)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-        <motion.div
-          className="absolute -left-40 top-20 h-[min(90vw,520px)] w-[min(90vw,520px)] rounded-full bg-primary/[0.07] blur-3xl"
-          animate={
-            reduced
-              ? undefined
-              : { scale: [1, 1.05, 1], opacity: [0.5, 0.65, 0.5] }
-          }
-          transition={
-            reduced
-              ? undefined
-              : { duration: 14, repeat: Infinity, ease: "easeInOut" }
-          }
-        />
-        <motion.div
-          className="absolute -right-32 bottom-0 h-[min(80vw,440px)] w-[min(80vw,440px)] rounded-full bg-primary/[0.05] blur-3xl"
-          animate={
-            reduced
-              ? undefined
-              : { scale: [1.03, 1, 1.03], opacity: [0.4, 0.55, 0.4] }
-          }
-          transition={
-            reduced
-              ? undefined
-              : { duration: 12, repeat: Infinity, ease: "easeInOut" }
-          }
-        />
-        <div className="absolute left-1/2 top-[18%] h-px w-[min(92%,720px)] -translate-x-1/2 bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
+    <section className="relative flex min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] flex-col overflow-hidden border-b border-[#DCD8D0] md:flex-row">
+      <div className="group relative h-[40vh] w-full overflow-hidden border-b border-[#DCD8D0] bg-[#F4F1EA] md:h-auto md:w-[40%] md:border-r md:border-b-0">
+        <HeroCanvas />
+        <div className="absolute top-[clamp(1.5rem,5vw,4rem)] left-[clamp(1.5rem,5vw,4rem)] font-mono text-xs tracking-[0.15em] text-[#555555] uppercase">
+          Governed Workspace / Ver-01
+        </div>
+        <div className="pointer-events-none absolute right-[clamp(1.5rem,5vw,4rem)] bottom-[clamp(1.5rem,5vw,4rem)] left-[clamp(1.5rem,5vw,4rem)] flex items-end justify-between">
+          <div className="relative h-16 w-px overflow-hidden bg-[#DCD8D0]">
+            <div className="absolute top-0 left-0 h-1/2 w-full animate-pulse bg-[#0A0A0A]" />
+          </div>
+        </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-6">
-        <div className="mx-auto max-w-3xl text-center">
-          <motion.div
-            initial={reduced ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.5, ease }}
-            className="mb-8 inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/70 px-4 py-1.5 text-xs font-medium tracking-wide text-muted-foreground shadow-sm backdrop-blur-md"
-          >
-            <span className="h-1 w-1 rounded-full bg-primary" aria-hidden />
-            IRB review, unified
-          </motion.div>
+      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)] md:w-[60%]">
+        <div className="absolute top-1/4 left-0 h-px w-full bg-[#DCD8D0]/50" />
+        <div className="absolute top-0 left-[20%] h-full w-px bg-[#DCD8D0]/50" />
 
-          <motion.h1
-            initial={reduced ? false : { opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.55, delay: reduced ? 0 : 0.06, ease }}
-            className="font-[var(--font-heading)] text-[2.35rem] font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.25rem]"
+        <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-end overflow-hidden pr-[5%] opacity-[0.03]">
+          <svg
+            viewBox="0 0 200 200"
+            className="h-auto w-[80%] text-[#0A0A0A]"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.5"
+            aria-hidden
           >
-            The calm way to run{" "}
-            <span className="text-primary">IRB submissions</span>
-          </motion.h1>
+            <rect x="40" y="40" width="120" height="120" />
+            <rect x="60" y="60" width="80" height="80" />
+            <path d="M100 0 L100 200" />
+            <path d="M0 100 L200 100" />
+          </svg>
+        </div>
 
-          <motion.p
-            initial={reduced ? false : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.55, delay: reduced ? 0 : 0.12, ease }}
-            className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg"
-          >
-            One deliberate workspace for investigators, admins, and reviewers —
-            from intake to decision, without the inbox chaos.
-          </motion.p>
+        <div className="absolute top-[clamp(2rem,4vw,4rem)] right-[clamp(2rem,4vw,4rem)] z-10 hidden text-right lg:block">
+          <div className="mb-2 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#555555] uppercase">
+            Network Status
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <div className="size-[0.4rem] animate-pulse rounded-full bg-[#D9381E]" style={{ animationDuration: "3s" }} />
+            <span className="font-sans text-xs font-light tracking-wide text-[#0A0A0A]">
+              Accepting Institutions
+            </span>
+          </div>
+          <div className="mt-2 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.1em] text-[#DCD8D0]">
+            SECURE / ENCRYPTED
+          </div>
+        </div>
 
-          <motion.div
-            initial={reduced ? false : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduced ? 0 : 0.5, delay: reduced ? 0 : 0.18, ease }}
-            className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4"
-          >
-            <Button
-              size="lg"
-              className="h-12 cursor-pointer gap-2 rounded-full px-8 text-base font-medium shadow-lg shadow-primary/15 transition-shadow duration-200 hover:shadow-xl hover:shadow-primary/20"
-              render={<Link href="/signup" />}
-            >
-              Start free trial
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="h-12 cursor-pointer rounded-full border-border/80 bg-card/50 px-8 text-base font-medium backdrop-blur-sm transition-colors duration-200 hover:bg-accent"
-              render={<a href="#how-it-works" />}
-            >
-              How it works
-            </Button>
-          </motion.div>
+        <div className="relative z-10 flex h-full w-full flex-col justify-between pt-[clamp(2rem,4vw,4rem)] pb-[clamp(2rem,4vw,4rem)] md:pb-0">
+          <div className="self-start">
+            <span className="rounded-full border border-[#DCD8D0] bg-[#FDFBF7]/50 px-4 py-2 font-mono text-xs tracking-[0.15em] text-[#555555] uppercase backdrop-blur-sm">
+              AI-Assisted IRB
+            </span>
+          </div>
 
-          <motion.p
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: reduced ? 0 : 0.45, delay: reduced ? 0 : 0.28 }}
-            className="mt-8 text-xs font-medium tracking-wide text-muted-foreground"
-          >
-            No credit card · Audit-ready · HIPAA-aligned posture
-          </motion.p>
+          <h1 className="font-[family-name:var(--font-heading)] relative z-10 mt-auto mb-[clamp(2rem,4vw,4rem)] flex w-full flex-col text-[clamp(2.5rem,6vw,7rem)] leading-[0.9] font-light tracking-tighter text-[#0A0A0A]">
+            <span className="self-start">IRB operations,</span>
+            <span className="self-start pl-[5%] md:pl-[10%]">
+              <span className="italic text-[#555555]">distilled to</span>
+            </span>
+            <span className="self-start pl-[10%] text-[#0A0A0A] md:pl-[20%]">
+              <span className="font-normal italic text-[#3D3D3D]">clarity.</span>
+            </span>
+          </h1>
+
+          <div className="z-10 flex flex-col items-start gap-[clamp(2rem,4vw,4rem)] self-start bg-transparent sm:flex-row md:pl-[10%]">
+            <div className="max-w-96 border-l border-[#0A0A0A] py-2 pl-[clamp(1.5rem,2vw,2rem)]">
+              <p className="mb-6 max-w-[22rem] font-sans text-[clamp(1rem,1.05vw,1.125rem)] leading-[1.65] font-light text-[#555555]">
+                A single workspace for investigators, administrators, and reviewers — from intake to
+                decision, without the noise of scattered tools and inboxes.
+              </p>
+              <a
+                href="#workflow"
+                className="group inline-flex items-center gap-4 border-b border-[#0A0A0A] pb-1 font-mono text-xs tracking-[0.15em] text-[#0A0A0A] uppercase transition-colors duration-300 hover:border-[#D9381E] hover:text-[#D9381E]"
+              >
+                View Architecture
+                <ArrowRight className="size-[1.2rem] transition-transform duration-500 group-hover:translate-x-2" />
+              </a>
+            </div>
+
+            <div className="hidden flex-col gap-6 border-l border-[#DCD8D0] py-2 pl-[clamp(1.5rem,2vw,2rem)] xl:flex">
+              <div>
+                <div className="mb-1 font-[family-name:var(--font-heading)] text-lg leading-none tracking-tight text-[#0A0A0A] md:text-xl">
+                  Audit-Oriented
+                </div>
+                <div className="font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#555555] uppercase">
+                  Append-only logs
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 font-[family-name:var(--font-heading)] text-lg leading-none tracking-tight text-[#0A0A0A] md:text-xl">
+                  Zero Friction
+                </div>
+                <div className="font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#555555] uppercase">
+                  No card required
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

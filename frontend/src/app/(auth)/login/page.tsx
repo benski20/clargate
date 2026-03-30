@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<"google" | "azure" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -32,15 +33,21 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.push("/dashboard");
+    router.replace("/dashboard");
+    router.refresh();
   }
 
   async function handleSSOLogin(provider: "google" | "azure") {
+    setOauthProvider(provider);
+    setError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: `${getAppOrigin()}/callback` },
     });
-    if (error) setError(error.message);
+    if (error) {
+      setError(error.message);
+      setOauthProvider(null);
+    }
   }
 
   return (
@@ -107,16 +114,20 @@ export default function LoginPage() {
               variant="outline"
               type="button"
               className="h-11 cursor-pointer rounded-full"
+              disabled={!!oauthProvider || loading}
               onClick={() => handleSSOLogin("google")}
             >
+              {oauthProvider === "google" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Google
             </Button>
             <Button
               variant="outline"
               type="button"
               className="h-11 cursor-pointer rounded-full"
+              disabled={!!oauthProvider || loading}
               onClick={() => handleSSOLogin("azure")}
             >
+              {oauthProvider === "azure" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Microsoft
             </Button>
           </div>

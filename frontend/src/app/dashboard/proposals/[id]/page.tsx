@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
@@ -32,6 +33,7 @@ export default function ProposalDetailPage() {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -63,10 +65,14 @@ export default function ProposalDetailPage() {
   }
 
   async function handleResubmit() {
+    setResubmitting(true);
     try {
       const updated = await db.resubmitProposal(proposalId);
       setProposal((prev) => prev && { ...prev, status: updated.status });
-    } catch {}
+    } catch {
+    } finally {
+      setResubmitting(false);
+    }
   }
 
   if (loading) {
@@ -103,24 +109,32 @@ export default function ProposalDetailPage() {
           </p>
         </div>
         {proposal.status === "revisions_requested" && (
-          <Button className="gap-2 cursor-pointer" onClick={handleResubmit}>
-            <RefreshCw className="h-4 w-4" />
+          <Button
+            className="gap-2 cursor-pointer"
+            onClick={handleResubmit}
+            disabled={resubmitting}
+          >
+            {resubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             Resubmit
           </Button>
         )}
       </div>
 
       <Tabs defaultValue="details">
-        <TabsList>
-          <TabsTrigger value="details" className="cursor-pointer">
+        <TabsList className="h-auto rounded-2xl border border-border/80 bg-muted/50 p-1">
+          <TabsTrigger value="details" className="cursor-pointer rounded-xl">
             <FileText className="mr-2 h-4 w-4" />
             Details
           </TabsTrigger>
-          <TabsTrigger value="documents" className="cursor-pointer">
+          <TabsTrigger value="documents" className="cursor-pointer rounded-xl">
             <Download className="mr-2 h-4 w-4" />
             Documents
           </TabsTrigger>
-          <TabsTrigger value="messages" className="cursor-pointer">
+          <TabsTrigger value="messages" className="cursor-pointer rounded-xl">
             <MessageSquare className="mr-2 h-4 w-4" />
             Messages
           </TabsTrigger>
@@ -130,7 +144,7 @@ export default function ProposalDetailPage() {
           <div className="grid gap-4">
             {proposal.form_data &&
               Object.entries(proposal.form_data).map(([section, data]) => (
-                <Card key={section}>
+                <Card className={dashboardCardClass} key={section}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base capitalize">
                       {section.replace(/_/g, " ")}
@@ -155,7 +169,7 @@ export default function ProposalDetailPage() {
         </TabsContent>
 
         <TabsContent value="documents" className="mt-6">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardContent className="pt-6">
               {proposal.documents.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-8">
@@ -189,7 +203,7 @@ export default function ProposalDetailPage() {
         </TabsContent>
 
         <TabsContent value="messages" className="mt-6">
-          <Card>
+          <Card className={dashboardCardClass}>
             <CardContent className="p-0">
               <ScrollArea className="h-[400px] p-4">
                 {messages.length === 0 ? (
@@ -220,7 +234,9 @@ export default function ProposalDetailPage() {
                   placeholder="Type a message..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  onKeyDown={(e) => e.key === "Enter" && !sending && sendMessage()}
+                  disabled={sending}
+                  className={`rounded-full ${dashboardInputClass}`}
                 />
                 <Button
                   size="icon"

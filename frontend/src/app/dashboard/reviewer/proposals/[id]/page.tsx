@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Brain, Send, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { dashboardCardClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import type { ProposalDetail, ReviewDecision } from "@/lib/types";
 
@@ -91,15 +92,15 @@ export default function ReviewerProposalPage() {
       </div>
 
       <Tabs defaultValue="proposal">
-        <TabsList>
-          <TabsTrigger value="proposal" className="cursor-pointer">Proposal</TabsTrigger>
-          <TabsTrigger value="review" className="cursor-pointer">Submit Review</TabsTrigger>
+        <TabsList className="h-auto rounded-2xl border border-border/80 bg-muted/50 p-1">
+          <TabsTrigger value="proposal" className="cursor-pointer rounded-xl">Proposal</TabsTrigger>
+          <TabsTrigger value="review" className="cursor-pointer rounded-xl">Submit Review</TabsTrigger>
         </TabsList>
 
         <TabsContent value="proposal" className="mt-6">
           <div className="grid gap-4">
             {proposal.form_data && Object.entries(proposal.form_data).map(([section, data]) => (
-              <Card key={section}>
+              <Card className={dashboardCardClass} key={section}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base capitalize">{section.replace(/_/g, " ")}</CardTitle>
                 </CardHeader>
@@ -120,22 +121,28 @@ export default function ReviewerProposalPage() {
 
         <TabsContent value="review" className="mt-6">
           {submitted ? (
-            <Card>
+            <Card className={dashboardCardClass}>
               <CardContent className="flex flex-col items-center py-12">
-                <div className="rounded-full bg-emerald-100 p-3">
-                  <Send className="h-6 w-6 text-emerald-600" />
+                <div className="rounded-full bg-muted p-3">
+                  <Send className="h-6 w-6 text-foreground" />
                 </div>
                 <h3 className="mt-4 text-lg font-semibold">Review Submitted</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Thank you for your review. The admin will be notified.
                 </p>
-                <Button className="mt-6 cursor-pointer" onClick={() => router.push("/dashboard/reviewer")}>
+                <Button
+                  className="mt-6 cursor-pointer"
+                  onClick={() => {
+                    router.replace("/dashboard/reviewer");
+                    router.refresh();
+                  }}
+                >
                   Back to Reviews
                 </Button>
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className={dashboardCardClass}>
               <CardHeader>
                 <CardTitle>Your Review</CardTitle>
               </CardHeader>
@@ -201,7 +208,7 @@ export default function ReviewerProposalPage() {
                 </div>
 
                 <Button
-                  className="w-full gap-2 cursor-pointer"
+                  className="h-11 w-full cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
                   onClick={handleSubmitReview}
                   disabled={!decision || submitting}
                 >

@@ -1,0 +1,792 @@
+<html lang="en" class="scroll-smooth bg-bg"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clargate | AI-Assisted IRB Platform</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400&amp;family=Playfair+Display:ital,wght@0,400;1,400&amp;family=Space+Mono:wght@400&amp;display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A0A0A',
+                        secondary: '#555555',
+                        accent: '#D9381E',
+                        bg: '#FDFBF7',
+                        surface: '#F4F1EA',
+                        border: '#DCD8D0',
+                    },
+                    fontFamily: {
+                        serif: ['"Playfair Display"', 'serif'],
+                        sans: ['"Inter"', 'sans-serif'],
+                        mono: ['"Space Mono"', 'monospace'],
+                    },
+                    fontSize: {
+                        'h1': 'clamp(3.5rem, 8vw, 10rem)',
+                        'h2': 'clamp(3rem, 7vw, 7.5rem)',
+                        'h3': 'clamp(2rem, 4vw, 3.5rem)',
+                        'body': 'clamp(1.1rem, 1.2vw, 1.25rem)',
+                        'xs-fluid': 'clamp(0.85rem, 1vw, 1rem)',
+                        'micro': 'clamp(0.65rem, 0.8vw, 0.75rem)',
+                    },
+                    spacing: {
+                        'section': 'clamp(6rem, 12vw, 12rem)',
+                        'container': 'clamp(1.5rem, 5vw, 4rem)',
+                    },
+                    transitionTimingFunction: {
+                        'editorial': 'cubic-bezier(0.16, 1, 0.3, 1)',
+                    },
+                    animation: {
+                        'marquee': 'marquee 40s linear infinite',
+                        'marquee-reverse': 'marquee-reverse 40s linear infinite',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'spin-slow': 'spin 20s linear infinite',
+                    },
+                    keyframes: {
+                        marquee: {
+                            '0%': { transform: 'translateX(0)' },
+                            '100%': { transform: 'translateX(-50%)' }
+                        },
+                        'marquee-reverse': {
+                            '0%': { transform: 'translateX(-50%)' },
+                            '100%': { transform: 'translateX(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            color: #0A0A0A;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .fade-up {
+            opacity: 0;
+            transform: translateY(2rem);
+            transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .fade-up.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .stagger-text span {
+            display: inline-block;
+            opacity: 0;
+            transform: translateY(100%);
+            transition: opacity 0.8s, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .stagger-text.is-visible span {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .line-x {
+            position: absolute; bottom: 0; left: 0; height: 1px; width: 0;
+            background: currentColor; transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0.2;
+        }
+        .line-y {
+            position: absolute; top: 0; right: 0; width: 1px; height: 0;
+            background: currentColor; transition: height 1s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0.2;
+        }
+        .group:hover .line-x { width: 100%; }
+        .group:hover .line-y { height: 100%; }
+        
+        .sync-text { opacity: 0.2; transition: opacity 0.6s ease, transform 0.6s ease; transform: translateX(-2rem); }
+        .sync-text.active { opacity: 1; transform: translateX(0); }
+        
+        .mad-lib-input:-webkit-autofill,
+        .mad-lib-input:-webkit-autofill:hover,
+        .mad-lib-input:-webkit-autofill:focus,
+        .mad-lib-input:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 30px #0A0A0A inset !important;
+            -webkit-text-fill-color: #FDFBF7 !important;
+            transition: background-color 5000s ease-in-out 0s;
+        }
+        
+        @media (min-width: 768px) {
+            .h-accordion-item {
+                flex: 1;
+                min-width: 0;
+                transition: flex 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .h-accordion-container:hover .h-accordion-item {
+                flex: 0.5;
+            }
+            .h-accordion-container .h-accordion-item:hover {
+                flex: 3;
+            }
+        }
+        
+        .text-outline {
+            color: transparent;
+            -webkit-text-stroke: 1px currentColor;
+        }
+
+        iconify-icon {
+            stroke-width: 1.5px;
+        }
+    </style>
+</head>
+<body class="font-sans font-light selection:bg-primary selection:text-bg relative border-[clamp(0.5rem,1vw,1rem)] border-bg bg-border overflow-x-hidden">
+
+    <!-- FRAME & NAVIGATION -->
+    <div class="fixed inset-[clamp(0.5rem,1vw,1rem)] border border-border pointer-events-none z-50"></div>
+    
+    <nav class="fixed top-[clamp(0.5rem,1vw,1rem)] left-[clamp(0.5rem,1vw,1rem)] right-[clamp(0.5rem,1vw,1rem)] z-50 transition-all duration-500 bg-bg/90 backdrop-blur-xl border-b border-border mix-blend-normal">
+        <div class="flex h-[clamp(3.5rem,5vw,4.5rem)] pr-container pl-container items-center justify-between">
+            <div class="flex items-center gap-[2rem]">
+                <a href="#" class="font-serif text-primary z-10 relative group font-normal uppercase tracking-tight">
+                    <span class="text-xl md:text-2xl">CLARGATE</span>
+                    <span class="absolute -bottom-[0.2rem] left-0 w-0 h-[1px] bg-primary transition-all duration-500 ease-editorial group-hover:w-full"></span>
+                </a>
+            </div>
+            
+            <div class="hidden md:flex items-center gap-[clamp(2.5rem,4vw,4rem)] font-mono text-xs uppercase tracking-[0.15em] text-primary">
+                <a href="#gap" class="group relative py-[1rem] overflow-hidden">
+                    <span class="relative z-10">The Gap</span>
+                    <span class="absolute bottom-[0.8rem] left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="#workflow" class="group relative py-[1rem] overflow-hidden">
+                    <span class="relative z-10">Workflow</span>
+                    <span class="absolute bottom-[0.8rem] left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="#capabilities" class="group relative py-[1rem] overflow-hidden">
+                    <span class="relative z-10">Platform</span>
+                    <span class="absolute bottom-[0.8rem] left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="#pricing" class="group relative py-[1rem] overflow-hidden">
+                    <span class="relative z-10">Pricing</span>
+                    <span class="absolute bottom-[0.8rem] left-0 w-0 h-[1px] bg-primary transition-all duration-300 group-hover:w-full"></span>
+                </a>
+            </div>
+
+            <div class="flex items-center gap-[1.5rem]">
+                <a href="#contact" class="hidden md:inline-flex items-center gap-[0.75rem] font-mono text-xs tracking-[0.15em] uppercase text-primary border border-border hover:bg-primary hover:text-bg px-[1.5rem] py-[0.5rem] transition-colors duration-500 rounded-full">
+                    Start Trial
+                </a>
+                <button class="md:hidden flex flex-col gap-[0.35rem] w-[2rem] group">
+                    <span class="w-full h-[1px] bg-primary transition-transform group-hover:translate-x-1"></span>
+                    <span class="w-[70%] h-[1px] bg-primary ml-auto transition-transform group-hover:-translate-x-1"></span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="relative z-10 bg-bg mt-[clamp(3.5rem,5vw,4.5rem)]">
+        
+        <!-- [ 01 ] HERO -->
+        <section class="min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] relative flex flex-col md:flex-row border-b border-border overflow-hidden">
+            
+            <div class="w-full md:w-[40%] h-[40vh] md:h-auto relative border-b md:border-b-0 md:border-r border-border bg-surface overflow-hidden group">
+                <canvas id="hero-canvas" class="absolute inset-0 z-0 w-full h-full opacity-70 transition-opacity duration-700 group-hover:opacity-100" width="598" height="869"></canvas>
+                <div class="absolute top-container left-container font-mono text-xs uppercase tracking-[0.15em] text-secondary">
+                    Governed Workspace / Ver-01
+                </div>
+                <div class="absolute bottom-container left-container right-container flex justify-between items-end pointer-events-none">
+                    <div class="w-[1px] h-[4rem] bg-border relative overflow-hidden">
+                        <div class="w-full h-1/2 bg-primary absolute top-0 left-0 animate-[pulse_2s_ease-in-out_infinite]"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full md:w-[60%] relative flex flex-col justify-center p-container bg-bg z-10">
+                
+                <div class="absolute top-1/4 left-0 w-full h-[1px] bg-border/50"></div>
+                <div class="absolute top-0 left-[20%] w-[1px] h-full bg-border/50"></div>
+
+                <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 flex items-center justify-end pr-[5%] opacity-[0.03]">
+                    <svg viewBox="0 0 200 200" class="w-[80%] h-auto text-primary" fill="none" stroke="currentColor" stroke-width="0.5">
+                        <rect x="40" y="40" width="120" height="120"></rect>
+                        <rect x="60" y="60" width="80" height="80"></rect>
+                        <path d="M100 0 L100 200"></path>
+                        <path d="M0 100 L200 100"></path>
+                    </svg>
+                </div>
+                
+                <div class="absolute top-[clamp(2rem,4vw,4rem)] right-[clamp(2rem,4vw,4rem)] text-right hidden lg:block fade-up z-10">
+                    <div class="font-mono text-micro uppercase tracking-[0.15em] text-secondary mb-[0.5rem]">Network Status</div>
+                    <div class="flex items-center gap-[0.5rem] justify-end">
+                        <div class="w-[0.4rem] h-[0.4rem] rounded-full bg-accent animate-pulse-slow"></div>
+                        <span class="font-sans text-xs text-primary font-light tracking-wide">Accepting Institutions</span>
+                    </div>
+                    <div class="mt-[0.5rem] font-mono text-micro text-border tracking-[0.1em]">
+                        SECURE / ENCRYPTED
+                    </div>
+                </div>
+
+                <div class="relative z-10 w-full h-full flex flex-col justify-between pt-[clamp(2rem,4vw,4rem)] pb-[clamp(2rem,4vw,4rem)] md:pb-0">
+                    
+                    <div class="self-start fade-up">
+                        <span class="font-mono text-xs uppercase tracking-[0.15em] text-secondary border border-border px-[1rem] py-[0.5rem] rounded-full bg-bg/50 backdrop-blur-sm">
+                            AI-Assisted IRB
+                        </span>
+                    </div>
+
+                    <h1 class="font-serif text-h1 leading-[0.85] tracking-tighter text-primary font-light flex flex-col w-full relative z-10 mix-blend-darken mt-auto mb-[clamp(3rem,6vw,6rem)]">
+                        <div class="stagger-text is-visible self-start"><span>IRB operations,</span></div>
+                        <div class="stagger-text is-visible self-start pl-[5%] md:pl-[10%]"><span class="italic text-secondary">distilled to</span></div>
+                        <div class="stagger-text is-visible self-start pl-[10%] md:pl-[20%] text-outline"><span>clarity.</span></div>
+                    </h1>
+
+                    <div class="flex flex-col sm:flex-row gap-[clamp(2rem,4vw,4rem)] items-start self-start md:pl-[10%] fade-up bg-transparent z-10" style="transition-delay: 0.4s;">
+                        <div class="max-w-[24rem] border-l border-primary pl-[clamp(1.5rem,2vw,2rem)] py-[0.5rem]">
+                            <p class="font-sans text-xs-fluid text-secondary leading-[1.7] mb-[1.5rem] font-light">
+                                A single workspace for investigators, administrators, and reviewers — from intake to decision, without the noise of scattered tools and inboxes.
+                            </p>
+                            <a href="#workflow" class="group relative inline-flex items-center gap-[1rem] font-mono text-xs tracking-[0.15em] uppercase text-primary border-b border-primary pb-[0.25rem] hover:text-accent hover:border-accent transition-colors duration-300">
+                                View Architecture
+                                <iconify-icon icon="solar:arrow-right-linear" class="transform transition-transform duration-500 group-hover:translate-x-2" width="1.2rem"></iconify-icon>
+                            </a>
+                        </div>
+                        
+                        <div class="hidden xl:flex flex-col gap-[1.5rem] border-l border-border pl-[clamp(1.5rem,2vw,2rem)] py-[0.5rem]">
+                            <div>
+                                <div class="font-serif text-xl text-primary leading-none mb-[0.25rem] tracking-tight">Audit-Oriented</div>
+                                <div class="font-mono text-micro text-secondary uppercase tracking-[0.15em]">Append-only logs</div>
+                            </div>
+                            <div>
+                                <div class="font-serif text-xl text-primary leading-none mb-[0.25rem] tracking-tight">Zero Friction</div>
+                                <div class="font-mono text-micro text-secondary uppercase tracking-[0.15em]">No card required</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- [ 02 ] MARQUEE -->
+        <section class="border-b border-border bg-primary text-bg overflow-hidden relative z-10 py-[clamp(1rem,1.5vw,1.5rem)] flex flex-col justify-center">
+            <div class="flex w-max animate-marquee items-center">
+                <div class="flex items-center gap-[clamp(2rem,4vw,4rem)] px-[clamp(1rem,2vw,2rem)] whitespace-nowrap opacity-90">
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">SOC 2 Ready</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">hipaa aligned</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">US Data Residency</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">encryption at rest</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">SOC 2 Ready</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">hipaa aligned</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">US Data Residency</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">encryption at rest</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">SOC 2 Ready</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">hipaa aligned</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-sans text-sm uppercase tracking-[0.15em]">US Data Residency</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                    <span class="font-serif text-xl italic lowercase tracking-tight text-white/70">encryption at rest</span>
+                    <span class="w-[4px] h-[4px] bg-accent rounded-full"></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- [ 03 ] THE GAP -->
+        <section id="gap" class="py-[clamp(6rem,12vw,12rem)] relative border-b border-border bg-bg overflow-hidden">
+            <div class="absolute inset-0 grid grid-cols-1 md:grid-cols-12 pointer-events-none opacity-20">
+                <div class="col-span-1 border-r border-border"></div>
+                <div class="col-span-1 border-r border-border"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1 border-r border-border hidden md:block"></div>
+                <div class="col-span-1"></div>
+            </div>
+
+            <div class="px-container relative z-10 flex flex-col gap-[clamp(4rem,8vh,6rem)] max-w-[140rem] mx-auto">
+                
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-container">
+                    <div class="md:col-span-2 font-mono text-xs uppercase tracking-[0.15em] text-secondary mt-2">
+                        01 / Fragmented
+                    </div>
+                    <div class="md:col-span-8 border-t border-border pt-[2rem]">
+                        <p class="font-serif text-[clamp(2rem,4vw,4.5rem)] leading-[1.1] tracking-tight sync-text font-light text-primary">
+                            Submissions are scattered across email, PDFs, and spreadsheets—leaving teams with <span class="italic text-secondary">no single source of truth</span> for status.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-container mt-[clamp(2rem,5vw,4rem)]">
+                    <div class="md:col-span-2 md:col-start-3 font-mono text-xs uppercase tracking-[0.15em] text-secondary mt-2 md:text-right md:pr-[2rem]">
+                        02 / Delayed
+                    </div>
+                    <div class="md:col-span-8 border-t border-border pt-[2rem]">
+                        <p class="font-serif text-[clamp(2rem,4vw,4.5rem)] leading-[1.1] tracking-tight sync-text font-light text-primary">
+                            Administrators lose hours coaching rewrites, chasing down documents, and <span class="italic text-secondary">drafting revision letters by hand</span>.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-container mt-[clamp(2rem,5vw,4rem)]">
+                    <div class="md:col-span-2 md:col-start-5 font-mono text-xs uppercase tracking-[0.15em] text-secondary mt-2 md:text-right md:pr-[2rem]">
+                        03 / Unpredictable
+                    </div>
+                    <div class="md:col-span-6 border-t border-border pt-[2rem]">
+                        <p class="font-serif text-[clamp(2rem,4vw,4.5rem)] leading-[1.1] tracking-tight sync-text font-light text-primary">
+                            Guidelines are interpreted differently across reviewers, resulting in <span class="italic text-secondary text-outline">inconsistent outcomes</span> for investigators.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-container mt-[clamp(2rem,5vw,4rem)]">
+                    <div class="md:col-span-8 md:col-start-3 border-t border-primary pt-[2rem] fade-up">
+                        <p class="font-sans text-lg md:text-xl text-primary font-light leading-relaxed">
+                            Legacy IRB workflows were not built for today. Most teams still stitch together tools from another era. Clargate replaces that patchwork with one governed workspace — built for compliance and speed.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- [ 04 ] HOW IT WORKS -->
+        <section id="workflow" class="border-b border-border bg-primary text-bg relative overflow-hidden flex flex-col">
+            
+            <div class="px-container py-[clamp(3rem,6vw,4rem)] flex flex-col md:flex-row justify-between items-start md:items-end gap-[2rem] border-b border-white/10 relative z-10 bg-primary">
+                <div>
+                    <div class="font-mono text-xs uppercase tracking-[0.15em] text-white/50 block mb-[1.5rem]">
+                        The Protocol
+                    </div>
+                    <h2 class="font-serif text-h2 leading-[0.9] tracking-tighter text-bg font-light">
+                        Three steps to<br><span class="italic text-white/50">decision.</span>
+                    </h2>
+                </div>
+                <div class="font-sans text-xs-fluid text-white/70 max-w-[20rem] leading-[1.6] font-light">
+                    Every step is logged so teams can answer who did what, and when, without digging through inboxes.
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row h-[auto] md:h-[75vh] w-full h-accordion-container border-b border-white/10">
+                
+                <div class="h-accordion-item group relative border-b md:border-b-0 md:border-r border-white/10 bg-[#111] overflow-hidden min-h-[50vh] md:min-h-0 flex flex-col justify-end">
+                    <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&amp;w=1600&amp;auto=format&amp;fit=crop" alt="Submit" class="group-hover:opacity-100 group-hover:scale-105 transition-all duration-[1s] ease-editorial opacity-40 w-full h-full object-cover absolute top-0 right-0 bottom-0 left-0 grayscale">
+                    <div class="group-hover:opacity-40 transition-opacity duration-700 bg-gradient-to-t from-primary via-primary/50 to-transparent opacity-80 absolute top-0 right-0 bottom-0 left-0"></div>
+                    
+                    <div class="relative z-10 p-[clamp(2rem,3vw,3rem)] flex flex-col h-full justify-between pointer-events-none">
+                        <div class="font-mono text-xs text-white/50">01 / Submit</div>
+                        <div>
+                            <h3 class="font-serif text-[clamp(2.5rem,4vw,4rem)] text-bg tracking-tight leading-none mb-[1rem] font-light transform translate-y-4 group-hover:translate-y-0 transition-transform duration-700">Intake</h3>
+                            <p class="font-sans text-xs-fluid text-white/80 leading-[1.6] font-light opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-700 delay-100 max-w-[25rem]">
+                                Investigators complete a guided intake with AI assistance. Documents and answers live in one unified portal.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-accordion-item group relative border-b md:border-b-0 md:border-r border-white/10 bg-[#111] overflow-hidden min-h-[50vh] md:min-h-0 flex flex-col justify-end">
+                    <img src="https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?q=80&amp;w=1600&amp;auto=format&amp;fit=crop" alt="Review" class="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-100 group-hover:scale-105 transition-all duration-[1s] ease-editorial grayscale">
+                    <div class="absolute inset-0 bg-gradient-to-t from-primary via-primary/50 to-transparent opacity-80 group-hover:opacity-40 transition-opacity duration-700"></div>
+                    
+                    <div class="relative z-10 p-[clamp(2rem,3vw,3rem)] flex flex-col h-full justify-between pointer-events-none">
+                        <div class="font-mono text-xs text-white/50">02 / Review</div>
+                        <div>
+                            <h3 class="font-serif text-[clamp(2.5rem,4vw,4rem)] text-bg tracking-tight leading-none mb-[1rem] font-light transform translate-y-4 group-hover:translate-y-0 transition-transform duration-700">Triage</h3>
+                            <p class="font-sans text-xs-fluid text-white/80 leading-[1.6] font-light opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-700 delay-100 max-w-[25rem]">
+                                Admins triage with auto-generated summaries, assign reviewers, and draft revision letters with intelligent support.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-accordion-item group relative bg-[#111] overflow-hidden min-h-[50vh] md:min-h-0 flex flex-col justify-end">
+                    <img src="https://images.unsplash.com/photo-1507208773393-40d9fc670acf?q=80&amp;w=1600&amp;auto=format&amp;fit=crop" alt="Decide" class="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-100 group-hover:scale-105 transition-all duration-[1s] ease-editorial grayscale">
+                    <div class="absolute inset-0 bg-gradient-to-t from-primary via-primary/50 to-transparent opacity-80 group-hover:opacity-40 transition-opacity duration-700"></div>
+                    
+                    <div class="relative z-10 p-[clamp(2rem,3vw,3rem)] flex flex-col h-full justify-between pointer-events-none">
+                        <div class="font-mono text-xs text-white/50">03 / Decide</div>
+                        <div>
+                            <h3 class="font-serif text-[clamp(2.5rem,4vw,4rem)] text-bg tracking-tight leading-none mb-[1rem] font-light transform translate-y-4 group-hover:translate-y-0 transition-transform duration-700">Outcome</h3>
+                            <p class="font-sans text-xs-fluid text-white/80 leading-[1.6] font-light opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-700 delay-100 max-w-[25rem]">
+                                Structured evaluations lead to clear decisions and automated renewal reminders—eliminating the email chase.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- [ 05 ] CAPABILITIES -->
+        <section id="capabilities" class="py-[clamp(6rem,12vw,12rem)] border-b border-border bg-surface relative">
+            <div class="max-w-[clamp(90rem,95vw,120rem)] mx-auto px-container grid grid-cols-1 md:grid-cols-12 gap-[clamp(4rem,8vw,10rem)] items-start">
+                
+                <div class="md:col-span-5 md:sticky top-[clamp(6rem,10vw,10rem)] fade-up">
+                    <div class="font-mono text-xs uppercase tracking-[0.15em] text-secondary mb-[1.5rem]">
+                        Platform Pillars
+                    </div>
+                    <h2 class="font-serif text-h2 leading-[0.95] tracking-tighter text-primary font-light mb-[2rem]">
+                        Functional<br><span class="italic text-secondary">Architecture.</span>
+                    </h2>
+                    <p class="font-sans text-xs-fluid text-secondary leading-[1.7] font-light mb-[2rem]">
+                        Engineered to reduce cognitive load while keeping humans in absolute control of every compliance decision.
+                    </p>
+                    
+                    <div class="flex flex-col gap-[1rem] font-mono text-xs text-primary border-t border-border pt-[2rem]">
+                        <div class="flex items-center gap-[1rem]"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> Role-aware surfaces for PIs, Admins, Reviewers</div>
+                        <div class="flex items-center gap-[1rem]"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> Complete operational pipeline visibility</div>
+                        <div class="flex items-center gap-[1rem]"><iconify-icon icon="solar:check-circle-linear"></iconify-icon> MFA-ready authentication flows</div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-7 flex flex-col relative pb-[10vh]">
+                    
+                    <div class="sticky top-[15vh] bg-bg border border-border p-[clamp(2rem,4vw,4rem)] shadow-2xl shadow-primary/5 mb-[4rem] group overflow-hidden">
+                        <div class="line-x"></div><div class="line-y"></div>
+                        <div class="flex justify-between items-start mb-[2rem]">
+                            <div class="font-mono text-[2rem] text-secondary/30 leading-none">01</div>
+                            <iconify-icon icon="solar:cpu-linear" class="text-3xl text-primary"></iconify-icon>
+                        </div>
+                        <h3 class="font-serif text-[clamp(2rem,3vw,3rem)] leading-[1.1] tracking-tight text-primary mb-[1rem] font-light">AI-Assisted Review</h3>
+                        <p class="font-sans text-xs-fluid text-secondary leading-[1.7] font-light">
+                            Intelligent summaries and draft language generation that drastically reduce the reading load, allowing reviewers to focus on critical ethical analysis rather than administrative parsing.
+                        </p>
+                    </div>
+
+                    <div class="sticky top-[20vh] bg-[#E8E4DB] border border-border p-[clamp(2rem,4vw,4rem)] shadow-2xl shadow-primary/5 mb-[4rem] group overflow-hidden">
+                        <div class="line-x"></div><div class="line-y"></div>
+                        <div class="flex justify-between items-start mb-[2rem]">
+                            <div class="font-mono text-[2rem] text-secondary/30 leading-none">02</div>
+                            <iconify-icon icon="solar:shield-check-linear" class="text-3xl text-primary"></iconify-icon>
+                        </div>
+                        <h3 class="font-serif text-[clamp(2rem,3vw,3rem)] leading-[1.1] tracking-tight text-primary mb-[1rem] font-light">Governance by Design</h3>
+                        <p class="font-sans text-xs-fluid text-secondary leading-[1.7] font-light">
+                            Strict role-based access controls and an immutable, append-only audit trail structured specifically for serious compliance review and institutional security requirements.
+                        </p>
+                    </div>
+
+                    <div class="sticky top-[25vh] bg-primary text-bg border border-primary p-[clamp(2rem,4vw,4rem)] shadow-2xl shadow-primary/20 group overflow-hidden">
+                        <div class="flex justify-between items-start mb-[2rem]">
+                            <div class="font-mono text-[2rem] text-white/30 leading-none">03</div>
+                            <iconify-icon icon="solar:chat-round-line-linear" class="text-3xl text-white"></iconify-icon>
+                        </div>
+                        <h3 class="font-serif text-[clamp(2rem,3vw,3rem)] leading-[1.1] tracking-tight text-bg mb-[1rem] font-light">Unified Threads</h3>
+                        <p class="font-sans text-xs-fluid text-white/70 leading-[1.7] font-light">
+                            Per-proposal contextual conversations. Attachments, reminders, and dialogue live alongside the submission, ending the era of lost handoffs between fragmented systems.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+        
+        <!-- [ 06 ] PRICING -->
+        <section id="pricing" class="py-[clamp(6rem,10vw,10rem)] border-b border-border bg-bg relative">
+            <div class="max-w-[clamp(90rem,95vw,120rem)] mx-auto px-container relative z-10 fade-up">
+                
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-[clamp(4rem,6vw,6rem)] gap-[2rem]">
+                    <div>
+                        <div class="font-mono text-xs uppercase tracking-[0.15em] text-secondary mb-[1.5rem]">
+                            Institutional Access
+                        </div>
+                        <h2 class="font-serif text-[clamp(2.5rem,4vw,4rem)] leading-[0.95] tracking-tighter text-primary font-light">
+                            One subscription.<br><span class="italic text-secondary">Zero per-seat math.</span>
+                        </h2>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-0 border border-border">
+                    
+                    <!-- Starter -->
+                    <div class="p-[clamp(2rem,3vw,3rem)] border-b md:border-b-0 md:border-r border-border hover:bg-surface transition-colors duration-500 group flex flex-col">
+                        <div class="font-mono text-xs uppercase tracking-[0.15em] text-primary mb-[1rem]">Starter</div>
+                        <div class="font-serif text-[2.5rem] tracking-tight text-primary mb-[1rem] font-light">$499 <span class="text-base font-sans font-light text-secondary">/ mo</span></div>
+                        <p class="font-sans text-xs-fluid text-secondary font-light mb-[2rem] border-b border-border pb-[2rem]">
+                            For smaller institutions needing core capabilities and pipeline visibility.
+                        </p>
+                        <ul class="flex flex-col gap-[1rem] font-sans text-sm text-primary font-light mb-[3rem] flex-grow">
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Capped yearly submissions</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Core AI summaries</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Unified messaging &amp; storage</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Email notifications</li>
+                        </ul>
+                    </div>
+
+                    <!-- Professional -->
+                    <div class="p-[clamp(2rem,3vw,3rem)] border-b md:border-b-0 md:border-r border-border bg-primary text-bg relative overflow-hidden flex flex-col">
+                        <div class="absolute top-0 right-0 bg-accent text-bg font-mono text-[0.55rem] uppercase tracking-[0.15em] px-[1rem] py-[0.5rem]">Standard</div>
+                        <div class="font-mono text-xs uppercase tracking-[0.15em] text-white/70 mb-[1rem]">Professional</div>
+                        <div class="font-serif text-[2.5rem] tracking-tight text-bg mb-[1rem] font-light">$999 <span class="text-base font-sans font-light text-white/50">/ mo</span></div>
+                        <p class="font-sans text-xs-fluid text-white/70 font-light mb-[2rem] border-b border-white/20 pb-[2rem]">
+                            The complete workflow engine for active research organizations.
+                        </p>
+                        <ul class="flex flex-col gap-[1rem] font-sans text-sm text-bg font-light mb-[3rem] flex-grow">
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-accent"></iconify-icon> Unlimited submissions</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-accent"></iconify-icon> Full AI PI Assistant</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-accent"></iconify-icon> Revision letter drafting</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-accent"></iconify-icon> SSO / SAML integration</li>
+                        </ul>
+                    </div>
+
+                    <!-- Enterprise -->
+                    <div class="p-[clamp(2rem,3vw,3rem)] hover:bg-surface transition-colors duration-500 flex flex-col">
+                        <div class="font-mono text-xs uppercase tracking-[0.15em] text-primary mb-[1rem]">Enterprise</div>
+                        <div class="font-serif text-[2.5rem] tracking-tight text-primary mb-[1rem] font-light">Custom</div>
+                        <p class="font-sans text-xs-fluid text-secondary font-light mb-[2rem] border-b border-border pb-[2rem]">
+                            Dedicated architecture and custom compliance structures.
+                        </p>
+                        <ul class="flex flex-col gap-[1rem] font-sans text-sm text-primary font-light mb-[3rem] flex-grow">
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> BAA &amp; Custom contracts</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Dedicated success manager</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Migration assistance</li>
+                            <li class="flex items-center gap-[0.75rem]"><iconify-icon icon="solar:check-read-linear" class="text-secondary"></iconify-icon> Optional on-premise deployment</li>
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- [ 07 ] CTA FORM -->
+        <section id="contact" class="py-[clamp(8rem,16vw,16rem)] relative border-b border-border bg-primary overflow-hidden text-bg">
+            <div class="max-w-[clamp(90rem,95vw,100rem)] mx-auto px-container relative z-10 fade-up">
+                
+                <div class="font-mono text-xs uppercase tracking-[0.15em] text-white/50 mb-[3rem] flex items-center gap-[1rem]">
+                    <span class="w-[0.5rem] h-[0.5rem] bg-bg rounded-full animate-pulse"></span>
+                    A quieter way to run IRB
+                </div>
+
+                <form class="w-full">
+                    <h2 class="font-serif text-[clamp(2rem,4.5vw,5rem)] leading-[1.6] tracking-tight text-white/90 font-light inline-block w-full">
+                        Initiate a trial. <br class="hidden md:block"> My institution is 
+                        <input type="text" placeholder="Organization Name" class="mad-lib-input bg-transparent border-b border-white/30 text-center w-[clamp(12rem,25vw,30rem)] mx-[1vw] focus:outline-none focus:border-white text-bg placeholder:text-white/20 font-serif" required="">, 
+                        and we process roughly 
+                        <input type="text" placeholder="volume" class="mad-lib-input bg-transparent border-b border-white/30 text-center w-[clamp(6rem,15vw,20rem)] mx-[1vw] focus:outline-none focus:border-white text-bg placeholder:text-white/20 font-serif" required=""> 
+                        submissions per year. You can coordinate access with me at 
+                        <input type="email" placeholder="admin@university.edu" class="mad-lib-input bg-transparent border-b border-white/30 text-center w-[clamp(15rem,30vw,40rem)] mx-[1vw] mt-[1rem] md:mt-0 focus:outline-none focus:border-white text-bg placeholder:text-white/20 font-serif" required="">.
+                    </h2>
+
+                    <div class="mt-[clamp(4rem,8vw,8rem)] flex flex-col md:flex-row items-start md:items-center justify-between gap-[3rem] border-t border-white/10 pt-[3rem]">
+                        <div class="flex flex-col sm:flex-row gap-[3rem]">
+                            <div>
+                                <span class="block font-mono text-micro uppercase tracking-[0.15em] text-white/40 mb-[0.5rem]">Direct Inquiry</span>
+                                <a href="mailto:partners@clargate.com" class="font-sans text-xs-fluid text-bg hover:text-white/70 transition-colors font-light">partners@clargate.com</a>
+                            </div>
+                            <div>
+                                <span class="block font-mono text-micro uppercase tracking-[0.15em] text-white/40 mb-[0.5rem]">Data Residency</span>
+                                <span class="font-sans text-xs-fluid text-bg font-light">US East (N. Virginia)</span>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="py-[1.25rem] px-[3rem] bg-bg text-primary font-mono text-xs tracking-[0.15em] uppercase hover:bg-surface transition-colors duration-300 rounded-full flex items-center gap-[1rem] group/btn">
+                            <span>Request Provisioning</span>
+                            <iconify-icon icon="solar:arrow-right-linear" class="text-[1.2rem] transform transition-transform duration-500 group-hover/btn:translate-x-2"></iconify-icon>
+                        </button>
+                    </div>
+                </form>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- [ 08 ] FOOTER -->
+    <footer class="bg-primary text-bg relative z-10 border-t border-white/5 overflow-hidden">
+        
+        <div class="w-full border-b border-white/10">
+            <h2 class="font-serif text-[clamp(4rem,20vw,25rem)] leading-[0.75] tracking-tighter text-bg text-center py-[clamp(2rem,5vw,5rem)] select-none font-light uppercase">
+                CLARGATE
+            </h2>
+        </div>
+
+        <div class="max-w-[clamp(90rem,95vw,140rem)] mx-auto px-container grid grid-cols-1 md:grid-cols-12 gap-[clamp(3rem,6vw,5rem)] py-[clamp(4rem,8vw,6rem)] relative z-10">
+            
+            <div class="md:col-span-4 flex flex-col justify-between">
+                <p class="font-sans text-xs-fluid text-white/60 max-w-[20rem] leading-[1.6] font-light">
+                    One governed workspace for investigators, administrators, and reviewers. Built for serious compliance review.
+                </p>
+            </div>
+
+            <div class="md:col-span-2 md:col-start-7 flex flex-col gap-[1rem] font-sans text-xs-fluid text-white/60 font-light">
+                <span class="font-mono text-micro uppercase tracking-[0.15em] text-bg mb-[0.5rem]">Platform</span>
+                <a href="#workflow" class="hover:text-bg transition-colors">Workflow</a>
+                <a href="#capabilities" class="hover:text-bg transition-colors">Capabilities</a>
+                <a href="#pricing" class="hover:text-bg transition-colors">Pricing</a>
+            </div>
+
+            <div class="md:col-span-2 flex flex-col gap-[1rem] font-sans text-xs-fluid text-white/60 font-light">
+                <span class="font-mono text-micro uppercase tracking-[0.15em] text-bg mb-[0.5rem]">Resources</span>
+                <a href="#" class="hover:text-bg transition-colors">Documentation</a>
+                <a href="#" class="hover:text-bg transition-colors">API Reference</a>
+                <a href="#" class="hover:text-bg transition-colors">Security Posture</a>
+            </div>
+
+            <div class="md:col-span-2 flex flex-col gap-[1rem] font-sans text-xs-fluid text-white/60 font-light">
+                <span class="font-mono text-micro uppercase tracking-[0.15em] text-bg mb-[0.5rem]">Legal</span>
+                <a href="#" class="hover:text-bg transition-colors">Privacy Policy</a>
+                <a href="#" class="hover:text-bg transition-colors">Terms of Service</a>
+                <a href="#" class="hover:text-bg transition-colors">BAA Details</a>
+            </div>
+        </div>
+        
+        <div class="px-container py-[2rem] border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-[1rem] font-mono text-micro uppercase tracking-[0.15em] text-white/30 w-full bg-[#050505]">
+            <span>© 2024 Clargate Systems Inc.</span>
+            <span>All systems operational.</span>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            const revealElements = document.querySelectorAll('.fade-up, .stagger-text');
+            const revealObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                        revealObserver.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+            revealElements.forEach(el => revealObserver.observe(el));
+
+            const syncTexts = document.querySelectorAll('.sync-text');
+            const textObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('active');
+                    }
+                });
+            }, { threshold: 0.8, rootMargin: '-20% 0px -20% 0px' });
+
+            syncTexts.forEach(el => textObserver.observe(el));
+
+            const canvas = document.getElementById('hero-canvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d', { alpha: false });
+                
+                let width, height;
+                let dots = [];
+                const DOT_SPACING = 35;
+                const MOUSE_RADIUS = 250;
+                const BASE_RADIUS = 1;
+                const GLOW_RADIUS = 2.5;
+                
+                let mouse = { x: -1000, y: -1000 };
+                let time = 0;
+
+                function initCanvas() {
+                    const parent = canvas.parentElement;
+                    width = parent.clientWidth;
+                    height = parent.clientHeight;
+                    canvas.width = width;
+                    canvas.height = height;
+                    createDots();
+                }
+
+                function createDots() {
+                    dots = [];
+                    const cols = Math.ceil(width / DOT_SPACING) + 1;
+                    const rows = Math.ceil(height / DOT_SPACING) + 1;
+                    
+                    for (let i = 0; i < cols; i++) {
+                        for (let j = 0; j < rows; j++) {
+                            dots.push({
+                                x: i * DOT_SPACING,
+                                y: j * DOT_SPACING,
+                                baseX: i * DOT_SPACING,
+                                baseY: j * DOT_SPACING,
+                                col: i,
+                                row: j
+                            });
+                        }
+                    }
+                }
+
+                function animate() {
+                    ctx.fillStyle = '#F4F1EA';
+                    ctx.fillRect(0, 0, width, height);
+
+                    time += 0.02;
+                    ctx.lineWidth = 0.5;
+
+                    for (let i = 0; i < dots.length; i++) {
+                        let dot = dots[i];
+                        
+                        let waveX = Math.sin(time * 0.2 + dot.row * 0.05) * 1;
+                        let waveY = Math.cos(time * 0.2 + dot.col * 0.05) * 1;
+                        
+                        dot.x = dot.baseX + waveX;
+                        dot.y = dot.baseY + waveY;
+
+                        let dx = mouse.x - dot.x;
+                        let dy = mouse.y - dot.y;
+                        let dist = Math.sqrt(dx * dx + dy * dy);
+                        
+                        let radius = BASE_RADIUS;
+
+                        if (dist < MOUSE_RADIUS) {
+                            let force = (MOUSE_RADIUS - dist) / MOUSE_RADIUS;
+                            
+                            dot.x -= (dx / dist) * force * 20;
+                            dot.y -= (dy / dist) * force * 20;
+                            
+                            radius = BASE_RADIUS + (GLOW_RADIUS - BASE_RADIUS) * force;
+                            
+                            ctx.fillStyle = `rgba(10, 10, 10, ${0.2 + force * 0.6})`; 
+                            
+                            if(force > 0.7) {
+                                ctx.beginPath();
+                                ctx.moveTo(dot.x, dot.y);
+                                ctx.lineTo(mouse.x, mouse.y);
+                                ctx.strokeStyle = `rgba(10, 10, 10, ${force * 0.2})`;
+                                ctx.stroke();
+                            }
+                        } else {
+                            ctx.fillStyle = '#DCD8D0'; 
+                        }
+
+                        ctx.beginPath();
+                        ctx.arc(dot.x, dot.y, radius, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    requestAnimationFrame(animate);
+                }
+
+                canvas.addEventListener('mousemove', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    mouse.x = e.clientX - rect.left;
+                    mouse.y = e.clientY - rect.top;
+                });
+                
+                canvas.addEventListener('mouseleave', () => {
+                    mouse.x = -1000;
+                    mouse.y = -1000;
+                });
+
+                window.addEventListener('resize', initCanvas);
+                initCanvas();
+                animate();
+            }
+        });
+    </script>
+
+</body></html>

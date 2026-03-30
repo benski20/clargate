@@ -1,85 +1,135 @@
 # Clargate
 
-AI-powered IRB (Institutional Review Board) platform that replaces fragmented email threads, legacy submission systems, and manual administrative workflows with a single intelligent platform.
+**Clargate is an AI-assisted IRB (Institutional Review Board) platform** — one governed workspace for investigators, administrators, and reviewers, from intake through decision. It replaces fragmented email, PDFs, and legacy submission tools with guided workflows, unified threads, and audit-oriented design.
 
-## Architecture
+---
 
-- **Frontend**: Next.js 16 (App Router) on Vercel — TypeScript, Tailwind CSS, shadcn/ui
-- **Backend**: Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic
-- **Database**: PostgreSQL 16 (RDS in production)
-- **Auth**: Supabase Auth (SSO/MFA/JWT) — identity only, no PHI
-- **AI**: OpenAI GPT-4o (summaries, revision letters, PI assistant)
-- **Storage**: AWS S3 (KMS-encrypted, presigned URLs)
-- **Infrastructure**: AWS CDK (VPC, ECS Fargate, RDS, S3, KMS, CloudTrail)
+## Landing page copy (gist)
 
-## Quick Start
+Use the sections below as source material for a marketing site, one-pager, or investor blurb.
 
-### Prerequisites
+### Positioning
 
-- Docker & Docker Compose
-- Node.js 20+
-- Python 3.12+
+- **Headline direction:** *IRB operations, distilled to clarity.*
+- **Subline:** A single workspace for investigators, administrators, and reviewers — from intake to decision, without the noise of scattered tools and inboxes.
+- **Micro-trust:** No credit card required · Audit-oriented design · Security-first posture  
+- **Status line (optional):** Accepting new institutions
 
-### Local Development
+### The gap
 
-```bash
-# Start Postgres + MinIO
-docker compose up postgres minio createbuckets -d
+Legacy IRB workflows were not built for today. Most teams still stitch together tools from another era — patched with email and spreadsheets.
 
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env   # Edit with your Supabase/OpenAI keys
-alembic upgrade head
-uvicorn app.main:app --reload
+| Pain | What teams feel |
+|------|------------------|
+| **Fragmented communication** | Submissions scattered across email, PDFs, and spreadsheets — no single source of truth for status. |
+| **Hidden delays** | Admins lose hours coaching rewrites, chasing documents, and drafting revision letters by hand. |
+| **Inconsistent reviews** | Guidelines interpreted differently across reviewers — unpredictable outcomes for investigators. |
 
-# Frontend (separate terminal)
-cd frontend
-npm install
-cp .env.example .env.local   # Edit with your Supabase keys
-npm run dev
-```
+**Bridge line:** Clargate replaces that patchwork with one governed workspace — built for compliance and speed.
 
-Frontend: http://localhost:3000
-Backend API: http://localhost:8000
-API Docs: http://localhost:8000/docs
+### How it works (three steps)
 
-## Project Structure
+1. **Submit** — Investigators complete guided intake with AI help; documents and answers live in one place.  
+2. **Review** — Admins triage with summaries, assign reviewers, and draft revision letters with assistance.  
+3. **Decide** — Structured evaluations, clear decisions, and renewal reminders — without the email chase.
+
+**Compliance note:** Every step is logged so teams can answer who did what, and when, without digging through inboxes.
+
+### Capabilities (platform pillars)
+
+- **AI-assisted review** — Summaries and draft language that reduce reading load while keeping humans in control of every decision.  
+- **Unified threads** — Per-proposal conversation with full context; fewer handoffs lost between systems or inboxes.  
+- **Governance by design** — Roles, MFA-ready flows, and an append-only audit trail structured for serious compliance review.  
+- **Guided submissions** — Step-by-step intake so investigators submit complete packages and cut unnecessary revision cycles.  
+- **Role-aware surfaces** — PIs, admins, and reviewers each see what their job requires.  
+- **Operational clarity** — Pipeline visibility and deadlines in one place instead of reconciling spreadsheets and email.
+
+### Product surfaces (functional map)
+
+- **PI submission portal** — Multi-step guided flow with an AI assistant.  
+- **Admin dashboard** — Proposal summaries, reviewer assignment, revision-letter drafting support.  
+- **Reviewer portal** — Structured review forms and decision options.  
+- **Unified messaging** — Per-proposal threads, attachments, and reminders.  
+- **Audit trail** — Tamper-evident, append-only logging of actions.
+
+### Trust and security (messaging)
+
+- SOC 2 ready · HIPAA aligned · US data residency · Encryption in transit and at rest  
+
+**Technical posture (high level):** Supabase Auth for identity (JWT, SSO/MFA-capable patterns); application data and Row Level Security in Postgres; sensitive document flows supported via presigned S3-style uploads/downloads in Edge Functions; AI workloads run in Supabase Edge Functions (e.g. summarization, PI assistant, revision-letter drafting).
+
+### Pricing (institution-wide framing)
+
+One subscription covers the organization — predictable cost, without per-seat arithmetic.
+
+| Tier | Price | Summary |
+|------|-------|---------|
+| **Starter** | $499 / month | Smaller institutions; capped submissions/year, core AI summaries, messaging, storage, email notifications. |
+| **Professional** | $999 / month | Full workflow; unlimited submissions and seats; revision-letter drafting, PI assistant, SSO/SAML, audit reporting, priority support. |
+| **Enterprise** | Custom | Dedicated success, custom SSO, analytics, migration help, BAA/custom contracts, optional on-premise. |
+
+*Marketing disclaimer:* Taxes and implementation may vary; enterprise plans use custom terms.
+
+### Closing CTA (tone)
+
+*A quieter way to run IRB.* Move from reactive email threads to one governed workspace — start on your terms, with a trial that respects your time.
+
+---
+
+## Architecture (this repository)
+
+| Layer | Stack |
+|-------|--------|
+| **Web app** | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui — deployed (e.g. Vercel). |
+| **Auth & data** | Supabase (Auth + Postgres with RLS). |
+| **Serverless logic** | Supabase Edge Functions — AI (Google Gemini), email, reviewer assignment, presigned storage, etc. |
+| **Design** | Shared tokens and references under `design-system/`. |
+
+Product requirements and platform narrative PDFs live in `ProjectDocs/` (including PRD and platform overview).
+
+---
+
+## Repository layout
 
 ```
 clargate/
-├── frontend/          # Next.js app (Vercel)
+├── frontend/           # Next.js app (marketing + dashboard)
 │   └── src/
-│       ├── app/       # App Router pages
-│       ├── components/# UI components
-│       └── lib/       # API client, auth, types
-├── backend/           # FastAPI app (ECS)
-│   ├── app/
-│   │   ├── api/       # Route handlers
-│   │   ├── models/    # SQLAlchemy models
-│   │   ├── schemas/   # Pydantic schemas
-│   │   ├── services/  # AI, email, storage
-│   │   └── core/      # Config, security, DB
-│   └── alembic/       # Database migrations
-├── infra/             # AWS CDK stacks
-├── ProjectDocs/       # PRD + infrastructure docs
-└── docker-compose.yml # Local dev environment
+│       ├── app/        # Routes (landing, auth, dashboard)
+│       ├── components/ # UI including landing sections
+│       └── lib/        # Clients, auth helpers, utilities
+├── supabase/
+│   ├── functions/      # Edge Functions (AI, storage presign, workflows)
+│   └── migrations/     # SQL (RLS, schema)
+├── design-system/      # Design references
+└── ProjectDocs/        # PRD and PDFs
 ```
 
-## Key Features
+---
 
-- **PI Submission Portal**: Multi-step guided form with AI assistant
-- **Admin Dashboard**: AI-generated proposal summaries, reviewer assignment, revision letter drafting
-- **Reviewer Portal**: Structured review forms with decision options
-- **Unified Messaging**: Per-proposal threads with attachments and reminders
-- **Audit Trail**: Tamper-evident, append-only logging of all actions
-- **Compliance**: MFA, SSO (SAML/OAuth), RBAC, US data residency, KMS encryption
+## Quick start (frontend)
 
-## Security
+### Prerequisites
 
-- Supabase handles identity only — no PHI stored in Supabase
-- All research data in AWS VPC (private subnets)
-- KMS customer-managed key for RDS, S3, CloudWatch, Secrets Manager
-- TLS 1.2+ on all endpoints
-- Append-only audit log enforced by database trigger
+- Node.js 20+
+
+### Local development
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local   # Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) for the app (landing and authenticated areas require a configured Supabase project).
+
+### Supabase
+
+To run or deploy Edge Functions and apply migrations, use the [Supabase CLI](https://supabase.com/docs/guides/cli) against your project. Function code under `supabase/functions/` expects project secrets (e.g. AI keys, storage, email) to be set in the Supabase dashboard or CLI.
+
+---
+
+## Contributing
+
+Match existing patterns in `frontend/` (components, `src/app` routing) and keep RLS policies in sync with any new tables or access rules in `supabase/migrations/`.

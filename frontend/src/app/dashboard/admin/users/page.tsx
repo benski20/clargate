@@ -5,7 +5,7 @@ import { UserPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -30,14 +30,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type { User, UserRole } from "@/lib/types";
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  admin: "bg-purple-100 text-purple-800",
-  reviewer: "bg-blue-100 text-blue-800",
-  pi: "bg-emerald-100 text-emerald-800",
+  admin: "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
+  reviewer: "bg-neutral-200/90 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
+  pi: "bg-muted text-muted-foreground",
 };
 
 export default function AdminUsersPage() {
@@ -45,6 +46,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     full_name: "",
@@ -72,24 +74,28 @@ export default function AdminUsersPage() {
   }
 
   async function changeRole(userId: string, role: UserRole) {
+    setRoleUpdatingId(userId);
     try {
       const updated = await invokeEdgeFunction<User>("update-role", { user_id: userId, role });
       setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
-    } catch {}
+    } catch {
+    } finally {
+      setRoleUpdatingId(null);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-[var(--font-heading)] text-2xl font-bold">Users</h1>
-          <p className="mt-1 text-muted-foreground">Manage users and roles for your institution.</p>
-        </div>
-        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <DialogTrigger render={<Button className="gap-2 cursor-pointer" />}>
+    <div className="space-y-8">
+      <DashboardPageHeader
+        eyebrow="Administration"
+        title="Users"
+        description="Manage users and roles for your institution."
+        actions={
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogTrigger render={<Button className="h-11 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90" />}>
               <UserPlus className="h-4 w-4" />
-              Invite User
-          </DialogTrigger>
+              Invite user
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite User</DialogTitle>
@@ -135,10 +141,11 @@ export default function AdminUsersPage() {
               </Button>
             </form>
           </DialogContent>
-        </Dialog>
-      </div>
+          </Dialog>
+        }
+      />
 
-      <Card>
+      <Card className={dashboardCardClass}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -153,7 +160,9 @@ export default function AdminUsersPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
+                  <TableCell colSpan={5} className="py-12 text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
+                  </TableCell>
                 </TableRow>
               ) : (
                 users.map((u) => (
@@ -161,24 +170,37 @@ export default function AdminUsersPage() {
                     <TableCell className="font-medium">{u.full_name}</TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
-                      <Select
-                        value={u.role}
-                        onValueChange={(v) => changeRole(u.id, v as UserRole)}
-                      >
-                        <SelectTrigger className="h-8 w-32">
-                          <Badge variant="secondary" className={`${ROLE_COLORS[u.role]} border-0`}>
-                            {u.role === "pi" ? "Researcher" : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
-                          </Badge>
-                        </SelectTrigger>
+                      <div className="flex items-center gap-2">
+                        {roleUpdatingId === u.id ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+                        ) : null}
+                        <Select
+                          value={u.role}
+                          onValueChange={(v) => changeRole(u.id, v as UserRole)}
+                          disabled={!!roleUpdatingId}
+                        >
+                          <SelectTrigger className="h-8 w-32">
+                            <Badge variant="secondary" className={`${ROLE_COLORS[u.role]} border-0`}>
+                              {u.role === "pi" ? "Researcher" : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                            </Badge>
+                          </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="pi">Researcher (PI)</SelectItem>
                           <SelectItem value="reviewer">Reviewer</SelectItem>
                           <SelectItem value="admin">Administrator</SelectItem>
                         </SelectContent>
-                      </Select>
+                        </Select>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={u.is_active ? "default" : "secondary"}>
+                      <Badge
+                        variant="secondary"
+                        className={
+                          u.is_active
+                            ? "rounded-full border-0 bg-foreground text-background"
+                            : "rounded-full border-0 bg-muted text-muted-foreground"
+                        }
+                      >
                         {u.is_active ? "Active" : "Pending"}
                       </Badge>
                     </TableCell>

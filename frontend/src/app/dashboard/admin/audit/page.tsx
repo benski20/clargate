@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ScrollText, Download } from "lucide-react";
+import { ScrollText, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  dashboardCardClass,
+  dashboardInputClass,
+  DashboardPageHeader,
+} from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import type { AuditLogEntry } from "@/lib/types";
 
@@ -56,23 +61,26 @@ export default function AuditLogPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-[var(--font-heading)] text-2xl font-bold">Audit Log</h1>
-          <p className="mt-1 text-muted-foreground">
-            Complete, tamper-evident log of all platform actions.
-          </p>
-        </div>
-        <Button variant="outline" className="gap-2 cursor-pointer" onClick={exportCSV}>
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
-      </div>
+    <div className="space-y-8">
+      <DashboardPageHeader
+        eyebrow="Administration"
+        title="Audit log"
+        description="Complete, tamper-evident log of all platform actions."
+        actions={
+          <Button
+            variant="outline"
+            className="h-11 cursor-pointer gap-2 rounded-full border-border"
+            onClick={exportCSV}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        }
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Select value={entityFilter} onValueChange={(v) => setEntityFilter(v ?? "all")}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className={`w-full sm:w-48 ${dashboardInputClass}`}>
             <SelectValue placeholder="Entity type" />
           </SelectTrigger>
           <SelectContent>
@@ -88,11 +96,11 @@ export default function AuditLogPage() {
           placeholder="Filter by action..."
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
-          className="max-w-xs"
+          className={`max-w-xs ${dashboardInputClass}`}
         />
       </div>
 
-      <Card>
+      <Card className={dashboardCardClass}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -107,8 +115,8 @@ export default function AuditLogPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    Loading...
+                  <TableCell colSpan={5} className="py-12 text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
                   </TableCell>
                 </TableRow>
               ) : entries.length === 0 ? (

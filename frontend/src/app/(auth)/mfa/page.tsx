@@ -52,7 +52,8 @@ export default function MfaPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.replace("/dashboard");
+    router.refresh();
   }
 
   return (

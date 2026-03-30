@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Filter } from "lucide-react";
+import { Search, Filter, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -22,6 +22,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  dashboardCardClass,
+  dashboardInputClass,
+  DashboardPageHeader,
+} from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import type { Proposal } from "@/lib/types";
 
@@ -40,13 +45,12 @@ export default function AdminDashboardPage() {
   }, [search, statusFilter]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-[var(--font-heading)] text-2xl font-bold">Submissions</h1>
-        <p className="mt-1 text-muted-foreground">
-          Review and manage all proposals for your institution.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <DashboardPageHeader
+        eyebrow="Administration"
+        title="Submissions"
+        description="Review and manage all proposals for your institution."
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
@@ -55,11 +59,11 @@ export default function AdminDashboardPage() {
             placeholder="Search by title or PI name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className={`pl-9 ${dashboardInputClass}`}
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className={`w-full sm:w-52 ${dashboardInputClass}`}>
             <Filter className="mr-2 h-4 w-4" />
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -75,7 +79,7 @@ export default function AdminDashboardPage() {
         </Select>
       </div>
 
-      <Card>
+      <Card className={dashboardCardClass}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -91,8 +95,8 @@ export default function AdminDashboardPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    Loading...
+                  <TableCell colSpan={6} className="py-12 text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
                   </TableCell>
                 </TableRow>
               ) : proposals.length === 0 ? (

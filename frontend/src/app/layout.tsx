@@ -1,28 +1,29 @@
 import type { Metadata } from "next";
-import { Figtree, Noto_Sans, Geist_Mono } from "next/font/google";
+import { Playfair_Display, Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 
-const figtree = Figtree({
+const playfair = Playfair_Display({
   variable: "--font-heading",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-const notoSans = Noto_Sans({
+const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const spaceMono = Space_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Clargate — AI-Powered IRB Platform",
+  title: "Clargate — AI-Assisted IRB Platform",
   description:
-    "Replace fragmented email threads, legacy submission systems, and manual administrative workflows with a single intelligent IRB platform.",
+    "A single governed workspace for investigators, administrators, and reviewers — from intake to decision.",
 };
 
 export default function RootLayout({
@@ -33,9 +34,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${figtree.variable} ${notoSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${playfair.variable} ${inter.variable} ${spaceMono.variable} h-full scroll-smooth antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full bg-background font-sans font-light text-foreground">
+        {children}
+      </body>
     </html>
   );
 }

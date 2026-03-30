@@ -134,14 +134,15 @@ export const STATUS_LABELS: Record<ProposalStatus, string> = {
   tabled: "Tabled",
 };
 
+/** Monochrome status chips — contrast via gray scale only */
 export const STATUS_COLORS: Record<ProposalStatus, string> = {
   draft: "bg-muted text-muted-foreground",
-  submitted: "bg-blue-100 text-blue-800",
-  initial_review: "bg-cyan-100 text-cyan-800",
-  revisions_requested: "bg-amber-100 text-amber-800",
-  resubmitted: "bg-indigo-100 text-indigo-800",
-  under_committee_review: "bg-purple-100 text-purple-800",
-  approved: "bg-emerald-100 text-emerald-800",
-  rejected: "bg-red-100 text-red-800",
-  tabled: "bg-slate-100 text-slate-800",
+  submitted: "bg-neutral-200/90 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
+  initial_review: "bg-neutral-200/90 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
+  revisions_requested: "bg-neutral-300/80 text-neutral-950 dark:bg-neutral-600 dark:text-neutral-50",
+  resubmitted: "bg-neutral-200/90 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
+  under_committee_review: "bg-neutral-300/80 text-neutral-950 dark:bg-neutral-600 dark:text-neutral-50",
+  approved: "bg-neutral-900 text-neutral-50 dark:bg-neutral-100 dark:text-neutral-900",
+  rejected: "bg-neutral-400/40 text-neutral-950 dark:bg-neutral-500/50 dark:text-neutral-50",
+  tabled: "bg-muted text-muted-foreground",
 };
