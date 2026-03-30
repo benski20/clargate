@@ -1,4 +1,10 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const rawBase = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE =
+  rawBase && rawBase.startsWith("http")
+    ? rawBase.replace(/\/+$/, "")
+    : rawBase && rawBase.startsWith("/")
+      ? rawBase.replace(/\/+$/, "")
+      : "";
 
 class ApiClient {
   private baseUrl: string;

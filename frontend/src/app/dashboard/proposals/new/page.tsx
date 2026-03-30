@@ -129,8 +129,9 @@ export default function NewProposalPage() {
     setAssistantLoading(true);
 
     try {
+      const base = process.env.NEXT_PUBLIC_API_URL || "";
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/proposals/${proposalId}/assistant`,
+        `${base}/api/v1/proposals/${proposalId}/assistant`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
