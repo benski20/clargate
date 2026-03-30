@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ClipboardList, Clock, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
 import type { ReviewAssignment } from "@/lib/types";
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -19,9 +19,7 @@ export default function ReviewerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get<ReviewAssignment[]>("/reviews/my-assignments")
-      .then(setAssignments)
+    db.getMyAssignments().then(setAssignments)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

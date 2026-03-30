@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
 import type { AuditLogEntry } from "@/lib/types";
 
 export default function AuditLogPage() {
@@ -30,13 +30,8 @@ export default function AuditLogPage() {
   const [actionFilter, setActionFilter] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (entityFilter && entityFilter !== "all") params.set("entity_type", entityFilter);
-    if (actionFilter) params.set("action", actionFilter);
-    params.set("page_size", "100");
-
-    api
-      .get<AuditLogEntry[]>(`/audit-log?${params.toString()}`)
+    db
+      .getAuditLog({ entityType: entityFilter, action: actionFilter, pageSize: 100 })
       .then(setEntries)
       .catch(() => {})
       .finally(() => setLoading(false));

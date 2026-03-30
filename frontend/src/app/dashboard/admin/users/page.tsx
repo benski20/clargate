@@ -30,7 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type { User, UserRole } from "@/lib/types";
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -51,9 +52,7 @@ export default function AdminUsersPage() {
   });
 
   useEffect(() => {
-    api
-      .get<User[]>("/institution/users")
-      .then(setUsers)
+    db.getInstitutionUsers().then(setUsers)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -62,7 +61,7 @@ export default function AdminUsersPage() {
     e.preventDefault();
     setInviting(true);
     try {
-      const newUser = await api.post<User>("/institution/invite", inviteForm);
+      const newUser = await invokeEdgeFunction<User>("invite-user", inviteForm);
       setUsers((prev) => [newUser, ...prev]);
       setInviteOpen(false);
       setInviteForm({ email: "", full_name: "", role: "pi" });
@@ -74,7 +73,7 @@ export default function AdminUsersPage() {
 
   async function changeRole(userId: string, role: UserRole) {
     try {
-      const updated = await api.patch<User>(`/institution/users/${userId}/role`, { role });
+      const updated = await invokeEdgeFunction<User>("update-role", { user_id: userId, role });
       setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
     } catch {}
   }

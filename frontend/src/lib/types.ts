@@ -94,7 +94,9 @@ export interface Message {
 export interface InboxItem {
   proposal_id: string;
   proposal_title: string;
-  last_message: Message;
+  last_message_body: string | null;
+  last_message_sender_name: string | null;
+  last_message_at: string | null;
   unread_count: number;
 }
 

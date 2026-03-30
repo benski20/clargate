@@ -18,7 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
 
 export default function ProposalDetailPage() {
@@ -35,12 +36,12 @@ export default function ProposalDetailPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<ProposalDetail>(`/proposals/${proposalId}`),
-      api.get<Message[]>(`/proposals/${proposalId}/messages`),
+      db.getProposal(proposalId),
+      db.getMessages(proposalId),
     ])
       .then(([p, m]) => {
-        setProposal(p);
-        setMessages(m);
+        setProposal(p as ProposalDetail);
+        setMessages(m as Message[]);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -50,10 +51,10 @@ export default function ProposalDetailPage() {
     if (!newMessage.trim()) return;
     setSending(true);
     try {
-      const msg = await api.post<Message>(`/proposals/${proposalId}/messages`, {
-        body: newMessage,
-      });
-      setMessages((prev) => [...prev, msg]);
+      const appUser = await db.getCurrentAppUser();
+      if (!appUser) return;
+      const msg = await db.sendMessage(proposalId, newMessage, appUser.id);
+      setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
     } catch {
     } finally {
@@ -63,7 +64,7 @@ export default function ProposalDetailPage() {
 
   async function handleResubmit() {
     try {
-      const updated = await api.post<ProposalDetail>(`/proposals/${proposalId}/resubmit`);
+      const updated = await db.resubmitProposal(proposalId);
       setProposal((prev) => prev && { ...prev, status: updated.status });
     } catch {}
   }

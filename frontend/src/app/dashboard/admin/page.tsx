@@ -22,8 +22,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { api } from "@/lib/api";
-import type { Proposal, ProposalStatus } from "@/lib/types";
+import { db } from "@/lib/database";
+import type { Proposal } from "@/lib/types";
 
 export default function AdminDashboardPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -32,13 +32,8 @@ export default function AdminDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
-    params.set("page_size", "50");
-
-    api
-      .get<Proposal[]>(`/proposals?${params.toString()}`)
+    db
+      .getProposals({ status: statusFilter, search, pageSize: 50 })
       .then(setProposals)
       .catch(() => {})
       .finally(() => setLoading(false));

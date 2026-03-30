@@ -6,7 +6,7 @@ import { Plus, FileText, MessageSquare, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
 import type { Proposal } from "@/lib/types";
 
 export default function DashboardPage() {
@@ -14,9 +14,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get<Proposal[]>("/proposals?page_size=5")
-      .then(setProposals)
+    db.getProposals({ pageSize: 5 }).then(setProposals)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

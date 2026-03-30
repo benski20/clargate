@@ -20,7 +20,6 @@ build/
 .env.production
 .env*.local
 frontend/.env.local
-backend/.env
 
 # IDE
 .vscode/
@@ -40,9 +39,6 @@ coverage/
 htmlcov/
 .pytest_cache/
 .coverage
-
-# CDK
-infra/cdk.out/
 
 # Design system (generated, re-generable)
 design-system/

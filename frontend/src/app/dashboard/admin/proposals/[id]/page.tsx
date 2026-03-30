@@ -27,7 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type {
   ProposalDetail,
   ProposalStatus,
@@ -58,16 +59,16 @@ export default function AdminProposalDetailPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<ProposalDetail>(`/proposals/${proposalId}`),
-      api.get<Review[]>(`/proposals/${proposalId}/reviews`).catch(() => []),
-      api.get<Message[]>(`/proposals/${proposalId}/messages`).catch(() => []),
-      api.get<User[]>("/institution/users").catch(() => []),
+      db.getProposal(proposalId),
+      db.getReviews(proposalId).catch(() => []),
+      db.getMessages(proposalId).catch(() => []),
+      db.getInstitutionUsers().catch(() => []),
     ])
       .then(([p, r, m, u]) => {
-        setProposal(p);
-        setReviews(r);
-        setMessages(m);
-        setUsers(u);
+        setProposal(p as ProposalDetail);
+        setReviews(r as Review[]);
+        setMessages(m as Message[]);
+        setUsers(u as User[]);
       })
       .finally(() => setLoading(false));
   }, [proposalId]);
@@ -75,8 +76,9 @@ export default function AdminProposalDetailPage() {
   async function generateSummary() {
     setSummarizing(true);
     try {
-      const res = await api.post<{ summary: Record<string, unknown> }>(
-        `/proposals/${proposalId}/summarize`
+      const res = await invokeEdgeFunction<{ summary: Record<string, unknown> }>(
+        "summarize",
+        { proposal_id: proposalId },
       );
       setSummary(res.summary);
     } catch {
@@ -88,9 +90,9 @@ export default function AdminProposalDetailPage() {
   async function draftRevisionLetter() {
     setDrafting(true);
     try {
-      const res = await api.post<{ content: string }>(
-        `/proposals/${proposalId}/draft-revision-letter`,
-        {}
+      const res = await invokeEdgeFunction<{ content: string }>(
+        "draft-revision-letter",
+        { proposal_id: proposalId },
       );
       setRevisionLetter(res.content);
     } catch {
@@ -102,10 +104,11 @@ export default function AdminProposalDetailPage() {
   async function updateStatus(newStatus: ProposalStatus) {
     setStatusUpdating(true);
     try {
-      const updated = await api.patch<ProposalDetail>(`/proposals/${proposalId}/status`, {
-        status: newStatus,
-      });
-      setProposal((prev) => prev && { ...prev, status: updated.status });
+      const updated = await invokeEdgeFunction<{ status: string }>(
+        "update-status",
+        { proposal_id: proposalId, status: newStatus },
+      );
+      setProposal((prev) => prev && { ...prev, status: updated.status as ProposalStatus });
     } catch {
     } finally {
       setStatusUpdating(false);
@@ -115,7 +118,8 @@ export default function AdminProposalDetailPage() {
   async function assignReviewer() {
     if (!selectedReviewer) return;
     try {
-      await api.post(`/proposals/${proposalId}/assign`, {
+      await invokeEdgeFunction("assign-reviewers", {
+        proposal_id: proposalId,
         reviewer_user_ids: [selectedReviewer],
       });
       setSelectedReviewer("");
@@ -125,10 +129,10 @@ export default function AdminProposalDetailPage() {
   async function sendMessage() {
     if (!newMessage.trim()) return;
     try {
-      const msg = await api.post<Message>(`/proposals/${proposalId}/messages`, {
-        body: newMessage,
-      });
-      setMessages((prev) => [...prev, msg]);
+      const appUser = await db.getCurrentAppUser();
+      if (!appUser) return;
+      const msg = await db.sendMessage(proposalId, newMessage, appUser.id);
+      setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
     } catch {}
   }

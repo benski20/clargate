@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Inbox, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
 import type { InboxItem } from "@/lib/types";
 
 export default function AdminInboxPage() {
@@ -13,9 +13,7 @@ export default function AdminInboxPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get<InboxItem[]>("/messages/inbox")
-      .then(setItems)
+    db.getInbox().then(setItems)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -57,11 +55,13 @@ export default function AdminInboxPage() {
                       )}
                     </div>
                     <p className="mt-0.5 text-sm text-muted-foreground truncate">
-                      {item.last_message.sender_name}: {item.last_message.body}
+                      {item.last_message_sender_name}: {item.last_message_body}
                     </p>
                   </div>
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {new Date(item.last_message.created_at).toLocaleDateString()}
+                    {item.last_message_at
+                      ? new Date(item.last_message_at).toLocaleDateString()
+                      : "—"}
                   </span>
                 </CardContent>
               </Card>

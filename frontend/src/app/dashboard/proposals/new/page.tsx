@@ -26,7 +26,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
+import { streamEdgeFunction } from "@/lib/edge-functions";
 import type { Proposal } from "@/lib/types";
 
 const STEPS = [
@@ -80,24 +81,17 @@ export default function NewProposalPage() {
         const title =
           ((data.study_info as Record<string, string>)?.title as string) || "Untitled Proposal";
         if (!proposalId) {
-          const created = await api.post<Proposal>("/proposals", {
-            title,
-            form_data: data,
-          });
+          const created = await db.createProposal(title, data);
           setProposalId(created.id);
         } else {
-          await api.patch(`/proposals/${proposalId}`, {
-            title,
-            form_data: data,
-          });
+          await db.updateProposal(proposalId, { title, form_data: data });
         }
       } catch {
-        // Silently fail auto-save
       } finally {
         setSaving(false);
       }
     },
-    [proposalId]
+    [proposalId],
   );
 
   async function handleSubmit() {
@@ -109,12 +103,12 @@ export default function NewProposalPage() {
       const id = proposalId;
       if (!id) return;
       const reviewType = (formData.study_info as Record<string, string>)?.review_type || null;
-      await api.patch(`/proposals/${id}`, {
+      await db.updateProposal(id, {
         title: (formData.study_info as Record<string, string>)?.title,
         review_type: reviewType || undefined,
         form_data: formData,
       });
-      await api.post(`/proposals/${id}/submit`);
+      await db.submitProposal(id);
       router.push(`/dashboard/proposals/${id}`);
     } catch {
       setSubmitting(false);
@@ -129,26 +123,19 @@ export default function NewProposalPage() {
     setAssistantLoading(true);
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL || "";
-      const res = await fetch(
-        `${base}/api/v1/proposals/${proposalId}/assistant`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question,
-            section_context: STEPS[step],
-          }),
-        }
-      );
+      const stream = await streamEdgeFunction("pi-assistant", {
+        proposal_id: proposalId,
+        question,
+        section_context: STEPS[step],
+      });
 
-      const reader = res.body?.getReader();
+      const reader = stream.getReader();
       const decoder = new TextDecoder();
       let content = "";
 
       setAssistantMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
-      while (reader) {
+      while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value);

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { api } from "@/lib/api";
+import { db } from "@/lib/database";
 import type { ProposalDetail, ReviewDecision } from "@/lib/types";
 
 export default function ReviewerProposalPage() {
@@ -39,9 +39,8 @@ export default function ReviewerProposalPage() {
   });
 
   useEffect(() => {
-    api
-      .get<ProposalDetail>(`/proposals/${proposalId}`)
-      .then(setProposal)
+    db.getProposal(proposalId)
+      .then((p) => setProposal(p as ProposalDetail))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [proposalId]);
@@ -50,17 +49,13 @@ export default function ReviewerProposalPage() {
     if (!decision) return;
     setSubmitting(true);
     try {
-      // We need the assignment ID; for now post to the first matching
-      const assignments = await api.get<{ id: string }[]>("/reviews/my-assignments");
+      const assignments = await db.getMyAssignments();
       const assignment = assignments.find(
-        (a: any) => a.proposal_id === proposalId
+        (a: Record<string, unknown>) => a.proposal_id === proposalId,
       );
       if (!assignment) return;
 
-      await api.post(`/reviews/${assignment.id}/submit`, {
-        decision,
-        comments,
-      });
+      await db.submitReview(assignment.id as string, decision, comments);
       setSubmitted(true);
     } catch {
     } finally {
