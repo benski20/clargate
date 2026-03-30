@@ -11,7 +11,7 @@ export function createPresignedUploadUrl(s3Key: string): string {
     secretAccessKey: Deno.env.get("AWS_SECRET_ACCESS_KEY")!,
     bucket: Deno.env.get("S3_BUCKET_NAME")!,
     key: s3Key,
-    region: Deno.env.get("AWS_DEFAULT_REGION") || "us-east-1",
+    region: Deno.env.get("AWS_DEFAULT_REGION") || "us-east-2",
     method: "PUT",
     expiresIn: 3600,
   });
@@ -23,7 +23,7 @@ export function createPresignedDownloadUrl(s3Key: string): string {
     secretAccessKey: Deno.env.get("AWS_SECRET_ACCESS_KEY")!,
     bucket: Deno.env.get("S3_BUCKET_NAME")!,
     key: s3Key,
-    region: Deno.env.get("AWS_DEFAULT_REGION") || "us-east-1",
+    region: Deno.env.get("AWS_DEFAULT_REGION") || "us-east-2",
     method: "GET",
     expiresIn: 3600,
   });

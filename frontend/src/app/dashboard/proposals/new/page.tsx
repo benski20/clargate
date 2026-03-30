@@ -10,6 +10,8 @@ import {
   Upload,
   Sparkles,
   Send,
+  FileUp,
+  MessageSquareText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { streamEdgeFunction } from "@/lib/edge-functions";
-import type { Proposal } from "@/lib/types";
+import { AiIntakeWorkspace } from "@/components/proposals/AiIntakeWorkspace";
 
 const STEPS = [
   "Study Information",
@@ -47,8 +49,11 @@ interface AssistantMessage {
   content: string;
 }
 
+type EntryMode = "choose" | "upload" | "ai";
+
 export default function NewProposalPage() {
   const router = useRouter();
+  const [entryMode, setEntryMode] = useState<EntryMode>("choose");
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -113,7 +118,7 @@ export default function NewProposalPage() {
         form_data: formData,
       });
       await db.submitProposal(id);
-      router.replace(`/dashboard/proposals/${id}`);
+      router.push(`/dashboard/proposals/${id}?submitted=1&tab=documents`);
       router.refresh();
     } catch {
       setSubmitting(false);
@@ -168,9 +173,83 @@ export default function NewProposalPage() {
 
   const progress = ((step + 1) / STEPS.length) * 100;
 
+  if (entryMode === "ai") {
+    return <AiIntakeWorkspace onBack={() => setEntryMode("choose")} />;
+  }
+
+  if (entryMode === "choose") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-8 px-4 py-8">
+        <div className="flex items-start gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="cursor-pointer shrink-0"
+            onClick={() => router.push("/dashboard/proposals")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="font-[var(--font-heading)] text-2xl font-medium tracking-tight md:text-3xl">
+              New proposal
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+              Start from an uploaded outline, or draft your protocol interactively with AI. Both
+              paths save to the same proposal record.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setEntryMode("upload")}
+            className="group flex cursor-pointer flex-col rounded-2xl border border-border/80 bg-card p-6 text-left shadow-sm transition-all hover:border-border hover:shadow-md"
+          >
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
+              <FileUp className="h-5 w-5 text-foreground" />
+            </div>
+            <h2 className="font-[var(--font-heading)] text-lg font-medium tracking-tight">
+              Upload & complete form
+            </h2>
+            <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
+              Classic step-by-step wizard: study details, team, recruitment, risks, documents,
+              then submit.
+            </p>
+            <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
+              Continue <ArrowRight className="ml-1 h-4 w-4" />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEntryMode("ai")}
+            className="group flex cursor-pointer flex-col rounded-2xl border border-border/80 bg-card p-6 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+          >
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
+              <MessageSquareText className="h-5 w-5 text-primary" />
+            </div>
+            <h2 className="font-[var(--font-heading)] text-lg font-medium tracking-tight">
+              Draft with AI
+            </h2>
+            <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
+              Conversational intake, live IRB-style protocol, consent draft, compliance check, then
+              submit — split-pane workspace.
+            </p>
+            <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
+              Open workspace <ArrowRight className="ml-1 h-4 w-4" />
+            </span>
+          </button>
+        </div>
+
+        
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Button
           variant="ghost"
           size="icon"
@@ -179,12 +258,20 @@ export default function NewProposalPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <h1 className="font-[var(--font-heading)] text-2xl font-medium tracking-tight">New Proposal</h1>
           <p className="text-sm text-muted-foreground">
             Step {step + 1} of {STEPS.length}: {STEPS[step]}
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="cursor-pointer rounded-full text-xs shrink-0"
+          onClick={() => setEntryMode("choose")}
+        >
+          Change entry method
+        </Button>
         {saving && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" /> Saving...

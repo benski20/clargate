@@ -1,43 +1,92 @@
 import { createClient } from "@/lib/supabase";
 
 /**
- * Prefer JSON body from the Edge Function over the generic invoke message.
- * Avoid `instanceof FunctionsHttpError` — Next can duplicate `@supabase/functions-js`,
- * which breaks instanceof and leaves users seeing only "non-2xx status code".
+ * `getSession()` can return a cached, expired `access_token`. The Edge gateway
+ * then responds with "Invalid JWT". `getUser()` validates with Auth and refreshes
+ * the session when needed before we send `Authorization: Bearer …`.
  */
-async function unwrapFunctionError(error: unknown): Promise<never> {
-  const errCtx = error instanceof Error ? (error as Error & { context?: unknown }).context : null;
-  const isFunctionsHttp =
-    error instanceof Error &&
-    errCtx instanceof Response &&
-    (error.name === "FunctionsHttpError" ||
-      error.message === "Edge Function returned a non-2xx status code");
+async function getAccessTokenForEdgeFunctions(): Promise<string> {
+  const supabase = createClient();
 
-  if (isFunctionsHttp) {
-    const res = errCtx;
-    const raw = await res.clone().text().catch(() => "");
-    let detail: string | undefined;
-    try {
-      const parsed = JSON.parse(raw) as { error?: string; message?: string };
-      detail = parsed.error?.trim() || parsed.message?.trim();
-    } catch {
-      detail = raw?.trim() || undefined;
+  const { error: userError } = await supabase.auth.getUser();
+  if (userError) throw new Error("Not authenticated");
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  let accessToken = sessionData.session?.access_token;
+
+  if (!accessToken) {
+    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+    if (refreshErr || !refreshed.session?.access_token) {
+      throw new Error("Not authenticated");
     }
-    if (detail) throw new Error(detail);
-    throw new Error(`Edge Function ${res.status} ${res.statusText}`.trim());
+    accessToken = refreshed.session.access_token;
   }
-  throw error instanceof Error ? error : new Error(String(error));
+
+  return accessToken;
+}
+
+function functionsUrl(functionName: string): string {
+  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/+$/, "");
+  return `${base}/functions/v1/${functionName}`;
+}
+
+function parseEdgeErrorBody(raw: string, status: number): string {
+  try {
+    const parsed = JSON.parse(raw) as { error?: string; message?: string; msg?: string };
+    const detail =
+      (typeof parsed.error === "string" && parsed.error.trim()) ||
+      (typeof parsed.message === "string" && parsed.message.trim()) ||
+      (typeof parsed.msg === "string" && parsed.msg.trim());
+    if (detail) return detail;
+  } catch {
+    /* fall through */
+  }
+  const t = raw?.trim();
+  if (t) return t;
+  return `Edge Function ${status}`;
 }
 
 export async function invokeEdgeFunction<T = unknown>(
   functionName: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke(functionName, {
-    body,
-  });
-  if (error) await unwrapFunctionError(error);
+  const accessToken = await getAccessTokenForEdgeFunctions();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+  const doFetch = (token: string) =>
+    fetch(functionsUrl(functionName), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        apikey: anonKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+  let res = await doFetch(accessToken);
+
+  if (res.status === 401) {
+    const supabase = createClient();
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    const next = refreshed.session?.access_token;
+    if (next) {
+      res = await doFetch(next);
+    }
+  }
+
+  const raw = await res.text();
+  let data: unknown;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = raw;
+  }
+
+  if (!res.ok) {
+    throw new Error(parseEdgeErrorBody(raw, res.status));
+  }
+
   return data as T;
 }
 
@@ -45,32 +94,25 @@ export async function streamEdgeFunction(
   functionName: string,
   body: Record<string, unknown>,
 ): Promise<ReadableStream<Uint8Array>> {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  const accessToken = await getAccessTokenForEdgeFunctions();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const res = await fetch(
-    `${supabaseUrl}/functions/v1/${functionName}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        apikey: anonKey || "",
-      },
-      body: JSON.stringify(body),
+  const res = await fetch(functionsUrl(functionName), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      apikey: anonKey,
     },
-  );
+    body: JSON.stringify(body),
+  });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || "Edge Function request failed");
+    const raw = await res.text().catch(() => "");
+    throw new Error(parseEdgeErrorBody(raw, res.status));
   }
 
-  return res.body!;
+  const stream = res.body;
+  if (!stream) throw new Error("Edge Function returned no body");
+  return stream;
 }

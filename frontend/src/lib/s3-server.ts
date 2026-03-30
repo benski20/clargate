@@ -1,0 +1,41 @@
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+export function generateS3Key(proposalId: string, fileName: string): string {
+  const unique = crypto.randomUUID().slice(0, 8);
+  return `proposals/${proposalId}/${unique}_${fileName}`;
+}
+
+export function getS3Client(): S3Client {
+  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Missing AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY");
+  }
+  return new S3Client({
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+}
+
+export function getBucketName(): string {
+  const b = process.env.S3_BUCKET_NAME;
+  if (!b) throw new Error("Missing S3_BUCKET_NAME");
+  return b;
+}
+
+export async function putObjectToS3(params: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<void> {
+  const client = getS3Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: getBucketName(),
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+    }),
+  );
+}

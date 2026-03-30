@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type { Proposal, RedeemSignupResult, SignupCodeRow, UserRole } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -112,6 +113,38 @@ export const db = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * S3 upload + `proposal_documents` row via Next.js API (session cookie; no Edge Function JWT).
+   */
+  async presignUploadProposalFile(proposalId: string, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`/api/proposals/${proposalId}/upload-document`, {
+      method: "POST",
+      body: formData,
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      document_id?: string;
+      s3_key?: string;
+      error?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Upload failed (${res.status})`);
+    }
+    if (!json.document_id || !json.s3_key) {
+      throw new Error("Invalid response from upload");
+    }
+    return { document_id: json.document_id, s3_key: json.s3_key };
+  },
+
+  /** Soft-delete a document row (Edge Function); S3 object remains unless you add lifecycle rules. */
+  async deleteProposalDocument(proposalId: string, documentId: string) {
+    await invokeEdgeFunction("delete-document", {
+      proposal_id: proposalId,
+      document_id: documentId,
+    });
   },
 
   async resubmitProposal(id: string) {

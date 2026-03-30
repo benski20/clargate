@@ -20,15 +20,19 @@ export default function DashboardPage() {
   const [welcomeName, setWelcomeName] = useState("");
 
   useEffect(() => {
-    createClient()
-      .auth.getUser()
-      .then(({ data }) => {
-        const n =
-          data.user?.user_metadata?.full_name ||
-          data.user?.email?.split("@")[0] ||
-          "";
-        setWelcomeName(n);
-      });
+    (async () => {
+      const appUser = await db.getCurrentAppUser();
+      if (appUser?.full_name?.trim()) {
+        setWelcomeName(appUser.full_name.trim());
+        return;
+      }
+      const { data } = await createClient().auth.getUser();
+      const n =
+        String(data.user?.user_metadata?.full_name ?? "").trim() ||
+        data.user?.email?.split("@")[0] ||
+        "";
+      setWelcomeName(n);
+    })();
   }, []);
 
   useEffect(() => {

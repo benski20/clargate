@@ -49,6 +49,13 @@ export function DashboardPageHeader({
   );
 }
 
+/** Given / first name(s): all words except the last (family name). Single word → unchanged. */
+export function displayGivenName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? "";
+  return parts.slice(0, -1).join(" ");
+}
+
 export function DashboardWelcome({
   name,
   subtitle,
@@ -58,14 +65,14 @@ export function DashboardWelcome({
   subtitle?: string;
   className?: string;
 }) {
-  const first = name.split(/\s+/)[0] || name;
+  const given = displayGivenName(name);
   return (
     <div className={cn("min-w-0", className)}>
       <p className="font-mono text-[0.65rem] font-normal uppercase tracking-[0.2em] text-muted-foreground">
         Workspace
       </p>
       <h1 className="mt-3 font-[var(--font-heading)] text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-        Welcome, {first}
+        Welcome, {given || "—"}
       </h1>
       {subtitle ? (
         <p className="mt-2 text-sm text-muted-foreground md:text-base">{subtitle}</p>
