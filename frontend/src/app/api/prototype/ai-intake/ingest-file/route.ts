@@ -3,7 +3,8 @@ import pdf from "pdf-parse";
 
 export const runtime = "nodejs";
 
-const MAX_BYTES = 6 * 1024 * 1024;
+/** Per-file cap for PDF/text extraction (browser + server memory). Product “50 GB” needs multipart/S3 — not this path. */
+const MAX_BYTES = 100 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
 
     const buf = Buffer.from(base64, "base64");
     if (buf.length > MAX_BYTES) {
-      return NextResponse.json({ error: "file too large (max 6 MB)" }, { status: 400 });
+      return NextResponse.json({ error: "file too large (max 100 MB per file for analysis)" }, { status: 400 });
     }
 
     const lower = name.toLowerCase();

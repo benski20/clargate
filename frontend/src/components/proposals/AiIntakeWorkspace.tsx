@@ -19,6 +19,7 @@ import {
   Sparkles,
   StickyNote,
   Upload,
+  Wand2,
   X,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -39,9 +40,11 @@ import {
   downloadProposalPackageMarkdown,
   proposalPackageFilename,
 } from "@/lib/ai-proposal-package-markdown";
-
-const MAX_ATTACHMENTS = 12;
-const MAX_FILE_BYTES = 6 * 1024 * 1024;
+import {
+  MAX_INGEST_BYTES_PER_FILE,
+  MAX_UPLOAD_ATTACHMENTS_CHAT,
+  MAX_UPLOAD_ATTACHMENTS_MATERIALS,
+} from "@/lib/ai-upload-limits";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -56,8 +59,18 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
+export function AiIntakeWorkspace({
+  onBack,
+  variant = "chat",
+}: {
+  onBack: () => void;
+  /** Upload-first path: files + “Run AI review” instead of conversational chat. */
+  variant?: "chat" | "upload";
+}) {
   const router = useRouter();
+  const maxAttachments =
+    variant === "upload" ? MAX_UPLOAD_ATTACHMENTS_MATERIALS : MAX_UPLOAD_ATTACHMENTS_CHAT;
+  const maxFileBytes = MAX_INGEST_BYTES_PER_FILE;
   const [ws, setWs] = useState<AiWorkspaceState>(() => emptyAiWorkspace());
   const [suggestedTitle, setSuggestedTitle] = useState("");
   const [proposalId, setProposalId] = useState<string | null>(null);
@@ -72,6 +85,8 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [packageS3Error, setPackageS3Error] = useState<string | null>(null);
   const [packageUploading, setPackageUploading] = useState(false);
+  const [revisionSuggestions, setRevisionSuggestions] = useState<string[]>([]);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const bootRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +148,7 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
   }, [ws.messages, aiBusy]);
 
   useEffect(() => {
+    if (variant === "upload") return;
     if (bootRef.current) return;
     bootRef.current = true;
     (async () => {
@@ -179,7 +195,7 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once
-  }, []);
+  }, [variant]);
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -229,19 +245,21 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
     setIngestBusy(true);
     const additions: AiWorkspaceState["context_attachments"] = [];
     try {
-      let remaining = MAX_ATTACHMENTS - ws.context_attachments.length;
+      let remaining = maxAttachments - ws.context_attachments.length;
       if (remaining <= 0) {
-        setIngestError(`Maximum ${MAX_ATTACHMENTS} files.`);
+        setIngestError(`Maximum ${maxAttachments} files.`);
         return;
       }
 
       for (const file of Array.from(fileList)) {
         if (remaining <= 0) {
-          setIngestError(`Maximum ${MAX_ATTACHMENTS} files.`);
+          setIngestError(`Maximum ${maxAttachments} files.`);
           break;
         }
-        if (file.size > MAX_FILE_BYTES) {
-          setIngestError(`"${file.name}" is too large (max 6 MB).`);
+        if (file.size > maxFileBytes) {
+          setIngestError(
+            `"${file.name}" is too large (max ${Math.round(maxFileBytes / (1024 * 1024))} MB per file for analysis).`,
+          );
           continue;
         }
 
@@ -393,6 +411,104 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function runFullAiReview() {
+    if (ws.context_attachments.length === 0) {
+      setIngestError("Add at least one PDF or text file.");
+      return;
+    }
+    setReviewBusy(true);
+    setIngestError(null);
+    setRevisionSuggestions([]);
+    setRightTab("compliance");
+    try {
+      const combined = ws.context_attachments.map((a) => `## ${a.name}\n${a.text}`).join("\n\n");
+      const synRes = await fetch("/api/prototype/ai-intake/synthesize-protocol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_text: combined, title: suggestedTitle }),
+      });
+      const synData = (await synRes.json()) as {
+        protocol?: AiWorkspaceState["protocol"];
+        error?: string;
+      };
+      if (!synRes.ok) throw new Error(synData.error || "Could not structure protocol from materials.");
+
+      let next: AiWorkspaceState = {
+        ...ws,
+        protocol: synData.protocol ?? ws.protocol,
+      };
+      setWs(next);
+
+      const consentRes = await fetch("/api/prototype/ai-intake/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: next.protocol,
+          supplementary_context: supplementaryFromWorkspace(next),
+        }),
+      });
+      const consentData = (await consentRes.json()) as {
+        consent_markdown?: string;
+        missing_elements?: string[];
+        error?: string;
+      };
+      if (!consentRes.ok) throw new Error(consentData.error || "Consent generation failed");
+      next = {
+        ...next,
+        phase: "consent",
+        consent_markdown: consentData.consent_markdown ?? "",
+        consent_missing: consentData.missing_elements ?? [],
+      };
+      setWs(next);
+
+      const compRes = await fetch("/api/prototype/ai-intake/compliance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: next.protocol,
+          consent_markdown: next.consent_markdown ?? "",
+          supplementary_context: supplementaryFromWorkspace(next),
+        }),
+      });
+      const compData = (await compRes.json()) as {
+        predicted_category?: string;
+        flags?: AiWorkspaceState["compliance_flags"];
+        error?: string;
+      };
+      if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
+      const cat =
+        compData.predicted_category === "exempt" ||
+        compData.predicted_category === "expedited" ||
+        compData.predicted_category === "full_board"
+          ? compData.predicted_category
+          : null;
+      next = {
+        ...next,
+        phase: "compliance",
+        predicted_category: cat,
+        compliance_flags: compData.flags ?? [],
+      };
+      setWs(next);
+
+      const revRes = await fetch("/api/prototype/ai-intake/revision-suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          protocol: next.protocol,
+          compliance_flags: next.compliance_flags,
+        }),
+      });
+      const revData = (await revRes.json()) as { suggestions?: string[] };
+      if (revRes.ok && Array.isArray(revData.suggestions)) {
+        setRevisionSuggestions(revData.suggestions);
+      }
+    } catch (e) {
+      setIngestError(e instanceof Error ? e.message : "AI review failed.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
   function scrollToSection(key: ProtocolSectionKey | "consent") {
     if (key === "consent") {
       setRightTab("consent");
@@ -465,8 +581,10 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
       await db.submitProposal(proposalId);
       router.push(`/dashboard/proposals/${proposalId}?submitted=1&tab=documents`);
       router.refresh();
-    } catch {
+    } catch (e) {
       setSubmitting(false);
+      setPackageS3Error(e instanceof Error ? e.message : "Submit failed. Try again.");
+      setRightTab("package");
     }
   }
 
@@ -480,11 +598,13 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
             <h1 className="truncate font-[var(--font-heading)] text-lg font-medium tracking-tight md:text-xl">
-              AI protocol draft
+              {variant === "upload" ? "Upload & AI review" : "AI protocol draft"}
             </h1>
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            Intake · workspace · consent · review · proposal package — saved as you work
+            {variant === "upload"
+              ? "Files → AI protocol · consent · compliance · submit (same as AI draft)"
+              : "Intake · workspace · consent · review · proposal package — saved as you work"}
             {saving ? " · Saving…" : ""}
           </p>
         </div>
@@ -499,83 +619,238 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
-        {/* Chat */}
-        <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 md:min-h-0 md:border-b-0 md:border-r">
-          <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-2">
-            <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-              Conversational intake
-            </span>
-            {aiBusy ? (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Bot className="h-3.5 w-3.5 animate-pulse" aria-hidden />
-                AI composing…
+        {variant === "upload" ? (
+          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 md:min-h-0 md:border-b-0 md:border-r">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-2">
+              <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Your materials
               </span>
-            ) : null}
-          </div>
-          <div
-            ref={chatScrollRef}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [-webkit-overflow-scrolling:touch]"
-          >
-            <div className="space-y-3 py-4">
-              <AnimatePresence initial={false}>
-                {ws.messages.map((m, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={cn(
-                      "max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                      m.role === "user"
-                        ? "ml-auto bg-foreground text-background"
-                        : "mr-auto border border-border/80 bg-card text-foreground shadow-sm",
-                    )}
+              {reviewBusy ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  AI review…
+                </span>
+              ) : null}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch]">
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Upload PDFs or plain text — up to {Math.round(maxFileBytes / (1024 * 1024))} MB per file for
+                  in-app analysis, up to {maxAttachments} files. We map materials to a protocol (no manual
+                  wizard), then you run the same consent, compliance, and submit flow as &quot;Draft with
+                  AI&quot;.
+                </p>
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Notes (optional)
+                  </div>
+                  <Textarea
+                    value={ws.context_notes}
+                    onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
+                    placeholder="Extra context: funding, prior IRB, recruitment limits…"
+                    rows={4}
+                    className="resize-y rounded-2xl border-border/80 bg-background text-sm"
+                    disabled={reviewBusy}
+                  />
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="sr-only"
+                  accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
+                  multiple
+                  onChange={(e) => void ingestFiles(e.target.files)}
+                />
+                <button
+                  type="button"
+                  disabled={
+                    ingestBusy || reviewBusy || ws.context_attachments.length >= maxAttachments
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void ingestFiles(e.dataTransfer.files);
+                  }}
+                  className={cn(
+                    "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30",
+                    (ingestBusy || reviewBusy || ws.context_attachments.length >= maxAttachments) &&
+                      "pointer-events-none opacity-50",
+                  )}
+                >
+                  {ingestBusy ? (
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                  )}
+                  <p className="mt-2 text-sm font-medium text-foreground">Drop files or click to upload</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    PDF or text · max {Math.round(maxFileBytes / (1024 * 1024))} MB each · {maxAttachments}{" "}
+                    files
+                  </p>
+                </button>
+                {ingestError ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">{ingestError}</p>
+                ) : null}
+                {ws.context_attachments.length > 0 ? (
+                  <ul className="space-y-2">
+                    {ws.context_attachments.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex items-start justify-between gap-2 rounded-xl border border-border/80 bg-card px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-foreground">{a.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.text.length.toLocaleString()} characters
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="shrink-0 cursor-pointer"
+                          onClick={() => removeAttachment(a.id)}
+                          disabled={reviewBusy}
+                          aria-label={`Remove ${a.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <Button
+                  type="button"
+                  className="w-full cursor-pointer rounded-full"
+                  disabled={reviewBusy || ws.context_attachments.length === 0}
+                  onClick={() => void runFullAiReview()}
+                >
+                  {reviewBusy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="mr-2 h-4 w-4" />
+                  )}
+                  Run AI review
+                </Button>
+                <p className="text-[0.7rem] text-muted-foreground">
+                  Builds a structured protocol from your files, generates consent, runs compliance, and adds
+                  revision suggestions. Use the tabs on the right to review or re-run steps.
+                </p>
+                <div className="flex flex-wrap gap-2 border-t border-border/60 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-full text-xs"
+                    disabled={reviewBusy || consentBusy}
+                    onClick={() => void runConsent()}
                   >
-                    {m.content}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                    Consent only
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-full text-xs"
+                    disabled={reviewBusy || complianceBusy}
+                    onClick={() => void runCompliance()}
+                  >
+                    Compliance only
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="shrink-0 border-t border-border/60 p-3">
-            <div className="flex gap-2">
-              <Input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Answer or ask a question…"
-                disabled={aiBusy}
-                className="h-11 flex-1 rounded-full border-border/80"
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void sendChat())}
-              />
-              <Button size="icon" className="h-11 w-11 shrink-0 cursor-pointer rounded-full" disabled={aiBusy} onClick={() => void sendChat()}>
-                {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+        ) : (
+          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 md:min-h-0 md:border-b-0 md:border-r">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-2">
+              <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Conversational intake
+              </span>
+              {aiBusy ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Bot className="h-3.5 w-3.5 animate-pulse" aria-hidden />
+                  AI composing…
+                </span>
+              ) : null}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="cursor-pointer rounded-full text-xs"
-                disabled={consentBusy}
-                onClick={() => void runConsent()}
-              >
-                <FileText className="mr-1.5 h-3.5 w-3.5" />
-                Generate consent form
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="cursor-pointer rounded-full text-xs"
-                disabled={complianceBusy}
-                onClick={() => void runCompliance()}
-              >
-                <Scale className="mr-1.5 h-3.5 w-3.5" />
-                Run compliance check
-              </Button>
+            <div
+              ref={chatScrollRef}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [-webkit-overflow-scrolling:touch]"
+            >
+              <div className="space-y-3 py-4">
+                <AnimatePresence initial={false}>
+                  {ws.messages.map((m, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={cn(
+                        "max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                        m.role === "user"
+                          ? "ml-auto bg-foreground text-background"
+                          : "mr-auto border border-border/80 bg-card text-foreground shadow-sm",
+                      )}
+                    >
+                      {m.content}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+            <div className="shrink-0 border-t border-border/60 p-3">
+              <div className="flex gap-2">
+                <Input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Answer or ask a question…"
+                  disabled={aiBusy}
+                  className="h-11 flex-1 rounded-full border-border/80"
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void sendChat())
+                  }
+                />
+                <Button
+                  size="icon"
+                  className="h-11 w-11 shrink-0 cursor-pointer rounded-full"
+                  disabled={aiBusy}
+                  onClick={() => void sendChat()}
+                >
+                  {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer rounded-full text-xs"
+                  disabled={consentBusy}
+                  onClick={() => void runConsent()}
+                >
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  Generate consent form
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer rounded-full text-xs"
+                  disabled={complianceBusy}
+                  onClick={() => void runCompliance()}
+                >
+                  <Scale className="mr-1.5 h-3.5 w-3.5" />
+                  Run compliance check
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Context + outputs */}
         <div className="flex h-full min-h-[36vh] flex-col bg-white md:min-h-0 dark:bg-muted/20">
@@ -629,88 +904,90 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
                       className="min-h-[120px] resize-y rounded-2xl border-border/80 bg-background text-sm leading-relaxed"
                     />
                     <p className="mt-1.5 text-[0.7rem] text-muted-foreground">
-                      Notes and uploads are included on every AI call (intake, consent, compliance). There is
-                      no separate on-screen “protocol snapshot”—the model keeps structured fields internally;
-                      if it asks you to confirm something, answer here or add detail in notes.
+                      {variant === "upload"
+                        ? "Add notes here for consent and compliance. Files are uploaded in the left panel."
+                        : "Notes and uploads are included on every AI call (intake, consent, compliance). There is no separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it asks you to confirm something, answer here or add detail in notes."}
                     </p>
                   </div>
 
-                  <div>
-                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      <Upload className="h-3.5 w-3.5" />
-                      Upload materials
-                    </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="sr-only"
-                      accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
-                      multiple
-                      onChange={(e) => void ingestFiles(e.target.files)}
-                    />
-                    <button
-                      type="button"
-                      disabled={ingestBusy || ws.context_attachments.length >= MAX_ATTACHMENTS}
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void ingestFiles(e.dataTransfer.files);
-                      }}
-                      className={cn(
-                        "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30",
-                        (ingestBusy || ws.context_attachments.length >= MAX_ATTACHMENTS) &&
-                          "pointer-events-none opacity-50",
-                      )}
-                    >
-                      {ingestBusy ? (
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      ) : (
-                        <Upload className="h-8 w-8 text-muted-foreground" />
-                      )}
-                      <p className="mt-2 text-sm font-medium text-foreground">
-                        Drop files here or click to upload
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        PDF or plain text · up to 6 MB each · max {MAX_ATTACHMENTS} files · text is used as AI
-                        context and saved with your draft
-                      </p>
-                    </button>
-                    {ingestError ? (
-                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{ingestError}</p>
-                    ) : null}
-                    {ws.context_attachments.length > 0 ? (
-                      <ul className="mt-3 space-y-2">
-                        {ws.context_attachments.map((a) => (
-                          <li
-                            key={a.id}
-                            className="flex items-start justify-between gap-2 rounded-xl border border-border/80 bg-card px-3 py-2 text-sm"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium text-foreground">{a.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {a.text.length.toLocaleString()} characters sent to the model
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              className="shrink-0 cursor-pointer"
-                              onClick={() => removeAttachment(a.id)}
-                              aria-label={`Remove ${a.name}`}
+                  {variant !== "upload" ? (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload materials
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="sr-only"
+                        accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
+                        multiple
+                        onChange={(e) => void ingestFiles(e.target.files)}
+                      />
+                      <button
+                        type="button"
+                        disabled={ingestBusy || ws.context_attachments.length >= maxAttachments}
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void ingestFiles(e.dataTransfer.files);
+                        }}
+                        className={cn(
+                          "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30",
+                          (ingestBusy || ws.context_attachments.length >= maxAttachments) &&
+                            "pointer-events-none opacity-50",
+                        )}
+                      >
+                        {ingestBusy ? (
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Upload className="h-8 w-8 text-muted-foreground" />
+                        )}
+                        <p className="mt-2 text-sm font-medium text-foreground">
+                          Drop files here or click to upload
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          PDF or plain text · up to {Math.round(maxFileBytes / (1024 * 1024))} MB each · max{" "}
+                          {maxAttachments} files · text is used as AI context and saved with your draft
+                        </p>
+                      </button>
+                      {ingestError ? (
+                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{ingestError}</p>
+                      ) : null}
+                      {ws.context_attachments.length > 0 ? (
+                        <ul className="mt-3 space-y-2">
+                          {ws.context_attachments.map((a) => (
+                            <li
+                              key={a.id}
+                              className="flex items-start justify-between gap-2 rounded-xl border border-border/80 bg-card px-3 py-2 text-sm"
                             >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-medium text-foreground">{a.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {a.text.length.toLocaleString()} characters sent to the model
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="shrink-0 cursor-pointer"
+                                onClick={() => removeAttachment(a.id)}
+                                aria-label={`Remove ${a.name}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -746,14 +1023,32 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
 
               {rightTab === "compliance" ? (
                 <div className="space-y-4">
-                  {complianceBusy ? (
+                  {complianceBusy || reviewBusy ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Analyzing against 45 CFR 46 heuristics…
+                      {reviewBusy
+                        ? "Running full AI review (protocol → consent → compliance)…"
+                        : "Analyzing against 45 CFR 46 heuristics…"}
                     </div>
                   ) : null}
-                  {ws.compliance_flags.length === 0 && !complianceBusy ? (
-                    <p className="text-sm text-muted-foreground">Run a compliance check to see flags.</p>
+                  {ws.compliance_flags.length === 0 && !complianceBusy && !reviewBusy ? (
+                    <p className="text-sm text-muted-foreground">
+                      {variant === "upload"
+                        ? "Run AI review on the left to build protocol, consent, compliance, and suggestions in one pass."
+                        : "Run a compliance check to see flags."}
+                    </p>
+                  ) : null}
+                  {variant === "upload" && revisionSuggestions.length > 0 ? (
+                    <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                        Revision suggestions
+                      </p>
+                      <ul className="list-inside list-disc space-y-1.5 text-sm text-foreground">
+                        {revisionSuggestions.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                   <ul className="space-y-2">
                     {ws.compliance_flags.map((f) => (
@@ -864,9 +1159,19 @@ export function AiIntakeWorkspace({ onBack }: { onBack: () => void }) {
                         </p>
                       ) : !complianceComplete ? (
                         <p className="mt-2 text-sm text-muted-foreground">
-                          Run a <strong className="text-foreground">compliance check</strong> from the chat bar
-                          or the Review tab. After you have a predicted category, return here to review the
-                          package and submit.
+                          {variant === "upload" ? (
+                            <>
+                              Run <strong className="text-foreground">AI review</strong> on the left or open
+                              the Review tab and run compliance. After you have a predicted category, return
+                              here to submit.
+                            </>
+                          ) : (
+                            <>
+                              Run a <strong className="text-foreground">compliance check</strong> from the chat
+                              bar or the Review tab. After you have a predicted category, return here to review
+                              the package and submit.
+                            </>
+                          )}
                         </p>
                       ) : (
                         <>
