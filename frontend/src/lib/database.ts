@@ -1,9 +1,20 @@
-import { createClient, rpcValidateSignupCodeAnonOnly } from "@/lib/supabase";
-import type { Proposal, RedeemSignupResult } from "@/lib/types";
+import { createClient } from "@/lib/supabase";
+import type { Proposal, RedeemSignupResult, SignupCodeRow, UserRole } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function getClient(): SupabaseClient {
   return createClient();
+}
+
+function randomSignupCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "CLG-";
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < 8; i++) {
+    s += chars[arr[i]! % chars.length];
+  }
+  return s;
 }
 
 export const db = {
@@ -239,9 +250,74 @@ export const db = {
     return data;
   },
 
-  /** Validate an institutional signup code (anon-only fetch; avoids stale session JWT → Invalid JWT). */
+  async listSignupCodes(): Promise<SignupCodeRow[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("signup_codes")
+      .select("id, code, role, max_uses, uses_count, expires_at, label, created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as SignupCodeRow[];
+  },
+
+  async createSignupCode(opts: {
+    role: UserRole;
+    max_uses?: number | null;
+    expires_at?: string | null;
+    label?: string | null;
+  }): Promise<SignupCodeRow> {
+    const supabase = getClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not signed in");
+    const { data: appUser, error: appErr } = await supabase
+      .from("users")
+      .select("id, institution_id")
+      .eq("supabase_uid", user.id)
+      .single();
+    if (appErr || !appUser) throw new Error("User not found in app database");
+
+    const rowBase = {
+      institution_id: appUser.institution_id,
+      role: opts.role,
+      max_uses: opts.max_uses ?? null,
+      expires_at: opts.expires_at ?? null,
+      label: opts.label ?? null,
+      created_by_user_id: appUser.id,
+    };
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = randomSignupCode();
+      const { data, error } = await supabase
+        .from("signup_codes")
+        .insert({ ...rowBase, code })
+        .select("id, code, role, max_uses, uses_count, expires_at, label, created_at")
+        .single();
+      if (!error && data) return data as SignupCodeRow;
+      if (error.code !== "23505") throw error;
+    }
+    throw new Error("Could not generate unique code");
+  },
+
+  /** Validate signup code via Next API route (server uses anon key only; no Edge Function). */
   async validateSignupCode(code: string) {
-    return rpcValidateSignupCodeAnonOnly(code.trim());
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+    const res = await fetch(`${origin}/api/validate-signup-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code.trim() }),
+    });
+    return (await res.json()) as {
+      valid: boolean;
+      error?: string;
+      role?: string;
+      label?: string | null;
+      institution_name?: string;
+    };
   },
 
   /** Link the signed-in Supabase user to an institution via signup code (RPC). */

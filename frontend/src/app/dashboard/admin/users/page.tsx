@@ -74,7 +74,7 @@ export default function AdminUsersPage() {
         if (!cancelled) setUsers([]);
       }
       try {
-        const c = await invokeEdgeFunction<SignupCodeRow[]>("list-signup-codes", {});
+        const c = await db.listSignupCodes();
         if (!cancelled) {
           setCodes(Array.isArray(c) ? c : []);
           setCodesLoadError(null);
@@ -97,10 +97,12 @@ export default function AdminUsersPage() {
     setCreatingCode(true);
     setCodeError(null);
     try {
-      const payload: Record<string, unknown> = { role: codeForm.role, label: codeForm.label || null };
-      if (codeForm.max_uses.trim()) payload.max_uses = Number(codeForm.max_uses);
-      if (codeForm.expires_at) payload.expires_at = new Date(codeForm.expires_at).toISOString();
-      const row = await invokeEdgeFunction<SignupCodeRow>("create-signup-code", payload);
+      const row = await db.createSignupCode({
+        role: codeForm.role,
+        label: codeForm.label || null,
+        max_uses: codeForm.max_uses.trim() ? Number(codeForm.max_uses) : null,
+        expires_at: codeForm.expires_at ? new Date(codeForm.expires_at).toISOString() : null,
+      });
       setCodes((prev) => [row, ...prev]);
       setCodeDialogOpen(false);
       setCodeForm({ role: "pi", max_uses: "", label: "", expires_at: "" });

@@ -134,8 +134,8 @@ To run or deploy Edge Functions and apply migrations, use the [Supabase CLI](htt
 
 New accounts must **redeem a code** so `public.users` is linked to an institution and role (RLS depends on this).
 
-1. Apply migrations `002_signup_codes.sql` (table + `redeem_signup_code` RPC) and `003_validate_signup_code_rpc.sql` (`validate_signup_code` for `/signup`; uses anon RPC, not an Edge Function). The frontend calls this RPC with **anon-only** `fetch` so an **expired browser session** does not send a bad JWT to PostgREST.
-2. Deploy Edge Functions: `create-signup-code`, `list-signup-codes` (admin-only). The `validate-signup-code` function is optional / legacy if you use migration `003`.
+1. Apply migrations through `004_…`: `002` (table + `redeem_signup_code`), `003` (`validate_signup_code` RPC for signups), `004` (RLS so admins **insert/select** `signup_codes` from the app — no Edge Functions for codes).
+2. Signup code **verify** uses the `validate_signup_code` RPC via a small **`/api/validate-signup-code`** route (server calls PostgREST with the anon key only). **Create/list** codes use normal Supabase `.from("signup_codes")` as an admin.
 3. **Admins** create codes under **Dashboard → Administration → Users** (“New signup code”). Share the code (e.g. `CLG-XXXXXXXX`) with people who should register.
 4. Users enter the code on **`/signup`** (optional query `?code=CLG-...`). After email confirmation, if needed they finish at **`/onboarding/redeem`**.
 5. If `redeem_signup_code` fails on migrate (e.g. `user_role` enum name differs), adjust the cast in the migration to match your schema.
