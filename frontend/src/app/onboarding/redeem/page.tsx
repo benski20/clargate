@@ -100,7 +100,7 @@ export default function RedeemSignupCodePage() {
           <AuthBrand />
           <CardTitle className="mt-4 text-2xl font-semibold tracking-tight">Institution code</CardTitle>
           <CardDescription className="text-base">
-            Enter the code your administrator gave you to join your organization in Clargate.
+            Enter the code your administrator gave you to join your organization in Aribter.
           </CardDescription>
         </CardHeader>
         <CardContent>

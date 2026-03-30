@@ -1,4 +1,4 @@
-# Clargate — Infrastructure & Compliance Overview
+# Aribter — Infrastructure & Compliance Overview
 
 ## Stack
 

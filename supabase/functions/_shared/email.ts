@@ -3,7 +3,7 @@ export async function sendEmail(
   subject: string,
   htmlBody: string,
 ): Promise<boolean> {
-  const sender = Deno.env.get("SES_SENDER_EMAIL") || "noreply@clargate.com";
+  const sender = Deno.env.get("SES_SENDER_EMAIL") || "noreply@aribter.com";
   const region = Deno.env.get("SES_REGION") || "us-east-1";
   const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID")!;
   const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
@@ -52,7 +52,7 @@ export async function sendReviewerAssignment(
     <h2>New Review Assignment</h2>
     <p>Dear ${reviewerName},</p>
     <p>You have been assigned to review: <strong>${proposalTitle}</strong></p>
-    <p>Please log in to the Clargate platform to begin your review.</p>
+    <p>Please log in to the Aribter platform to begin your review.</p>
   `;
   return sendEmail(to, `New Review Assignment: ${proposalTitle}`, html);
 }

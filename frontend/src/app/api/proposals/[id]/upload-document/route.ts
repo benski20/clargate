@@ -39,12 +39,19 @@ export async function POST(
 
     const { data: appUser, error: appUserErr } = await svc
       .from("users")
-      .select("id, institution_id")
+      .select("id, institution_id, role")
       .eq("supabase_uid", authUser.id)
       .single();
 
     if (appUserErr || !appUser) {
       return NextResponse.json({ error: "User not found" }, { status: 403 });
+    }
+
+    if (appUser.role === "admin") {
+      return NextResponse.json(
+        { error: "Administrators cannot upload proposal documents." },
+        { status: 403 },
+      );
     }
 
     const { data: proposal, error: pErr } = await svc
@@ -56,6 +63,13 @@ export async function POST(
 
     if (pErr || !proposal) {
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
+    if (appUser.id !== proposal.pi_user_id) {
+      return NextResponse.json(
+        { error: "Only the proposal owner can upload documents." },
+        { status: 403 },
+      );
     }
 
     const formData = await request.formData();
@@ -109,6 +123,10 @@ export async function POST(
       action: "document_uploaded",
       entity_type: "proposal_document",
       entity_id: doc.id,
+      metadata: {
+        file_name: fileName,
+        proposal_id: proposalId,
+      },
     });
 
     return NextResponse.json({

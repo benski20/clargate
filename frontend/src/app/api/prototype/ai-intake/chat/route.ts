@@ -4,6 +4,8 @@ import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { AiChatMessage, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
+import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const INTAKE_SYSTEM = `You are an skilled IRB protocol intake specialist. Conduct a warm, conversational interview (one focused question or short acknowledgment + question per turn). Adapt based on prior answers.
 
@@ -67,7 +69,9 @@ export async function POST(req: Request) {
     const extra = formatSupplementaryContextForModel(
       body.supplementary_context ?? { notes: "", attachments: [] },
     );
-    const systemInstruction = `${INTAKE_SYSTEM}\n\nStructured protocol draft you maintain internally (JSON; refine each turn; do not erase unless the user corrects something):\n${JSON.stringify(protocol, null, 2)}${extra}`;
+    const supabase = await createServerSupabaseClient();
+    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
+    const systemInstruction = `${INTAKE_SYSTEM}${institutionGuidance}\n\nStructured protocol draft you maintain internally (JSON; refine each turn; do not erase unless the user corrects something):\n${JSON.stringify(protocol, null, 2)}${extra}`;
 
     const toolInput = await generateWithForcedToolCall<{
       assistant_reply: string;

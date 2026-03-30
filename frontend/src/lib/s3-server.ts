@@ -1,8 +1,18 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export function generateS3Key(proposalId: string, fileName: string): string {
   const unique = crypto.randomUUID().slice(0, 8);
   return `proposals/${proposalId}/${unique}_${fileName}`;
+}
+
+/** Stored institutional AI guidance files (admin uploads). */
+export function generateInstitutionGuidanceS3Key(
+  institutionId: string,
+  guidanceId: string,
+  fileName: string,
+): string {
+  const safe = fileName.replace(/[/\\]/g, "_").slice(0, 200);
+  return `institutions/${institutionId}/ai-guidance/${guidanceId}/${safe}`;
 }
 
 export function getS3Client(): S3Client {
@@ -36,6 +46,16 @@ export async function putObjectToS3(params: {
       Key: params.key,
       Body: params.body,
       ContentType: params.contentType,
+    }),
+  );
+}
+
+export async function deleteObjectFromS3(key: string): Promise<void> {
+  const client = getS3Client();
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: getBucketName(),
+      Key: key,
     }),
   );
 }

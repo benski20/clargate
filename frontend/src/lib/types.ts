@@ -132,14 +132,40 @@ export interface Letter {
   created_at: string;
 }
 
+export type InstitutionAiGuidanceCategory =
+  | "example_proposal"
+  | "rules"
+  | "guidelines"
+  | "institutional";
+
+/** Row in `institution_ai_guidance` (admin-managed AI context). */
+export interface InstitutionAiGuidanceRow {
+  id: string;
+  institution_id: string;
+  category: InstitutionAiGuidanceCategory;
+  title: string | null;
+  content_type: "text" | "file";
+  body_text: string | null;
+  file_name: string | null;
+  s3_key: string | null;
+  mime_type: string | null;
+  extracted_text: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
 export interface AuditLogEntry {
   id: string;
   user_id: string | null;
   action: string;
   entity_type: string;
   entity_id: string | null;
+  /** Normalized from `metadata` or `metadata_` column */
   metadata_: Record<string, unknown> | null;
   created_at: string;
+  /** Same-institution user row when `user_id` is set */
+  actor?: { full_name: string | null; email: string } | null;
 }
 
 export const STATUS_LABELS: Record<ProposalStatus, string> = {

@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
-import type { Proposal, RedeemSignupResult, SignupCodeRow, UserRole } from "@/lib/types";
+import type { AuditLogEntry, Proposal, RedeemSignupResult, SignupCodeRow, UserRole } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function getClient(): SupabaseClient {
@@ -71,10 +71,13 @@ export const db = {
     const svcClient = getClient();
     const { data: appUser } = await svcClient
       .from("users")
-      .select("id, institution_id")
+      .select("id, institution_id, role")
       .eq("supabase_uid", user.id)
       .single();
     if (!appUser) throw new Error("User not found");
+    if (appUser.role !== "pi") {
+      throw new Error("Only principal investigators can create proposals.");
+    }
 
     const { data, error } = await supabase
       .from("proposals")
@@ -252,13 +255,13 @@ export const db = {
     return data;
   },
 
-  async getAuditLog(opts?: { entityType?: string; action?: string; pageSize?: number }) {
+  async getAuditLog(opts?: { entityType?: string; action?: string; pageSize?: number }): Promise<AuditLogEntry[]> {
     const supabase = getClient();
     let query = supabase
       .from("audit_log")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(opts?.pageSize ?? 100);
+      .limit(opts?.pageSize ?? 150);
 
     if (opts?.entityType && opts.entityType !== "all") {
       query = query.eq("entity_type", opts.entityType);
@@ -268,7 +271,43 @@ export const db = {
     }
     const { data, error } = await query;
     if (error) throw error;
-    return data ?? [];
+    const rows = (data ?? []) as Record<string, unknown>[];
+
+    const userIds = [
+      ...new Set(
+        rows.map((r) => r.user_id).filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const actorById = new Map<string, { full_name: string | null; email: string }>();
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .in("id", userIds);
+      for (const u of users ?? []) {
+        const row = u as { id: string; full_name: string | null; email: string };
+        actorById.set(row.id, { full_name: row.full_name, email: row.email });
+      }
+    }
+
+    return rows.map((row) => {
+      const rawMeta = row.metadata ?? row.metadata_;
+      const metadata_ =
+        rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
+          ? (rawMeta as Record<string, unknown>)
+          : null;
+      const uid = typeof row.user_id === "string" ? row.user_id : null;
+      return {
+        id: row.id as string,
+        user_id: uid,
+        action: row.action as string,
+        entity_type: row.entity_type as string,
+        entity_id: typeof row.entity_id === "string" ? row.entity_id : null,
+        metadata_,
+        created_at: row.created_at as string,
+        actor: uid ? actorById.get(uid) ?? null : null,
+      };
+    });
   },
 
   async getCurrentAppUser() {

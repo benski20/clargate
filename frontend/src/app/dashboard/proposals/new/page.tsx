@@ -1,16 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, FileUp, MessageSquareText } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileUp, Loader2, MessageSquareText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AiIntakeWorkspace } from "@/components/proposals/AiIntakeWorkspace";
+import { db } from "@/lib/database";
 
 type EntryMode = "choose" | "upload" | "ai";
 
 export default function NewProposalPage() {
   const router = useRouter();
   const [entryMode, setEntryMode] = useState<EntryMode>("choose");
+  const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const u = await db.getCurrentAppUser();
+      if (cancelled) return;
+      if (u?.role === "pi") {
+        setAccess("allowed");
+      } else {
+        setAccess("denied");
+        router.replace("/dashboard");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  if (access === "loading" || access === "denied") {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center px-4 py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
 
   if (entryMode === "ai") {
     return <AiIntakeWorkspace variant="chat" onBack={() => setEntryMode("choose")} />;

@@ -3,6 +3,8 @@ import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { ProtocolDraft } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
+import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const consentDeclaration: FunctionDeclaration = {
   name: "consent_output",
@@ -39,6 +41,8 @@ export async function POST(req: Request) {
     const extra = formatSupplementaryContextForModel(
       supplementary_context ?? { notes: "", attachments: [] },
     );
+    const supabase = await createServerSupabaseClient();
+    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
     const userContent = `Draft an informed consent document derived from this protocol and any supplementary materials below. Use Markdown with clear sections.\n\nProtocol:\n${JSON.stringify(protocol, null, 2)}${extra}\n\nRequirements:\n- Reading level ~8th grade; short sentences; plain language labels.\n- Include: purpose, procedures, risks, benefits, confidentiality, voluntary participation, right to withdraw, whom to contact for questions and for research-related injury, and (if applicable) a HIPAA authorization summary or note if PHI is involved.\n- List in missing_elements anything required by common IRB practice that cannot be supported from the protocol text and supplementary materials.\n`;
 
     const toolInput = await generateWithForcedToolCall<{
@@ -46,7 +50,7 @@ export async function POST(req: Request) {
       missing_elements: string[];
     }>({
       systemInstruction:
-        "You produce structured consent drafts and QA lists via the consent_output tool only.",
+        `You produce structured consent drafts and QA lists via the consent_output tool only.${institutionGuidance}`,
       history: [],
       userText: userContent,
       declaration: consentDeclaration,

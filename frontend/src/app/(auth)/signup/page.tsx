@@ -148,7 +148,7 @@ export default function SignupPage() {
           <AuthBrand />
           <CardTitle className="mt-4 text-2xl font-semibold tracking-tight">Create your account</CardTitle>
           <CardDescription className="text-base">
-            Use the institution code from your IRB office or Clargate administrator.
+            Use the institution code from your IRB office or Aribter administrator.
           </CardDescription>
         </CardHeader>
         <CardContent>

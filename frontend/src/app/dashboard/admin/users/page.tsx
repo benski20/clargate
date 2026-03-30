@@ -228,7 +228,7 @@ export default function AdminUsersPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite User</DialogTitle>
-              <DialogDescription>Send an invitation to join your institution on Clargate.</DialogDescription>
+              <DialogDescription>Send an invitation to join your institution on Aribter.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleInvite} className="space-y-4">
               <div className="space-y-2">

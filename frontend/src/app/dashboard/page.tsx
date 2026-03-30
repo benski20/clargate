@@ -12,16 +12,18 @@ import {
 } from "@/components/dashboard/dashboard-ui";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
-import type { Proposal } from "@/lib/types";
+import type { Proposal, UserRole } from "@/lib/types";
 
 export default function DashboardPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [welcomeName, setWelcomeName] = useState("");
+  const [role, setRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
     (async () => {
       const appUser = await db.getCurrentAppUser();
+      if (appUser?.role) setRole(appUser.role);
       if (appUser?.full_name?.trim()) {
         setWelcomeName(appUser.full_name.trim());
         return;
@@ -64,13 +66,15 @@ export default function DashboardPage() {
         ) : (
           <div className="h-24 w-full max-w-md animate-pulse rounded-2xl bg-muted/60" aria-hidden />
         )}
-        <Button
-          className="h-11 w-full shrink-0 cursor-pointer gap-2 rounded-full bg-foreground px-8 text-background hover:bg-foreground/90 lg:w-auto"
-          render={<Link href="/dashboard/proposals/new" />}
-        >
-          <Plus className="h-4 w-4" />
-          New proposal
-        </Button>
+        {role === "pi" && (
+          <Button
+            className="h-11 w-full shrink-0 cursor-pointer gap-2 rounded-full bg-foreground px-8 text-background hover:bg-foreground/90 lg:w-auto"
+            render={<Link href="/dashboard/proposals/new" />}
+          >
+            <Plus className="h-4 w-4" />
+            New proposal
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -136,13 +140,15 @@ export default function DashboardPage() {
               <p className="mt-3 text-sm text-muted-foreground">
                 No proposals yet. Create your first proposal to get started.
               </p>
-              <Button
-                className="mt-5 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
-                render={<Link href="/dashboard/proposals/new" />}
-              >
-                <Plus className="h-4 w-4" />
-                New proposal
-              </Button>
+              {role === "pi" && (
+                <Button
+                  className="mt-5 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
+                  render={<Link href="/dashboard/proposals/new" />}
+                >
+                  <Plus className="h-4 w-4" />
+                  New proposal
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-2">

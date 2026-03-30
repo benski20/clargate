@@ -1,4 +1,4 @@
-const KEY = "clargate_pending_signup_code";
+const KEY = "aribter_pending_signup_code";
 
 export function setPendingSignupCode(code: string) {
   if (typeof window === "undefined") return;

@@ -4,6 +4,8 @@ import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
+import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const sectionEnum: string[] = [...PROTOCOL_SECTION_KEYS, "consent", "general"];
 const severityEnum = ["info", "warning", "error"] as const;
@@ -62,6 +64,8 @@ export async function POST(req: Request) {
     const extra = formatSupplementaryContextForModel(
       supplementary_context ?? { notes: "", attachments: [] },
     );
+    const supabase = await createServerSupabaseClient();
+    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
     const userContent = `You are an IRB compliance analyst. Review the following protocol, consent form, and supplementary materials for issues BEFORE submission.
 
 Reference framework: 45 CFR Part 46 at a high level (identify plausible gaps, cite part/subpart when helpful; you are not rendering a legal opinion).
@@ -73,7 +77,7 @@ Protocol:\n${JSON.stringify(protocol, null, 2)}\n\nConsent:\n${consent_markdown 
       flags: ComplianceFlag[];
     }>({
       systemInstruction:
-        "You return compliance reviews only via the compliance_review tool.",
+        `You return compliance reviews only via the compliance_review tool.${institutionGuidance}`,
       history: [],
       userText: userContent,
       declaration: complianceDeclaration,

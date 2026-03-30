@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
+import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const suggestionsDeclaration: FunctionDeclaration = {
   name: "revision_suggestions",
@@ -38,9 +40,12 @@ ${JSON.stringify(protocol, null, 2)}
 Compliance flags:
 ${JSON.stringify(flags, null, 2)}`;
 
+    const supabase = await createServerSupabaseClient();
+    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
+
     const result = await generateWithForcedToolCall<{ suggestions: string[] }>({
       systemInstruction:
-        "You return revision suggestions only via the revision_suggestions tool. Keep bullets short and actionable.",
+        `You return revision suggestions only via the revision_suggestions tool. Keep bullets short and actionable.${institutionGuidance}`,
       history: [],
       userText,
       declaration: suggestionsDeclaration,

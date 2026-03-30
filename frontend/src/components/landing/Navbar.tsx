@@ -24,7 +24,7 @@ export function Navbar() {
             href="/"
             className="group relative z-10 font-[family-name:var(--font-heading)] text-lg font-normal tracking-tight text-[#0A0A0A] uppercase md:text-xl"
           >
-            CLARGATE
+            ARIBTER
             <span className="absolute -bottom-[0.2rem] left-0 h-[1px] w-0 bg-[#0A0A0A] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:w-full" />
           </Link>
         </div>

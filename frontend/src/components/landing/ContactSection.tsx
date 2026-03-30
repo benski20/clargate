@@ -10,11 +10,11 @@ export function ContactSection() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const subject = encodeURIComponent("Clargate trial provisioning request");
+    const subject = encodeURIComponent("Aribter trial provisioning request");
     const body = encodeURIComponent(
       `Institution: ${org}\nApproximate annual submissions: ${volume}\nContact email: ${email}`
     );
-    window.location.href = `mailto:partners@clargate.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:partners@aribter.com?subject=${subject}&body=${body}`;
   }
 
   return (
@@ -71,10 +71,10 @@ export function ContactSection() {
                   Direct Inquiry
                 </span>
                 <a
-                  href="mailto:partners@clargate.com"
+                  href="mailto:partners@aribter.com"
                   className="font-sans text-[clamp(1rem,1.05vw,1.125rem)] font-light text-[#FDFBF7] transition-colors hover:text-white/70"
                 >
-                  partners@clargate.com
+                  partners@aribter.com
                 </a>
               </div>
               <div>

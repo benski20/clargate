@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
     const { data: proposal } = await svc
       .from("proposals")
-      .select("id, status, institution_id")
+      .select("id, status, institution_id, title")
       .eq("id", proposal_id)
       .eq("institution_id", user.institution_id)
       .single();
@@ -80,7 +80,11 @@ Deno.serve(async (req) => {
       action: "proposal_status_changed",
       entity_type: "proposal",
       entity_id: proposal_id,
-      metadata: { new_status: status },
+      metadata: {
+        proposal_title: proposal.title,
+        previous_status: proposal.status,
+        new_status: status,
+      },
     });
 
     return new Response(JSON.stringify(updated), {
