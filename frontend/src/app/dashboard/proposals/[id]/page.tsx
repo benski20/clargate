@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -9,9 +10,9 @@ import {
   MessageSquare,
   Send,
   Download,
-  RefreshCw,
   Loader2,
   ScrollText,
+  PencilLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,7 @@ function ProposalDetailInner() {
   const searchParams = useSearchParams();
   const proposalId = params.id as string;
   const justSubmitted = searchParams.get("submitted") === "1";
+  const justResubmitted = searchParams.get("resubmitted") === "1";
   const tabParam = searchParams.get("tab");
   const activeTab: PiTab = PI_TABS.includes(tabParam as PiTab) ? (tabParam as PiTab) : "details";
 
@@ -45,7 +47,6 @@ function ProposalDetailInner() {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [resubmitting, setResubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
   function setTab(next: PiTab) {
@@ -70,12 +71,12 @@ function ProposalDetailInner() {
   }, [proposalId]);
 
   useEffect(() => {
-    if (!justSubmitted) return;
+    if (!justSubmitted && !justResubmitted) return;
     const t = setTimeout(() => {
       router.replace(pathname, { scroll: false });
     }, 10000);
     return () => clearTimeout(t);
-  }, [justSubmitted, pathname, router]);
+  }, [justSubmitted, justResubmitted, pathname, router]);
 
   async function sendMessage() {
     if (!newMessage.trim()) return;
@@ -89,17 +90,6 @@ function ProposalDetailInner() {
     } catch {
     } finally {
       setSending(false);
-    }
-  }
-
-  async function handleResubmit() {
-    setResubmitting(true);
-    try {
-      const updated = await db.resubmitProposal(proposalId);
-      setProposal((prev) => prev && { ...prev, status: updated.status });
-    } catch {
-    } finally {
-      setResubmitting(false);
     }
   }
 
@@ -166,6 +156,22 @@ function ProposalDetailInner() {
         </div>
       ) : null}
 
+      {justResubmitted ? (
+        <div
+          className="flex gap-3 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/40"
+          role="status"
+        >
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
+          <div>
+            <p className="font-medium text-emerald-950 dark:text-emerald-100">Revised package resubmitted</p>
+            <p className="mt-1 text-muted-foreground">
+              Updated Markdown and Word (if generated) appear under Documents. The IRB team will continue
+              review; use Messages for follow-up.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {proposal.status === "revisions_requested" && sentRevisionLetters.length > 0 ? (
         <div
           className="flex flex-col gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30"
@@ -174,8 +180,9 @@ function ProposalDetailInner() {
           <div>
             <p className="font-medium text-amber-950 dark:text-amber-100">Revisions requested</p>
             <p className="mt-1 text-muted-foreground">
-              Your IRB office sent formal feedback. Review it in the IRB feedback tab, then address the
-              items and resubmit when ready.
+              Your IRB office sent formal feedback. Review it in the IRB feedback tab, then use{" "}
+              <strong className="text-foreground">Edit &amp; resubmit</strong> to open the AI workspace,
+              revise your protocol package (Markdown and generated Word), and resubmit.
             </p>
           </div>
           <Button
@@ -211,20 +218,17 @@ function ProposalDetailInner() {
               {proposal.document_count + (submissionSnapshot ? 1 : 0) !== 1 ? "s" : ""}
             </p>
         </div>
-        {proposal.status === "revisions_requested" && (
-          <Button
-            className="gap-2 cursor-pointer"
-            onClick={handleResubmit}
-            disabled={resubmitting}
-          >
-            {resubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Resubmit
+        {proposal.status === "revisions_requested" ? (
+          <Button className="gap-2 cursor-pointer" render={<Link href={`/dashboard/proposals/${proposalId}/edit`} />}>
+            <PencilLine className="h-4 w-4" />
+            Edit &amp; resubmit
           </Button>
-        )}
+        ) : proposal.status === "draft" ? (
+          <Button className="gap-2 cursor-pointer" render={<Link href={`/dashboard/proposals/${proposalId}/edit`} />}>
+            <PencilLine className="h-4 w-4" />
+            Continue editing
+          </Button>
+        ) : null}
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as PiTab)}>

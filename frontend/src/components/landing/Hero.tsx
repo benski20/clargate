@@ -4,7 +4,7 @@ import { HeroCanvas } from "@/components/landing/HeroCanvas";
 export function Hero() {
   return (
     <section className="relative flex min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] flex-col overflow-hidden border-b border-[#DCD8D0] md:flex-row">
-      <div className="group relative h-[40vh] w-full overflow-hidden border-b border-[#DCD8D0] bg-[#F4F1EA] md:h-auto md:w-[40%] md:border-r md:border-b-0">
+      <div className="group relative h-[40vh] w-full overflow-hidden border-b border-[#DCD8D0] bg-[#F4F1EA] md:h-auto md:w-[28%] md:border-r md:border-b-0">
         <HeroCanvas />
         <div className="absolute top-[clamp(1.5rem,5vw,4rem)] left-[clamp(1.5rem,5vw,4rem)] font-mono text-xs tracking-[0.15em] text-[#555555] uppercase">
           Governed Workspace / Ver-01
@@ -16,7 +16,7 @@ export function Hero() {
         </div>
       </div>
 
-      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)] md:w-[60%]">
+      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)] md:w-[72%]">
         <div className="absolute top-1/4 left-0 h-px w-full bg-[#DCD8D0]/50" />
         <div className="absolute top-0 left-[20%] h-full w-px bg-[#DCD8D0]/50" />
 

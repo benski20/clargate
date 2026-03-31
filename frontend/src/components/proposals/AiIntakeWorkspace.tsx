@@ -28,9 +28,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
+import type { ProposalStatus } from "@/lib/types";
 import { supplementaryFromWorkspace } from "@/lib/ai-context";
 import {
   emptyAiWorkspace,
+  normalizeAiWorkspace,
   type AiWorkspaceState,
   type ProtocolSectionKey,
 } from "@/lib/ai-proposal-types";
@@ -62,10 +64,13 @@ function blobToBase64(blob: Blob): Promise<string> {
 export function AiIntakeWorkspace({
   onBack,
   variant = "chat",
+  existingProposalId = null,
 }: {
   onBack: () => void;
   /** Upload-first path: files + “Run AI review” instead of conversational chat. */
   variant?: "chat" | "upload";
+  /** Load an existing draft or a proposal in “revisions requested” for edit + submit / resubmit. */
+  existingProposalId?: string | null;
 }) {
   const router = useRouter();
   const maxAttachments =
@@ -103,12 +108,19 @@ export function AiIntakeWorkspace({
 
   const [proposalReviewAcknowledged, setProposalReviewAcknowledged] = useState(false);
 
+  const [hydrationStatus, setHydrationStatus] = useState<"loading" | "ready" | "no_workspace">(() =>
+    existingProposalId ? "loading" : "ready",
+  );
+  const [loadedProposalStatus, setLoadedProposalStatus] = useState<ProposalStatus | null>(null);
+
+  const isRevisionResubmit = loadedProposalStatus === "revisions_requested";
+
   useEffect(() => {
     setProposalReviewAcknowledged(false);
   }, [packageFingerprint]);
 
   const complianceComplete =
-    ws.phase === "compliance" && Boolean(ws.predicted_category);
+    (ws.phase === "compliance" || ws.phase === "submit") && Boolean(ws.predicted_category);
 
   const canSubmitProposal =
     Boolean(proposalId) && complianceComplete && proposalReviewAcknowledged;
@@ -135,11 +147,59 @@ export function AiIntakeWorkspace({
   );
 
   useEffect(() => {
+    if (existingProposalId && hydrationStatus !== "ready") return;
     const t = setTimeout(() => {
       void persist(ws, suggestedTitle);
     }, 900);
     return () => clearTimeout(t);
-  }, [ws, suggestedTitle, persist]);
+  }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus]);
+
+  useEffect(() => {
+    if (!existingProposalId) return;
+    let cancelled = false;
+    setHydrationStatus("loading");
+    (async () => {
+      try {
+        const p = await db.getProposal(existingProposalId);
+        if (cancelled) return;
+        if (!p) {
+          router.replace("/dashboard/proposals");
+          return;
+        }
+        if (p.status !== "draft" && p.status !== "revisions_requested") {
+          router.replace(`/dashboard/proposals/${existingProposalId}`);
+          return;
+        }
+        const fd = p.form_data as Record<string, unknown> | null;
+        if (!fd?.ai_workspace) {
+          setHydrationStatus("no_workspace");
+          setLoadedProposalStatus(p.status);
+          return;
+        }
+        let next = normalizeAiWorkspace(fd.ai_workspace);
+        const rt = p.review_type;
+        if (rt === "exempt" || rt === "expedited" || rt === "full_board") {
+          next = {
+            ...next,
+            predicted_category: next.predicted_category ?? rt,
+          };
+        }
+        if (next.phase === "submit") {
+          next = { ...next, phase: "compliance" };
+        }
+        setWs(next);
+        setSuggestedTitle(p.title || "");
+        setProposalId(p.id);
+        setLoadedProposalStatus(p.status);
+        setHydrationStatus("ready");
+      } catch {
+        if (!cancelled) router.replace("/dashboard/proposals");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [existingProposalId, router]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -149,6 +209,7 @@ export function AiIntakeWorkspace({
 
   useEffect(() => {
     if (variant === "upload") return;
+    if (existingProposalId) return;
     if (bootRef.current) return;
     bootRef.current = true;
     (async () => {
@@ -195,7 +256,7 @@ export function AiIntakeWorkspace({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once
-  }, [variant]);
+  }, [variant, existingProposalId]);
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -536,6 +597,7 @@ export function AiIntakeWorkspace({
 
   async function submitFinal() {
     if (!proposalId) return;
+    const submitMode = loadedProposalStatus ?? "draft";
     if (!complianceComplete) {
       setRightTab("compliance");
       return;
@@ -597,14 +659,49 @@ export function AiIntakeWorkspace({
         setRightTab("package");
         return;
       }
-      await db.submitProposal(proposalId);
-      router.push(`/dashboard/proposals/${proposalId}?submitted=1&tab=documents`);
+      if (submitMode === "revisions_requested") {
+        await db.resubmitProposal(proposalId);
+        router.push(`/dashboard/proposals/${proposalId}?resubmitted=1&tab=documents`);
+      } else {
+        await db.submitProposal(proposalId);
+        router.push(`/dashboard/proposals/${proposalId}?submitted=1&tab=documents`);
+      }
       router.refresh();
     } catch (e) {
       setSubmitting(false);
       setPackageS3Error(e instanceof Error ? e.message : "Submit failed. Try again.");
       setRightTab("package");
     }
+  }
+
+  if (existingProposalId && hydrationStatus === "loading") {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 bg-[#fafaf9] px-4 dark:bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading proposal" />
+        <p className="text-sm text-muted-foreground">Loading your workspace…</p>
+      </div>
+    );
+  }
+
+  if (existingProposalId && hydrationStatus === "no_workspace") {
+    return (
+      <div className="mx-auto max-w-lg space-y-6 px-4 py-12">
+        <Button variant="ghost" size="sm" className="cursor-pointer gap-2" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-sm">
+          <h1 className="font-[var(--font-heading)] text-xl font-medium tracking-tight">
+            Workspace not available
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            This proposal does not have a saved AI workspace (structured protocol, consent, and compliance
+            state). Open the proposal, download your submitted Markdown or Word file from the Documents
+            tab, edit locally, then contact your IRB office if you need to replace files on record.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -617,13 +714,23 @@ export function AiIntakeWorkspace({
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
             <h1 className="truncate font-[var(--font-heading)] text-lg font-medium tracking-tight md:text-xl">
-              {variant === "upload" ? "Upload & AI review" : "AI protocol draft"}
+              {isRevisionResubmit
+                ? "Revise submission"
+                : existingProposalId
+                  ? "Continue proposal"
+                  : variant === "upload"
+                    ? "Upload & AI review"
+                    : "AI protocol draft"}
             </h1>
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            {variant === "upload"
-              ? "Files → AI protocol · consent · compliance · submit (same as AI draft)"
-              : "Intake · workspace · consent · review · proposal package — saved as you work"}
+            {isRevisionResubmit
+              ? "Edit your protocol package with AI assistance, then resubmit to the IRB."
+              : existingProposalId
+                ? "Your draft is restored — keep editing, then submit when ready."
+                : variant === "upload"
+                  ? "Files → AI protocol · consent · compliance · submit (same as AI draft)"
+                  : "Intake · workspace · consent · review · proposal package — saved as you work"}
             {saving ? " · Saving…" : ""}
           </p>
         </div>
@@ -1171,7 +1278,9 @@ export function AiIntakeWorkspace({
                   </div>
 
                   <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-                      <h3 className="font-[var(--font-heading)] text-sm font-medium">Submit for IRB review</h3>
+                      <h3 className="font-[var(--font-heading)] text-sm font-medium">
+                        {isRevisionResubmit ? "Resubmit revised package" : "Submit for IRB review"}
+                      </h3>
                       {!proposalId ? (
                         <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                           Waiting for proposal to finish saving…
@@ -1200,8 +1309,9 @@ export function AiIntakeWorkspace({
                             <strong className="text-foreground">Title:</strong> {suggestedTitle || "Draft study"}
                           </p>
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Submit saves this package in the database (snapshot) and uploads the same file to
-                            S3 via the app server. If the upload fails, fix the message above and try again.
+                            {isRevisionResubmit
+                              ? "Resubmit updates your stored package (Markdown snapshot and Word when configured), uploads files to storage, and sets status to Resubmitted for the IRB team."
+                              : "Submit saves this package in the database (snapshot) and uploads the same file to S3 via the app server. If the upload fails, fix the message above and try again."}
                           </p>
                           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 bg-muted/30 p-3 text-sm">
                             <input
@@ -1231,7 +1341,7 @@ export function AiIntakeWorkspace({
                               ) : (
                                 <Check className="mr-2 h-4 w-4" />
                               )}
-                              Submit proposal
+                              {isRevisionResubmit ? "Resubmit revised package" : "Submit proposal"}
                             </Button>
                             <Link
                               href="/dashboard/proposals"

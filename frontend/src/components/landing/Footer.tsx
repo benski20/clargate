@@ -5,7 +5,7 @@ export function Footer() {
     <footer className="relative z-10 overflow-hidden border-t border-white/5 bg-[#0A0A0A] text-[#FDFBF7]">
       <div className="w-full border-b border-white/10">
         <h2 className="select-none py-[clamp(2rem,5vw,5rem)] text-center font-[family-name:var(--font-heading)] text-[clamp(3rem,14vw,18rem)] leading-[0.8] font-light tracking-tighter text-[#FDFBF7] uppercase">
-          ARIBTER
+          ARBITER
         </h2>
       </div>
 
