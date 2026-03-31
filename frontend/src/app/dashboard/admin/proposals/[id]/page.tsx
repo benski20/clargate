@@ -473,7 +473,7 @@ function AdminProposalDetailInner() {
           </Button>
           <div className="min-w-0 flex-1 space-y-3">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-sans text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
                 {proposal.title}
               </h1>
               <StatusBadge status={proposal.status} />

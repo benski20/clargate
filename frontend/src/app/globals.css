@@ -164,6 +164,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /**
+   * Playfair Display (--font-heading from root layout) for primary headings site-wide.
+   * Matches landing / editorial brand; body copy stays Inter (font-sans).
+   */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading), ui-serif, Georgia, "Times New Roman", serif;
+    letter-spacing: -0.02em;
+  }
   html {
     @apply font-sans scroll-smooth;
   }
@@ -184,6 +194,12 @@
 }
 
 @layer utilities {
+  /** Explicit stack so `font-heading` matches semantic headings (Playfair + fallbacks). */
+  .font-heading {
+    font-family: var(--font-heading), ui-serif, Georgia, "Times New Roman", serif;
+    letter-spacing: -0.02em;
+  }
+
   .text-outline {
     color: transparent;
     -webkit-text-stroke: 1px #0a0a0a;

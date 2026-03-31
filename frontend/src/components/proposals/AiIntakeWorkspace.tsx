@@ -1223,10 +1223,7 @@ export function AiIntakeWorkspace({
                   <div>
                     <h3 className="font-[var(--font-heading)] text-sm font-medium">Completed proposal package</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Review everything that will be stored with your submission. Download a Markdown copy
-                      anytime. Submit saves the package to Postgres and uploads the same Markdown to S3
-                      (server-side API — no Edge Function JWT). Use the button below to upload to S3 only
-                      before submitting.
+                      Review everything that will be stored with your submission. 
                     </p>
                   </div>
                   {!proposalId ? (

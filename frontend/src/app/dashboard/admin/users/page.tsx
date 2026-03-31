@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserPlus, Loader2, KeyRound, Copy } from "lucide-react";
+import { Loader2, KeyRound, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,18 +45,11 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [codes, setCodes] = useState<SignupCodeRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [codeDialogOpen, setCodeDialogOpen] = useState(false);
-  const [inviting, setInviting] = useState(false);
   const [creatingCode, setCreatingCode] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codesLoadError, setCodesLoadError] = useState<string | null>(null);
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
-  const [inviteForm, setInviteForm] = useState({
-    email: "",
-    full_name: "",
-    role: "pi" as UserRole,
-  });
   const [codeForm, setCodeForm] = useState({
     role: "pi" as UserRole,
     max_uses: "",
@@ -110,20 +103,6 @@ export default function AdminUsersPage() {
       setCodeError(err instanceof Error ? err.message : "Could not create signup code.");
     } finally {
       setCreatingCode(false);
-    }
-  }
-
-  async function handleInvite(e: React.FormEvent) {
-    e.preventDefault();
-    setInviting(true);
-    try {
-      const newUser = await invokeEdgeFunction<User>("invite-user", inviteForm);
-      setUsers((prev) => [newUser, ...prev]);
-      setInviteOpen(false);
-      setInviteForm({ email: "", full_name: "", role: "pi" });
-    } catch {
-    } finally {
-      setInviting(false);
     }
   }
 
@@ -220,57 +199,6 @@ export default function AdminUsersPage() {
                 </form>
               </DialogContent>
             </Dialog>
-            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-            <DialogTrigger render={<Button className="h-11 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90" />}>
-              <UserPlus className="h-4 w-4" />
-              Invite user
-            </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Invite User</DialogTitle>
-              <DialogDescription>Send an invitation to join your institution on Arbiter.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleInvite} className="space-y-5">
-              <div className="space-y-2">
-                <Label>Full Name</Label>
-                <Input
-                  value={inviteForm.full_name}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))}
-                  placeholder="Dr. Jane Smith"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={inviteForm.email}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="jane@institution.edu"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select
-                  value={inviteForm.role}
-                  onValueChange={(v) => setInviteForm((f) => ({ ...f, role: v as UserRole }))}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pi">Researcher (PI)</SelectItem>
-                    <SelectItem value="reviewer">Reviewer</SelectItem>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full cursor-pointer" disabled={inviting}>
-                {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send Invitation
-              </Button>
-            </form>
-          </DialogContent>
-          </Dialog>
           </div>
         }
       />
