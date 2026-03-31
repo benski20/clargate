@@ -2,7 +2,7 @@ import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { getCallerUser, getServiceClient } from "../_shared/supabase.ts";
 import { generateContent } from "../_shared/gemini.ts";
 
-const SYSTEM_PROMPT = `You are a professional IRB administrator drafting a revision request letter to a principal investigator (PI). Based on reviewer comments, produce a clear, respectful, and actionable letter.
+const SYSTEM_WITH_REVIEWS = `You are a professional IRB administrator drafting a revision request letter to a principal investigator (PI). Based on reviewer comments, produce a clear, respectful, and actionable letter.
 
 Guidelines:
 - Address the PI professionally
@@ -13,6 +13,16 @@ Guidelines:
 - Maintain a constructive, supportive tone
 - End with submission instructions and a deadline reminder
 - Do NOT make definitive regulatory determinations — frame suggestions as reviewer recommendations`;
+
+const SYSTEM_WITHOUT_REVIEWS = `You are a professional IRB administrator drafting a revision request letter to a principal investigator (PI). No formal reviewer comments have been submitted yet — use the protocol intake data below to identify likely gaps, missing elements, or clarifications commonly needed before IRB review.
+
+Guidelines:
+- Address the PI professionally and reference the proposal by title
+- Frame items as preliminary administrative questions or clarifications (not final determinations)
+- Use numbered items for easy reference
+- Maintain a constructive, supportive tone
+- End with submission instructions and a deadline reminder
+- Do NOT make definitive regulatory determinations`;
 
 Deno.serve(async (req) => {
   const corsResp = handleCors(req);
@@ -51,24 +61,24 @@ Deno.serve(async (req) => {
       .select("decision, comments, review_assignments!inner(proposal_id)")
       .eq("review_assignments.proposal_id", proposal_id);
 
-    if (!reviews || reviews.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No reviews submitted for this proposal yet" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    const hasReviews = reviews && reviews.length > 0;
+
+    let userContent: string;
+    if (hasReviews) {
+      const reviewerComments = reviews.map((r: Record<string, unknown>) => ({
+        decision: r.decision,
+        comments: r.comments,
+      }));
+      userContent = `Proposal Title: ${proposal.title}\n\nReviewer Comments:\n${JSON.stringify(reviewerComments, null, 2)}`;
+    } else {
+      userContent = `Proposal Title: ${proposal.title}\n\nProtocol / intake data:\n${JSON.stringify(proposal.form_data, null, 2)}`;
     }
-
-    const reviewerComments = reviews.map((r: Record<string, unknown>) => ({
-      decision: r.decision,
-      comments: r.comments,
-    }));
-
-    let userContent = `Proposal Title: ${proposal.title}\n\nReviewer Comments:\n${JSON.stringify(reviewerComments, null, 2)}`;
     if (additional_instructions) {
       userContent += `\n\nAdditional Instructions: ${additional_instructions}`;
     }
 
-    const letterContent = await generateContent(SYSTEM_PROMPT, userContent, {
+    const systemPrompt = hasReviews ? SYSTEM_WITH_REVIEWS : SYSTEM_WITHOUT_REVIEWS;
+    const letterContent = await generateContent(systemPrompt, userContent, {
       temperature: 0.4,
     });
 

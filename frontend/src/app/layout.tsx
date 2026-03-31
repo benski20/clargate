@@ -21,7 +21,7 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aribter — AI-Assisted IRB Platform",
+  title: "Arbiter — AI-Assisted IRB Platform",
   description:
     "A single governed workspace for investigators, administrators, and reviewers — from intake to decision.",
 };

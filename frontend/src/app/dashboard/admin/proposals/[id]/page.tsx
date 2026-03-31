@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Brain,
@@ -11,14 +11,21 @@ import {
   CheckCircle2,
   Loader2,
   MessageSquare,
+  AlertCircle,
+  Calendar,
+  FileStack,
+  ChevronDown,
+  Download,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -26,11 +33,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
+import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
+import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type {
+  Letter,
   ProposalDetail,
   ProposalStatus,
   Review,
@@ -39,18 +57,115 @@ import type {
   User,
 } from "@/lib/types";
 
-export default function AdminProposalDetailPage() {
+const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages"] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
+/** Large / internal blobs — hide from admin Details for clarity (PI still has full data elsewhere). */
+const ADMIN_DETAILS_SKIP = new Set(["ai_workspace", "submission_snapshot"]);
+
+/** Shown in the compact horizontal strip on the Summary tab. */
+const SUMMARY_COMPACT_KEYS = new Set([
+  "risk_level",
+  "regulatory_category_suggestion",
+  "data_sensitivity",
+]);
+
+function markdownToPlainText(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s*\d+\.\s+/gm, "• ")
+    .replace(/^\s*[-*+]\s+/gm, "• ")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
+    .trim();
+}
+
+/** Avoid "Objects are not valid as a React child" for nested JSON in form_data / summaries. */
+function renderJsonValue(value: unknown): ReactNode {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return markdownToPlainText(value);
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return (
+      <ul className="list-inside list-disc space-y-1 text-muted-foreground">
+        {value.map((item, i) => (
+          <li key={i}>{renderJsonValue(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    return (
+      <pre className="mt-1 max-h-[min(24rem,50vh)] overflow-auto rounded-lg border border-border/50 bg-muted/30 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    );
+  }
+  return String(value);
+}
+
+/**
+ * `Object.entries("ai-draft")` yields per-character rows — never treat strings as record maps.
+ */
+function renderFormSectionBody(sectionKey: string, data: unknown): ReactNode {
+  if (data === null || data === undefined) return null;
+
+  if (typeof data === "string" || typeof data === "number" || typeof data === "boolean") {
+    return <div className="text-sm leading-relaxed text-muted-foreground">{renderJsonValue(data)}</div>;
+  }
+
+  if (Array.isArray(data)) {
+    return <div className="text-sm">{renderJsonValue(data)}</div>;
+  }
+
+  if (typeof data === "object") {
+    return (
+      <div className="space-y-4">
+        {Object.entries(data as Record<string, unknown>).map(([key, value]) => {
+          if (value === null || value === undefined || value === "") return null;
+          return (
+            <div key={`${sectionKey}-${key}`} className="border-b border-border/40 pb-3 last:border-0 last:pb-0">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {key.replace(/_/g, " ")}
+              </div>
+              <div className="mt-1.5 text-sm text-foreground">{renderJsonValue(value)}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return renderJsonValue(data);
+}
+
+function AdminProposalDetailInner() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const proposalId = params.id as string;
+
+  const tabParam = searchParams.get("tab");
+  const activeTab: TabValue = TAB_VALUES.includes(tabParam as TabValue)
+    ? (tabParam as TabValue)
+    : "summary";
 
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [assignments, setAssignments] = useState<ReviewAssignment[]>([]);
+  const [letters, setLetters] = useState<Letter[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [revisionLetter, setRevisionLetter] = useState("");
+  const [pendingLetterId, setPendingLetterId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [selectedReviewer, setSelectedReviewer] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,32 +174,67 @@ export default function AdminProposalDetailPage() {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendingLetter, setSendingLetter] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
+  const [revisionNote, setRevisionNote] = useState("");
 
   useEffect(() => {
     Promise.all([
       db.getProposal(proposalId),
       db.getReviews(proposalId).catch(() => []),
+      db.getReviewAssignmentsForProposal(proposalId).catch(() => []),
+      db.getProposalLetters(proposalId).catch(() => []),
+      db.getLatestAiSummary(proposalId).catch(() => null),
       db.getMessages(proposalId).catch(() => []),
       db.getInstitutionUsers().catch(() => []),
     ])
-      .then(([p, r, m, u]) => {
+      .then(([p, r, a, letterRows, aiSummary, m, u]) => {
         setProposal(p as ProposalDetail);
         setReviews(r as Review[]);
+        setAssignments(a as ReviewAssignment[]);
+        setLetters(letterRows as Letter[]);
+        if (aiSummary) setSummary(aiSummary);
         setMessages(m as Message[]);
         setUsers(u as User[]);
+
+        const list = letterRows as Letter[];
+        const unsent = list.find((l) => l.type === "revision" && !l.sent_at);
+        if (unsent) {
+          setRevisionLetter(unsent.content);
+          setPendingLetterId(unsent.id);
+        }
       })
       .finally(() => setLoading(false));
   }, [proposalId]);
 
+  function setTab(next: TabValue) {
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("tab", next);
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  }
+
   async function generateSummary() {
     setSummarizing(true);
+    setError(null);
     try {
-      const res = await invokeEdgeFunction<{ summary: Record<string, unknown> }>(
-        "summarize",
-        { proposal_id: proposalId },
-      );
-      setSummary(res.summary);
-    } catch {
+      const res = await fetch(`/api/admin/proposals/${proposalId}/summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        summary?: Record<string, unknown>;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error || `Generate summary failed (${res.status})`);
+      if (!json.summary) throw new Error("No summary returned");
+      const out = json.summary;
+      setSummary(out);
+      setBanner("Summary generated and saved.");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setSummarizing(false);
     }
@@ -92,27 +242,114 @@ export default function AdminProposalDetailPage() {
 
   async function draftRevisionLetter() {
     setDrafting(true);
+    setError(null);
     try {
-      const res = await invokeEdgeFunction<{ content: string }>(
-        "draft-revision-letter",
-        { proposal_id: proposalId },
-      );
-      setRevisionLetter(res.content);
-    } catch {
+      const res = await fetch(`/api/admin/proposals/${proposalId}/draft-revision-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string } & Partial<Letter>;
+      if (!res.ok) {
+        throw new Error(json.error || `AI draft failed (${res.status})`);
+      }
+      if (!json.id || typeof json.content !== "string") {
+        throw new Error("Invalid draft response");
+      }
+      const letter = json as Letter;
+      setRevisionLetter(letter.content);
+      setPendingLetterId(letter.id);
+      setLetters((prev) => [letter, ...prev.filter((x) => x.id !== letter.id)]);
+      setBanner("Draft saved — review the text, then send to the PI.");
+      setTab("letter");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setDrafting(false);
     }
   }
 
+  async function sendRevisionLetterToPi() {
+    if (!revisionLetter.trim()) return;
+    setSendingLetter(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/proposals/${proposalId}/send-revision-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          content: revisionLetter,
+          letter_id: pendingLetterId ?? undefined,
+          transition_to_revisions_requested: true,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        letter?: Letter;
+        status?: string;
+      };
+      if (!res.ok) {
+        throw new Error(json.error || `Send letter failed (${res.status})`);
+      }
+      if (!json.letter?.id) {
+        throw new Error("Invalid response from server");
+      }
+      setProposal((prev) =>
+        prev ? { ...prev, status: (json.status as ProposalStatus) ?? prev.status } : prev,
+      );
+      setLetters((prev) => {
+        const next = prev.filter((x) => x.id !== json.letter!.id);
+        return [json.letter as Letter, ...next];
+      });
+      setPendingLetterId(null);
+      setBanner(
+        "Revision letter saved for the PI in the app. Status set to Revisions Requested when allowed.",
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSendingLetter(false);
+    }
+  }
+
   async function updateStatus(newStatus: ProposalStatus) {
     setStatusUpdating(true);
+    setError(null);
     try {
-      const updated = await invokeEdgeFunction<{ status: string }>(
-        "update-status",
-        { proposal_id: proposalId, status: newStatus },
-      );
-      setProposal((prev) => prev && { ...prev, status: updated.status as ProposalStatus });
-    } catch {
+      const updated = await updateProposalStatusViaApi(proposalId, newStatus);
+      setProposal((prev) => prev && { ...prev, status: updated.status });
+      setBanner(`Status updated to ${updated.status.replace(/_/g, " ")}.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setStatusUpdating(false);
+    }
+  }
+
+  async function confirmRequestRevisionsOnly() {
+    setStatusUpdating(true);
+    setError(null);
+    try {
+      const updated = await updateProposalStatusViaApi(proposalId, "revisions_requested");
+      setProposal((prev) => prev && { ...prev, status: updated.status });
+      if (revisionNote.trim()) {
+        const appUser = await db.getCurrentAppUser();
+        if (appUser) {
+          const msg = await db.sendMessage(
+            proposalId,
+            `[Revision request] ${revisionNote.trim()}`,
+            appUser.id,
+          );
+          setMessages((prev) => [...prev, msg as Message]);
+        }
+      }
+      setRevisionDialogOpen(false);
+      setRevisionNote("");
+      setBanner("Status set to Revisions Requested.");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setStatusUpdating(false);
     }
@@ -121,13 +358,18 @@ export default function AdminProposalDetailPage() {
   async function assignReviewer() {
     if (!selectedReviewer) return;
     setAssigning(true);
+    setError(null);
     try {
       await invokeEdgeFunction("assign-reviewers", {
         proposal_id: proposalId,
         reviewer_user_ids: [selectedReviewer],
       });
       setSelectedReviewer("");
-    } catch {
+      const next = await db.getReviewAssignmentsForProposal(proposalId);
+      setAssignments(next);
+      setBanner("Reviewer assigned.");
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setAssigning(false);
     }
@@ -136,13 +378,15 @@ export default function AdminProposalDetailPage() {
   async function sendMessage() {
     if (!newMessage.trim()) return;
     setSending(true);
+    setError(null);
     try {
       const appUser = await db.getCurrentAppUser();
       if (!appUser) return;
       const msg = await db.sendMessage(proposalId, newMessage, appUser.id);
       setMessages((prev) => [...prev, msg as Message]);
       setNewMessage("");
-    } catch {
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setSending(false);
     }
@@ -150,238 +394,872 @@ export default function AdminProposalDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (!proposal) return <p className="text-muted-foreground">Proposal not found.</p>;
+  if (!proposal) {
+    return <p className="text-muted-foreground">Proposal not found.</p>;
+  }
 
   const reviewers = users.filter((u) => u.role === "reviewer");
+  const submittedAt = proposal.submitted_at
+    ? new Date(proposal.submitted_at).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : null;
+
+  const canRequestRevisions =
+    proposal.status === "initial_review" || proposal.status === "under_committee_review";
+  const aiWorkspace =
+    proposal.form_data &&
+    typeof proposal.form_data === "object" &&
+    !Array.isArray(proposal.form_data) &&
+    "ai_workspace" in proposal.form_data
+      ? ((proposal.form_data as Record<string, unknown>).ai_workspace as Record<string, unknown> | null)
+      : null;
+  const complianceFlags = Array.isArray(aiWorkspace?.compliance_flags)
+    ? (aiWorkspace?.compliance_flags as Array<Record<string, unknown>>)
+    : [];
+
+  const submissionSnapshot = getSubmissionSnapshot(
+    proposal.form_data as Record<string, unknown> | null,
+  );
+  const docxDocument =
+    submissionSnapshot?.docx_file_name && proposal.documents?.length
+      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
+      : undefined;
+
+  function downloadSubmissionMarkdown() {
+    if (!submissionSnapshot) return;
+    const blob = new Blob([submissionSnapshot.markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = submissionSnapshot.file_name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function openStoredDocumentDownload(documentId: string) {
+    setError(null);
+    try {
+      const { download_url } = await db.getProposalDocumentDownloadUrl(proposalId, documentId);
+      window.open(download_url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" className="mt-1 cursor-pointer" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="font-[var(--font-heading)] text-2xl font-bold">{proposal.title}</h1>
-            <StatusBadge status={proposal.status} />
+    <div className="mx-auto flex max-w-5xl flex-col gap-8 pb-16">
+      <div className="flex flex-col gap-6 border-b border-border/70 pb-8">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="mt-0.5 shrink-0 cursor-pointer"
+            onClick={() => router.back()}
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-sans text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+                {proposal.title}
+              </h1>
+              <StatusBadge status={proposal.status} />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              <span>
+                PI: <span className="text-foreground">{proposal.pi_name || "—"}</span>
+              </span>
+              <span className="hidden sm:inline" aria-hidden>
+                ·
+              </span>
+              <span>
+                Type:{" "}
+                <span className="text-foreground">
+                  {proposal.review_type?.replace(/_/g, " ") || "—"}
+                </span>
+              </span>
+              {submittedAt ? (
+                <>
+                  <span className="hidden sm:inline" aria-hidden>
+                    ·
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                    Submitted {submittedAt}
+                  </span>
+                </>
+              ) : null}
+              <span className="hidden sm:inline" aria-hidden>
+                ·
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <FileStack className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                {proposal.document_count} document{proposal.document_count === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            PI: {proposal.pi_name || "—"} &middot; Type: {proposal.review_type?.replace(/_/g, " ") || "—"}
-          </p>
         </div>
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        {proposal.status === "submitted" && (
-          <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("initial_review")} disabled={statusUpdating}>
-            {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Begin Review
-          </Button>
-        )}
-        {proposal.status === "initial_review" && (
-          <>
-            <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("under_committee_review")} disabled={statusUpdating}>
-              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Send to Committee
-            </Button>
-            <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => updateStatus("revisions_requested")} disabled={statusUpdating}>
-              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Request Revisions
-            </Button>
-            <Button size="sm" variant="outline" className="cursor-pointer border-border bg-background hover:bg-muted" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
-              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}
-              Approve
-            </Button>
-          </>
-        )}
-        {proposal.status === "under_committee_review" && (
-          <>
-            <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => updateStatus("revisions_requested")} disabled={statusUpdating}>
-              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Request Revisions
-            </Button>
-            <Button size="sm" variant="outline" className="cursor-pointer border-border bg-background hover:bg-muted" onClick={() => updateStatus("approved")} disabled={statusUpdating}>
-              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1 h-4 w-4" />}
-              Approve
-            </Button>
-          </>
-        )}
-        {proposal.status === "resubmitted" && (
-          <Button size="sm" className="cursor-pointer" onClick={() => updateStatus("initial_review")} disabled={statusUpdating}>
-            {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Begin Re-Review
-          </Button>
-        )}
-      </div>
+        {error ? (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
 
-      <Tabs defaultValue="summary">
-        <TabsList className="h-auto flex-wrap rounded-2xl border border-border/80 bg-muted/50 p-1">
-          <TabsTrigger value="summary" className="cursor-pointer rounded-xl"><Brain className="mr-2 h-4 w-4" />AI Summary</TabsTrigger>
-          <TabsTrigger value="details" className="cursor-pointer rounded-xl">Details</TabsTrigger>
-          <TabsTrigger value="reviewers" className="cursor-pointer rounded-xl"><UserPlus className="mr-2 h-4 w-4" />Reviewers</TabsTrigger>
-          <TabsTrigger value="letter" className="cursor-pointer rounded-xl"><FileEdit className="mr-2 h-4 w-4" />Revision Letter</TabsTrigger>
-          <TabsTrigger value="messages" className="cursor-pointer rounded-xl"><MessageSquare className="mr-2 h-4 w-4" />Messages</TabsTrigger>
-        </TabsList>
+        {banner ? (
+          <div
+            role="status"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-muted/40 px-4 py-3 text-sm text-foreground"
+          >
+            <span>{banner}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 cursor-pointer"
+              onClick={() => setBanner(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
 
-        <TabsContent value="summary" className="mt-6">
+        {submissionSnapshot || (proposal.documents && proposal.documents.length > 0) ? (
           <Card className={dashboardCardClass}>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">AI-Generated Summary</CardTitle>
-              <Button size="sm" className="gap-2 cursor-pointer" onClick={generateSummary} disabled={summarizing}>
-                {summarizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                {summary ? "Regenerate" : "Generate Summary"}
-              </Button>
+            <CardHeader className="space-y-1 pb-2">
+              <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                Submission package &amp; files
+              </CardTitle>
+              <CardDescription>
+                Markdown is stored with the proposal; Word is generated on submit and stored like other uploads.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              {summary ? (
-                <div className="space-y-3">
-                  {Object.entries(summary).map(([key, value]) => (
-                    <div key={key}>
-                      <span className="text-sm font-medium capitalize text-foreground">{key.replace(/_/g, " ")}:</span>{" "}
-                      <span className="text-sm text-muted-foreground">
-                        {Array.isArray(value) ? (value as string[]).join(", ") : String(value)}
-                      </span>
-                    </div>
-                  ))}
+            <CardContent className="space-y-2 pt-0">
+              {submissionSnapshot ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">Submitted package (Markdown)</p>
+                    <p className="text-xs text-muted-foreground">{submissionSnapshot.file_name}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer shrink-0"
+                    onClick={downloadSubmissionMarkdown}
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    .md
+                  </Button>
+                  {docxDocument ? (
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      className="cursor-pointer shrink-0"
+                      onClick={() => void openStoredDocumentDownload(docxDocument.id)}
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      Word (.docx)
+                    </Button>
+                  ) : submissionSnapshot.docx_file_name ? (
+                    <span className="text-xs text-muted-foreground">Word file pending or missing</span>
+                  ) : null}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Click &quot;Generate Summary&quot; to create an AI-powered analysis of this proposal.
-                </p>
-              )}
+              ) : null}
+              {proposal.documents && proposal.documents.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {proposal.documents
+                    .filter((doc) => {
+                      if (docxDocument && doc.id === docxDocument.id) return false;
+                      if (
+                        submissionSnapshot &&
+                        doc.file_name === submissionSnapshot.file_name
+                      ) {
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((doc) => (
+                    <li
+                      key={doc.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(doc.uploaded_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="cursor-pointer shrink-0"
+                        onClick={() => void openStoredDocumentDownload(doc.id)}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : !submissionSnapshot ? (
+                <p className="text-sm text-muted-foreground">No uploaded files yet.</p>
+              ) : null}
             </CardContent>
           </Card>
-        </TabsContent>
+        ) : null}
 
-        <TabsContent value="details" className="mt-6">
-          <div className="grid gap-4">
-            {proposal.form_data && Object.entries(proposal.form_data).map(([section, data]) => (
-              <Card className={dashboardCardClass} key={section}>
-                <CardHeader className="pb-3"><CardTitle className="text-base capitalize">{section.replace(/_/g, " ")}</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {Object.entries(data as Record<string, string>).map(([key, value]) => value && (
-                    <div key={key}>
-                      <span className="text-sm font-medium capitalize text-foreground">{key.replace(/_/g, " ")}:</span>{" "}
-                      <span className="text-sm text-muted-foreground">{value}</span>
+        <Card className={dashboardCardClass}>
+          <CardHeader className="space-y-1 pb-2">
+            <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+              Workflow
+            </CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              Advance the protocol, request changes from the PI, or open the revision letter tab to draft and send formal
+              feedback.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-2">
+            <div className="flex flex-wrap gap-2">
+              {proposal.status === "submitted" && (
+                <Button
+                  size="sm"
+                  className="cursor-pointer"
+                  onClick={() => updateStatus("initial_review")}
+                  disabled={statusUpdating}
+                >
+                  {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Begin Review
+                </Button>
+              )}
+              {proposal.status === "initial_review" && (
+                <>
+                  <Button
+                    size="sm"
+                    className="cursor-pointer"
+                    onClick={() => updateStatus("under_committee_review")}
+                    disabled={statusUpdating}
+                  >
+                    {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Send to Committee
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer"
+                    onClick={() => setRevisionDialogOpen(true)}
+                    disabled={statusUpdating}
+                  >
+                    Request revisions (status only)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer border-border bg-background hover:bg-muted"
+                    onClick={() => updateStatus("approved")}
+                    disabled={statusUpdating}
+                  >
+                    {statusUpdating ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="mr-1 h-4 w-4" />
+                    )}
+                    Approve
+                  </Button>
+                </>
+              )}
+              {proposal.status === "under_committee_review" && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer"
+                    onClick={() => setRevisionDialogOpen(true)}
+                    disabled={statusUpdating}
+                  >
+                    Request revisions (status only)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer border-border bg-background hover:bg-muted"
+                    onClick={() => updateStatus("approved")}
+                    disabled={statusUpdating}
+                  >
+                    {statusUpdating ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="mr-1 h-4 w-4" />
+                    )}
+                    Approve
+                  </Button>
+                </>
+              )}
+              {proposal.status === "resubmitted" && (
+                <Button
+                  size="sm"
+                  className="cursor-pointer"
+                  onClick={() => updateStatus("initial_review")}
+                  disabled={statusUpdating}
+                >
+                  {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Begin Re-Review
+                </Button>
+              )}
+            </div>
+
+            {canRequestRevisions ? (
+              <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-border/90 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Propose revisions to the PI</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Draft a formal letter (tab below), or change status now and optionally post a short note to Messages.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => setTab("letter")}
+                  >
+                    <FileEdit className="mr-2 h-4 w-4" />
+                    Open revision letter
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="cursor-pointer"
+                    onClick={() => setRevisionDialogOpen(true)}
+                  >
+                    Status + note
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-sans">Request revisions</DialogTitle>
+            <DialogDescription>
+              Sets the proposal to <strong>Revisions Requested</strong> so the PI can edit and resubmit. Use this when you
+              do not need a formal letter yet, or follow up with a letter from the Revision Letter tab.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label htmlFor="rev-note" className="text-sm font-medium text-foreground">
+              Optional note to the PI (posted to Messages)
+            </Label>
+            <Textarea
+              id="rev-note"
+              rows={4}
+              placeholder="e.g. Please expand the consent section per our call."
+              value={revisionNote}
+              onChange={(e) => setRevisionNote(e.target.value)}
+              className="min-h-[120px] resize-none rounded-xl border-border/80 bg-background text-sm leading-relaxed"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRevisionDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="cursor-pointer min-w-[5.5rem]"
+              onClick={() => void confirmRequestRevisionsOnly()}
+              disabled={statusUpdating}
+            >
+              {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Tabs value={activeTab} onValueChange={(v) => setTab(v as TabValue)} className="flex flex-1 flex-col gap-4">
+        <TabsList className="grid h-auto w-full grid-cols-0 gap-10 rounded-xl border border-border/0 bg-muted/30 p-0 shadow-none sm:grid-cols-3 md:grid-cols-5">
+          <TabsTrigger
+            value="summary"
+            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
+          >
+            <span className="min-w-0 text-balance leading-tight">AI Summary</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="details"
+            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
+          >
+            <span className="min-w-0 text-balance leading-tight">Details</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="reviewers"
+            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
+          >
+            <span className="min-w-0 text-balance leading-tight">Reviewers</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="letter"
+            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
+          >
+            <span className="min-w-0 text-balance leading-tight">Revision Letter</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="messages"
+            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
+          >
+            <span className="min-w-0 text-balance leading-tight">Messages</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="min-h-[min(480px,calc(100vh-16rem))]">
+          <TabsContent value="summary" className="mt-0 outline-none">
+            <Card className={dashboardCardClass}>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="space-y-1">
+                  <CardTitle className="font-sans text-base font-semibold tracking-tight">AI-generated summary</CardTitle>
+                  <CardDescription>
+                    Structured triage view for administrators. Regenerate after the PI updates the submission.
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-2 cursor-pointer shrink-0"
+                  onClick={() => void generateSummary()}
+                  disabled={summarizing}
+                >
+                  {summarizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                  {summary ? "Regenerate" : "Generate summary"}
+                </Button>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {complianceFlags.length > 0 ? (
+                  <details className="group mb-5 rounded-2xl border border-amber-500/35 bg-amber-500/5 open:bg-amber-500/[0.07]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-left outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                          AI flagged items
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {complianceFlags.length} flag(s) — click to expand
+                        </p>
+                      </div>
+                      <ChevronDown className="size-4 shrink-0 text-amber-900/70 transition-transform duration-200 group-open:rotate-180 dark:text-amber-100/70" aria-hidden />
+                    </summary>
+                    <div className="border-t border-amber-500/25 px-4 pb-4 pt-2">
+                      <ul className="space-y-2">
+                        {complianceFlags.slice(0, 8).map((f, i) => (
+                          <li key={String(f.id ?? i)} className="rounded-xl border border-border/60 bg-background/80 p-3">
+                            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {String(f.severity ?? "info")} · {String(f.section_key ?? "general")}
+                            </div>
+                            <p className="mt-1 text-sm text-foreground">
+                              {markdownToPlainText(String(f.message ?? ""))}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </details>
+                ) : null}
+                {summary ? (
+                  <div className="space-y-4">
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {Array.from(SUMMARY_COMPACT_KEYS).map((key) => {
+                        if (!(key in summary)) return null;
+                        const value = summary[key];
+                        return (
+                          <div
+                            key={key}
+                            className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5"
+                          >
+                            <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                              {key.replace(/_/g, " ")}
+                            </div>
+                            <div className="mt-1 text-sm font-medium leading-snug text-foreground">
+                              {renderJsonValue(value)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {Object.entries(summary).some(([key]) => !SUMMARY_COMPACT_KEYS.has(key)) ? (
+                      <details className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                          <span>Full AI summary</span>
+                          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                        </summary>
+                        <div className="border-t border-border/40 px-4 pb-4 pt-3">
+                          <dl className="grid gap-3 md:grid-cols-2">
+                            {Object.entries(summary)
+                              .filter(([key]) => !SUMMARY_COMPACT_KEYS.has(key))
+                              .map(([key, value]) => (
+                                <div
+                                  key={key}
+                                  className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5"
+                                >
+                                  <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                                    {key.replace(/_/g, " ")}
+                                  </dt>
+                                  <dd className="mt-1 text-sm leading-relaxed text-foreground">
+                                    {renderJsonValue(value)}
+                                  </dd>
+                                </div>
+                              ))}
+                          </dl>
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Generate a summary to see risk level, population, methodology, and pathway suggestions for this
+                      protocol.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="details" className="mt-0 outline-none">
+            <Card className={dashboardCardClass}>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="space-y-1">
+                  <CardTitle className="font-sans text-base font-semibold tracking-tight">Submission details</CardTitle>
+                  <CardDescription>
+                    PI intake by section. Expand each block to review answers; internal AI/workspace fields are hidden
+                    here.
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {(() => {
+                  const rows =
+                    proposal.form_data && Object.keys(proposal.form_data).length > 0
+                      ? Object.entries(proposal.form_data).filter(([section]) => !ADMIN_DETAILS_SKIP.has(section))
+                      : [];
+                  const hasHiddenOnly =
+                    proposal.form_data &&
+                    Object.keys(proposal.form_data).length > 0 &&
+                    rows.length === 0;
+
+                  return (
+                    <>
+                      <div className="mb-5 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
+                          <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                            Status
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <StatusBadge status={proposal.status} />
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
+                          <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                            Documents
+                          </div>
+                          <div className="mt-1 text-sm font-medium leading-snug text-foreground">
+                            {proposal.document_count}
+                          </div>
+                        </div>
+                      </div>
+
+                      {rows.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                          <p className="text-sm text-muted-foreground">
+                            {hasHiddenOnly
+                              ? "No sections to show here (internal AI/workspace fields are hidden)."
+                              : "No intake data on file."}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {rows.map(([section, data], sectionIndex) => (
+                            <details
+                              key={section}
+                              className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15"
+                              open={sectionIndex === 0}
+                            >
+                              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium capitalize outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                                <span>{section.replace(/_/g, " ")}</span>
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                              </summary>
+                              <div className="border-t border-border/40 px-4 pb-4 pt-3">
+                                {renderFormSectionBody(section, data)}
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reviewers" className="mt-0 space-y-4 outline-none">
+            {assignments.length > 0 ? (
+              <Card className={dashboardCardClass}>
+                <CardHeader>
+                  <CardTitle className="font-sans text-base font-semibold">Current assignments</CardTitle>
+                  <CardDescription>Reviewers who have been invited for this protocol.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {assignments.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{a.reviewer_name || "Reviewer"}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {a.status.replace(/_/g, " ")} · Assigned{" "}
+                          {new Date(a.assigned_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        </TabsContent>
+            ) : null}
 
-        <TabsContent value="reviewers" className="mt-6 space-y-4">
-          <Card className={dashboardCardClass}>
-            <CardHeader><CardTitle className="text-base">Assign Reviewer</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select a reviewer" /></SelectTrigger>
-                  <SelectContent>
-                    {reviewers.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.full_name} ({r.email})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button className="cursor-pointer" onClick={assignReviewer} disabled={!selectedReviewer || assigning}>
-                  {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                  Assign
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          {reviews.length > 0 && (
             <Card className={dashboardCardClass}>
-              <CardHeader><CardTitle className="text-base">Submitted Reviews</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                {reviews.map((r) => (
-                  <div key={r.id} className="rounded-lg border border-border p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold capitalize">{r.decision.replace(/_/g, " ")}</span>
-                      <span className="text-xs text-muted-foreground">{new Date(r.submitted_at).toLocaleDateString()}</span>
-                    </div>
-                    {r.comments && (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        {Object.entries(r.comments).map(([k, v]) => (
-                          <p key={k}><strong className="capitalize">{k.replace(/_/g, " ")}:</strong> {String(v)}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+              <CardHeader>
+                <CardTitle className="font-sans text-base font-semibold">Assign reviewer</CardTitle>
+                <CardDescription>Reviewers receive an email with the proposal title.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
+                    <SelectTrigger className="flex-1 rounded-xl">
+                      <SelectValue placeholder="Select a reviewer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reviewers.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.full_name} ({r.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    className="cursor-pointer shrink-0 sm:w-auto"
+                    onClick={() => void assignReviewer()}
+                    disabled={!selectedReviewer || assigning}
+                  >
+                    {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                    Assign
+                  </Button>
+                </div>
+                {reviewers.length === 0 ? (
+                  <p className="mt-3 text-xs text-muted-foreground">No reviewer accounts in your institution yet.</p>
+                ) : null}
               </CardContent>
             </Card>
-          )}
-        </TabsContent>
 
-        <TabsContent value="letter" className="mt-6">
-          <Card className={dashboardCardClass}>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Revision Letter</CardTitle>
-              <Button size="sm" className="gap-2 cursor-pointer" onClick={draftRevisionLetter} disabled={drafting}>
-                {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                AI Draft
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                rows={12}
-                placeholder="Write or AI-draft a revision letter..."
-                value={revisionLetter}
-                onChange={(e) => setRevisionLetter(e.target.value)}
-              />
-              <Button className="mt-4 gap-2 cursor-pointer" disabled={!revisionLetter.trim()}>
-                <Send className="h-4 w-4" /> Send Letter
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="messages" className="mt-6">
-          <Card className={dashboardCardClass}>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[350px] p-4">
-                {messages.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">No messages yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className="rounded-lg bg-muted/50 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{msg.sender_name || "Unknown"}</span>
-                          <span className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleString()}</span>
-                        </div>
-                        <p className="mt-1 text-sm">{msg.body}</p>
+            {reviews.length > 0 && (
+              <details className={`group ${dashboardCardClass}`}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-6 py-4 font-sans text-base font-semibold outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span>Submitted reviews ({reviews.length})</span>
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                </summary>
+                <CardContent className="space-y-4 border-t border-border/40 px-6 pb-6 pt-4">
+                  {reviews.map((r) => (
+                    <div key={r.id} className="rounded-xl border border-border p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold capitalize">{r.decision.replace(/_/g, " ")}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(r.submitted_at).toLocaleDateString()}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-              <Separator />
-              <div className="flex gap-2 p-4">
-                <Input
-                  placeholder="Type a message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !sending && sendMessage()}
-                  disabled={sending}
-                  className={`rounded-full ${dashboardInputClass}`}
-                />
-                <Button size="icon" className="cursor-pointer" onClick={sendMessage} disabled={sending}>
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {r.comments && (
+                        <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                          {Object.entries(r.comments).map(([k, v]) => (
+                            <div key={k} className="space-y-1">
+                              <strong className="capitalize text-foreground">{k.replace(/_/g, " ")}:</strong>
+                              <div className="pl-0">{renderJsonValue(v as unknown)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </details>
+            )}
+          </TabsContent>
+
+          <TabsContent value="letter" className="mt-0 outline-none">
+            <Card className={dashboardCardClass}>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="space-y-1">
+                  <CardTitle className="font-sans text-base font-semibold tracking-tight">Revision letter</CardTitle>
+                  <CardDescription>
+                    Draft manually or with AI. Sending records the letter for the PI in-app and sets status to{" "}
+                    <strong>Revisions Requested</strong> when allowed.
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-2 cursor-pointer shrink-0"
+                  onClick={() => void draftRevisionLetter()}
+                  disabled={drafting}
+                >
+                  {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                  AI draft
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <Textarea
+                  rows={14}
+                  placeholder="Write or paste the revision letter to the PI..."
+                  value={revisionLetter}
+                  onChange={(e) => setRevisionLetter(e.target.value)}
+                  className="min-h-[280px] resize-y rounded-2xl font-sans text-sm leading-relaxed"
+                />
+                {pendingLetterId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Editing draft letter ID <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">{pendingLetterId.slice(0, 8)}…</code> — send
+                    will update this draft.
+                  </p>
+                ) : null}
+                <div className="flex justify-end">
+                  <Button
+                    className="gap-2 cursor-pointer min-w-[180px]"
+                    disabled={!revisionLetter.trim() || sendingLetter}
+                    onClick={() => void sendRevisionLetterToPi()}
+                  >
+                    {sendingLetter ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Send letter
+                  </Button>
+                </div>
+
+                {letters.filter((l) => l.type === "revision").length > 0 ? (
+                  <details className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                      <span>
+                        Recent letters (
+                        {letters.filter((l) => l.type === "revision").length})
+                      </span>
+                      <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <ul className="space-y-2 border-t border-border/40 px-4 pb-4 pt-2 text-sm">
+                      {letters
+                        .filter((l) => l.type === "revision")
+                        .slice(0, 5)
+                        .map((l) => (
+                          <li key={l.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-muted-foreground">
+                              {new Date(l.created_at).toLocaleString()}
+                              {l.generated_by_ai ? " · AI draft" : " · Manual"}
+                            </span>
+                            <span className="text-xs font-medium text-foreground">
+                              {l.sent_at ? "Sent" : "Not sent"}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="messages" className="mt-0 outline-none">
+            <Card className={dashboardCardClass}>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[min(420px,50vh)] p-4">
+                  {messages.length === 0 ? (
+                    <p className="py-12 text-center text-sm text-muted-foreground">No messages yet.</p>
+                  ) : (
+                    <div className="space-y-3 pr-2">
+                      {messages.map((msg) => (
+                        <div key={msg.id} className="rounded-xl bg-muted/50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{msg.sender_name || "Unknown"}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(msg.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm leading-relaxed">{msg.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                <Separator />
+                <div className="flex gap-2 p-4">
+                  <Input
+                    placeholder="Type a message…"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!sending) void sendMessage();
+                      }
+                    }}
+                    disabled={sending}
+                    className={`rounded-full ${dashboardInputClass}`}
+                  />
+                  <Button
+                    size="icon"
+                    className="cursor-pointer shrink-0"
+                    onClick={() => void sendMessage()}
+                    disabled={sending}
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </div>
       </Tabs>
     </div>
+  );
+}
+
+export default function AdminProposalDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <AdminProposalDetailInner />
+    </Suspense>
   );
 }

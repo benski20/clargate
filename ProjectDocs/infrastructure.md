@@ -1,4 +1,4 @@
-# Aribter — Infrastructure & Compliance Overview
+# Arbiter — Infrastructure & Compliance Overview
 
 ## Stack
 

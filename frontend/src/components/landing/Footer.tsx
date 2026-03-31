@@ -55,7 +55,7 @@ export function Footer() {
       </div>
 
       <div className="flex w-full flex-col items-center justify-between gap-4 border-t border-white/10 bg-[#050505] px-[clamp(1.5rem,5vw,4rem)] py-8 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-white/30 uppercase sm:flex-row">
-        <span>© {new Date().getFullYear()} Aribter Systems Inc.</span>
+        <span>© {new Date().getFullYear()} Arbiter Systems Inc.</span>
         <span>All systems operational.</span>
       </div>
     </footer>

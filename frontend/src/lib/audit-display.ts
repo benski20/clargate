@@ -11,6 +11,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_invited: "User invited",
   user_role_changed: "User role changed",
   revision_letter_drafted: "Revision letter drafted (AI)",
+  revision_letter_sent: "Revision letter sent to PI",
   ai_summary_generated: "AI summary generated",
 };
 

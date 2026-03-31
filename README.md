@@ -1,6 +1,6 @@
-# Aribter
+# Arbiter
 
-**Aribter is an AI-assisted IRB (Institutional Review Board) platform** — one governed workspace for investigators, administrators, and reviewers, from intake through decision. It replaces fragmented email, PDFs, and legacy submission tools with guided workflows, unified threads, and audit-oriented design.
+**Arbiter is an AI-assisted IRB (Institutional Review Board) platform** — one governed workspace for investigators, administrators, and reviewers, from intake through decision. It replaces fragmented email, PDFs, and legacy submission tools with guided workflows, unified threads, and audit-oriented design.
 
 ---
 
@@ -25,7 +25,7 @@ Legacy IRB workflows were not built for today. Most teams still stitch together 
 | **Hidden delays** | Admins lose hours coaching rewrites, chasing documents, and drafting revision letters by hand. |
 | **Inconsistent reviews** | Guidelines interpreted differently across reviewers — unpredictable outcomes for investigators. |
 
-**Bridge line:** Aribter replaces that patchwork with one governed workspace — built for compliance and speed.
+**Bridge line:** Arbiter replaces that patchwork with one governed workspace — built for compliance and speed.
 
 ### How it works (three steps)
 

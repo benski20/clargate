@@ -1,4 +1,5 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export function generateS3Key(proposalId: string, fileName: string): string {
   const unique = crypto.randomUUID().slice(0, 8);
@@ -58,4 +59,14 @@ export async function deleteObjectFromS3(key: string): Promise<void> {
       Key: key,
     }),
   );
+}
+
+/** Short-lived URL for browser download (GET object). */
+export async function getPresignedDownloadUrl(key: string, expiresInSeconds = 300): Promise<string> {
+  const client = getS3Client();
+  const cmd = new GetObjectCommand({
+    Bucket: getBucketName(),
+    Key: key,
+  });
+  return getSignedUrl(client, cmd, { expiresIn: expiresInSeconds });
 }

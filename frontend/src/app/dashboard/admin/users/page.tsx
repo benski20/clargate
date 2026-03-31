@@ -157,7 +157,7 @@ export default function AdminUsersPage() {
                 <KeyRound className="h-4 w-4" />
                 New signup code
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Create signup code</DialogTitle>
                   <DialogDescription>
@@ -165,7 +165,7 @@ export default function AdminUsersPage() {
                     consumes one use (if limited).
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreateCode} className="space-y-4">
+                <form onSubmit={handleCreateCode} className="space-y-5">
                   {codeError ? (
                     <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                       {codeError}
@@ -225,12 +225,12 @@ export default function AdminUsersPage() {
               <UserPlus className="h-4 w-4" />
               Invite user
             </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Invite User</DialogTitle>
-              <DialogDescription>Send an invitation to join your institution on Aribter.</DialogDescription>
+              <DialogDescription>Send an invitation to join your institution on Arbiter.</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleInvite} className="space-y-4">
+            <form onSubmit={handleInvite} className="space-y-5">
               <div className="space-y-2">
                 <Label>Full Name</Label>
                 <Input

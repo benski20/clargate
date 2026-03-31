@@ -11,9 +11,10 @@ import {
   Download,
   RefreshCw,
   Loader2,
+  ScrollText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -26,6 +27,9 @@ import type { ProposalDetail, Message, Letter } from "@/lib/types";
 
 const HIDDEN_FORM_SECTIONS = new Set(["ai_workspace", "submission_snapshot", "entry_mode"]);
 
+const PI_TABS = ["details", "documents", "letters", "messages"] as const;
+type PiTab = (typeof PI_TABS)[number];
+
 function ProposalDetailInner() {
   const params = useParams();
   const router = useRouter();
@@ -34,10 +38,7 @@ function ProposalDetailInner() {
   const proposalId = params.id as string;
   const justSubmitted = searchParams.get("submitted") === "1";
   const tabParam = searchParams.get("tab");
-  const initialTab =
-    tabParam === "documents" || tabParam === "messages" || tabParam === "details"
-      ? tabParam
-      : "details";
+  const activeTab: PiTab = PI_TABS.includes(tabParam as PiTab) ? (tabParam as PiTab) : "details";
 
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -47,14 +48,22 @@ function ProposalDetailInner() {
   const [resubmitting, setResubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  function setTab(next: PiTab) {
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("tab", next);
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  }
+
   useEffect(() => {
     Promise.all([
       db.getProposal(proposalId),
       db.getMessages(proposalId),
+      db.getProposalLetters(proposalId).catch(() => []),
     ])
-      .then(([p, m]) => {
+      .then(([p, m, letterRows]) => {
         setProposal(p as ProposalDetail);
         setMessages(m as Message[]);
+        setLetters(letterRows as Letter[]);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -110,6 +119,15 @@ function ProposalDetailInner() {
     proposal.form_data as Record<string, unknown> | null,
   );
 
+  const sentRevisionLetters = letters
+    .filter((l) => l.type === "revision" && l.sent_at)
+    .sort((a, b) => new Date(b.sent_at!).getTime() - new Date(a.sent_at!).getTime());
+
+  const docxDocument =
+    submissionSnapshot?.docx_file_name && proposal.documents?.length
+      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
+      : undefined;
+
   function downloadSubmissionSnapshot() {
     if (!submissionSnapshot) return;
     const blob = new Blob([submissionSnapshot.markdown], { type: "text/markdown;charset=utf-8" });
@@ -119,6 +137,15 @@ function ProposalDetailInner() {
     a.download = submissionSnapshot.file_name;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function downloadProposalDocument(documentId: string) {
+    try {
+      const { download_url } = await db.getProposalDocumentDownloadUrl(proposalId, documentId);
+      window.open(download_url, "_blank", "noopener,noreferrer");
+    } catch {
+      // ignore
+    }
   }
 
   return (
@@ -136,6 +163,31 @@ function ProposalDetailInner() {
               materials; use Messages to ask questions or share updates.
             </p>
           </div>
+        </div>
+      ) : null}
+
+      {proposal.status === "revisions_requested" && sentRevisionLetters.length > 0 ? (
+        <div
+          className="flex flex-col gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30"
+          role="status"
+        >
+          <div>
+            <p className="font-medium text-amber-950 dark:text-amber-100">Revisions requested</p>
+            <p className="mt-1 text-muted-foreground">
+              Your IRB office sent formal feedback. Review it in the IRB feedback tab, then address the
+              items and resubmit when ready.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="shrink-0 cursor-pointer"
+            onClick={() => setTab("letters")}
+          >
+            <ScrollText className="mr-2 h-4 w-4" />
+            View IRB feedback
+          </Button>
         </div>
       ) : null}
 
@@ -175,8 +227,8 @@ function ProposalDetailInner() {
         )}
       </div>
 
-      <Tabs defaultValue={initialTab}>
-        <TabsList className="h-auto rounded-2xl border border-border/80 bg-muted/50 p-1">
+      <Tabs value={activeTab} onValueChange={(v) => setTab(v as PiTab)}>
+        <TabsList className="h-auto flex-wrap rounded-2xl border border-border/80 bg-muted/50 p-1">
           <TabsTrigger value="details" className="cursor-pointer rounded-xl">
             <FileText className="mr-2 h-4 w-4" />
             Details
@@ -184,6 +236,15 @@ function ProposalDetailInner() {
           <TabsTrigger value="documents" className="cursor-pointer rounded-xl">
             <Download className="mr-2 h-4 w-4" />
             Documents
+          </TabsTrigger>
+          <TabsTrigger value="letters" className="cursor-pointer rounded-xl">
+            <ScrollText className="mr-2 h-4 w-4" />
+            IRB feedback
+            {sentRevisionLetters.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[0.65rem] font-medium tabular-nums">
+                {sentRevisionLetters.length}
+              </span>
+            ) : null}
           </TabsTrigger>
           <TabsTrigger value="messages" className="cursor-pointer rounded-xl">
             <MessageSquare className="mr-2 h-4 w-4" />
@@ -228,6 +289,51 @@ function ProposalDetailInner() {
           </div>
         </TabsContent>
 
+        <TabsContent value="letters" className="mt-6">
+          <Card className={dashboardCardClass}>
+            <CardHeader className="pb-2">
+              <CardTitle className="font-sans text-base font-semibold">IRB feedback</CardTitle>
+              <CardDescription>
+                Formal revision letters from your IRB office. Status also appears in the header (
+                <strong>Revisions requested</strong>).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-2">
+              {sentRevisionLetters.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border/80 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+                  No formal letters have been sent yet. When your office requests revisions, the letter will
+                  appear here and you will receive an email if your institution has mail enabled.
+                </p>
+              ) : (
+                sentRevisionLetters.map((letter) => (
+                  <div
+                    key={letter.id}
+                    className="rounded-2xl border border-border/80 bg-muted/10 p-4"
+                  >
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Revision letter
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Sent{" "}
+                        {letter.sent_at
+                          ? new Date(letter.sent_at).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                      {letter.content}
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="documents" className="mt-6">
           <Card className={dashboardCardClass}>
             <CardContent className="pt-6">
@@ -238,7 +344,7 @@ function ProposalDetailInner() {
               ) : (
                 <div className="space-y-2">
                   {submissionSnapshot ? (
-                    <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
                       <div className="flex items-center gap-3">
                         <FileText className="h-5 w-5 text-muted-foreground" />
                         <div>
@@ -249,18 +355,44 @@ function ProposalDetailInner() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="cursor-pointer"
-                        onClick={downloadSubmissionSnapshot}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="cursor-pointer"
+                          onClick={downloadSubmissionSnapshot}
+                        >
+                          <Download className="mr-1.5 h-4 w-4" />
+                          Markdown
+                        </Button>
+                        {docxDocument ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="cursor-pointer"
+                            onClick={() => void downloadProposalDocument(docxDocument.id)}
+                          >
+                            <Download className="mr-1.5 h-4 w-4" />
+                            Word (.docx)
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
-                  {proposal.documents.map((doc) => (
+                  {proposal.documents
+                    .filter((doc) => {
+                      if (docxDocument && doc.id === docxDocument.id) return false;
+                      if (
+                        submissionSnapshot &&
+                        doc.file_name === submissionSnapshot.file_name
+                      ) {
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((doc) => (
                     <div
                       key={doc.id}
                       className="flex items-center justify-between rounded-lg border border-border p-3"
@@ -274,7 +406,13 @@ function ProposalDetailInner() {
                           </p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" className="cursor-pointer">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="cursor-pointer"
+                        type="button"
+                        onClick={() => void downloadProposalDocument(doc.id)}
+                      >
                         <Download className="h-4 w-4" />
                       </Button>
                     </div>

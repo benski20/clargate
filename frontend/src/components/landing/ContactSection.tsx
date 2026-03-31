@@ -10,7 +10,7 @@ export function ContactSection() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const subject = encodeURIComponent("Aribter trial provisioning request");
+    const subject = encodeURIComponent("Arbiter trial provisioning request");
     const body = encodeURIComponent(
       `Institution: ${org}\nApproximate annual submissions: ${volume}\nContact email: ${email}`
     );

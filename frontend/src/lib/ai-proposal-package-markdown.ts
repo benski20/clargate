@@ -71,6 +71,13 @@ export function proposalPackageFilename(proposalId: string): string {
   return `proposal-package-${short}-${d}.md`;
 }
 
+/** Same date stem as {@link proposalPackageFilename}, `.docx` for Word. */
+export function proposalPackageDocxFilename(proposalId: string): string {
+  const short = proposalId.replace(/-/g, "").slice(0, 8);
+  const d = new Date().toISOString().slice(0, 10);
+  return `proposal-package-${short}-${d}.docx`;
+}
+
 export function downloadProposalPackageMarkdown(markdown: string, filename: string): void {
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);

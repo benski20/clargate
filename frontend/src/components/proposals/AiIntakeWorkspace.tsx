@@ -578,6 +578,25 @@ export function AiIntakeWorkspace({
         setRightTab("package");
         return;
       }
+      try {
+        const docxRes = await fetch(`/api/proposals/${proposalId}/upload-submission-docx`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ markdown: md }),
+        });
+        const docxJson = (await docxRes.json().catch(() => ({}))) as { error?: string };
+        if (!docxRes.ok) {
+          throw new Error(docxJson.error || `Word package upload failed (${docxRes.status})`);
+        }
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not save the proposal package as Word (.docx).";
+        setPackageS3Error(msg);
+        setSubmitting(false);
+        setRightTab("package");
+        return;
+      }
       await db.submitProposal(proposalId);
       router.push(`/dashboard/proposals/${proposalId}?submitted=1&tab=documents`);
       router.refresh();

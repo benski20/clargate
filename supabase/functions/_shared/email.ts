@@ -52,7 +52,34 @@ export async function sendReviewerAssignment(
     <h2>New Review Assignment</h2>
     <p>Dear ${reviewerName},</p>
     <p>You have been assigned to review: <strong>${proposalTitle}</strong></p>
-    <p>Please log in to the Aribter platform to begin your review.</p>
+    <p>Please log in to the Arbiter platform to begin your review.</p>
   `;
   return sendEmail(to, `New Review Assignment: ${proposalTitle}`, html);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Notifies the PI that a revision letter is available in-app (plain body, HTML-safe). */
+export async function sendRevisionLetterToPi(
+  to: string,
+  piName: string,
+  proposalTitle: string,
+  letterBody: string,
+): Promise<boolean> {
+  const safe = escapeHtml(letterBody);
+  const html = `
+    <h2>Revision request</h2>
+    <p>Dear ${escapeHtml(piName || "Investigator")},</p>
+    <p>Your IRB office has shared revision feedback for <strong>${escapeHtml(proposalTitle)}</strong>.</p>
+    <p>Please sign in to Arbiter to view the full letter and respond.</p>
+    <hr style="border:none;border-top:1px solid #ddd;margin:16px 0" />
+    <pre style="font-family:system-ui,sans-serif;font-size:14px;white-space:pre-wrap;margin:0">${safe}</pre>
+  `;
+  return sendEmail(to, `Revision request: ${proposalTitle}`, html);
 }

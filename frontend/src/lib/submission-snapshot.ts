@@ -1,8 +1,10 @@
-/** Stored on submit in `proposals.form_data.submission_snapshot` (no S3 / Edge Function). */
+/** Stored on submit in `proposals.form_data.submission_snapshot` (markdown + S3 package files). */
 export type SubmissionSnapshot = {
   markdown: string;
   file_name: string;
   submitted_at: string;
+  /** S3-backed `proposal_documents` row — same stem as `file_name` but `.docx`. */
+  docx_file_name?: string;
 };
 
 export function getSubmissionSnapshot(
@@ -20,5 +22,7 @@ export function getSubmissionSnapshot(
     typeof o.submitted_at === "string" && o.submitted_at.trim()
       ? o.submitted_at
       : new Date().toISOString();
-  return { markdown, file_name, submitted_at };
+  const docx_file_name =
+    typeof o.docx_file_name === "string" && o.docx_file_name.trim() ? o.docx_file_name.trim() : undefined;
+  return { markdown, file_name, submitted_at, docx_file_name };
 }

@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
-import type { AuditLogEntry, Proposal, RedeemSignupResult, SignupCodeRow, UserRole } from "@/lib/types";
+import type {
+  AuditLogEntry,
+  Letter,
+  Proposal,
+  RedeemSignupResult,
+  ReviewAssignment,
+  SignupCodeRow,
+  UserRole,
+} from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 function getClient(): SupabaseClient {
@@ -121,6 +129,27 @@ export const db = {
   /**
    * S3 upload + `proposal_documents` row via Next.js API (session cookie; no Edge Function JWT).
    */
+  async getProposalDocumentDownloadUrl(proposalId: string, documentId: string) {
+    const res = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/download`, {
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      download_url?: string;
+      file_name?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Download failed (${res.status})`);
+    }
+    if (!json.download_url) {
+      throw new Error("No download URL");
+    }
+    return {
+      download_url: json.download_url,
+      file_name: json.file_name ?? "document",
+    };
+  },
+
   async presignUploadProposalFile(proposalId: string, file: File) {
     const formData = new FormData();
     formData.append("file", file);
@@ -236,6 +265,52 @@ export const db = {
       .eq("review_assignments.proposal_id", proposalId);
     if (error) throw error;
     return data ?? [];
+  },
+
+  async getReviewAssignmentsForProposal(proposalId: string): Promise<ReviewAssignment[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("review_assignments")
+      .select("id, proposal_id, reviewer_user_id, status, assigned_at")
+      .eq("proposal_id", proposalId)
+      .order("assigned_at", { ascending: false });
+    if (error) throw error;
+    const users = await this.getInstitutionUsers();
+    const nameById = new Map(users.map((u) => [u.id, u.full_name]));
+    return (data ?? []).map((row) => ({
+      ...(row as ReviewAssignment),
+      reviewer_name: nameById.get((row as ReviewAssignment).reviewer_user_id) ?? null,
+    }));
+  },
+
+  async getProposalLetters(proposalId: string): Promise<Letter[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("letters")
+      .select(
+        "id, proposal_id, type, content, generated_by_ai, sent_at, approval_date, expiration_date, created_at",
+      )
+      .eq("proposal_id", proposalId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as Letter[];
+  },
+
+  async getLatestAiSummary(proposalId: string): Promise<Record<string, unknown> | null> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("ai_summaries")
+      .select("summary")
+      .eq("proposal_id", proposalId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    const raw = data?.summary;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    return null;
   },
 
   async getInstitutionUsers() {

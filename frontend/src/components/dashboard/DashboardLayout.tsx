@@ -119,7 +119,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="flex h-full flex-col">
         <div className="px-4 pb-4 pt-5">
           <Link href="/" className="block font-[var(--font-heading)] text-lg font-medium tracking-tight text-foreground">
-            Aribter
+            Arbiter
           </Link>
           <p className="mt-0.5 text-[0.6rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             Workspace
@@ -224,7 +224,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </SheetContent>
           </Sheet>
-          <span className="font-[var(--font-heading)] text-base font-medium tracking-tight">Aribter</span>
+          <span className="font-[var(--font-heading)] text-base font-medium tracking-tight">Arbiter</span>
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto px-4 py-6 md:px-8 md:py-10 lg:px-10">

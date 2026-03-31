@@ -92,3 +92,29 @@ export async function generateWithForcedToolCall<T extends object>({
 
   return call.args as T;
 }
+
+/** Plain text generation (no tool calling) — e.g. revision letters. */
+export async function generatePlainText({
+  systemInstruction,
+  userText,
+  temperature = 0.4,
+  maxOutputTokens = 8192,
+}: {
+  systemInstruction: string;
+  userText: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}): Promise<string> {
+  const genAI = getGeminiClient();
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction,
+  });
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: userText }] }],
+    generationConfig: { temperature, maxOutputTokens },
+  });
+  const text = result.response.text();
+  if (!text?.trim()) throw new Error("Empty model response");
+  return text.trim();
+}
