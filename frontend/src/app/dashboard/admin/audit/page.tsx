@@ -121,7 +121,7 @@ export default function AuditLogPage() {
           actions={
             <Button
               variant="outline"
-              className="h-11 cursor-pointer gap-2 rounded-full border-border"
+              className="h-9 cursor-pointer gap-2 rounded-md border-border shadow-sm"
               onClick={exportCSV}
             >
               <Download className="h-4 w-4" />

@@ -61,7 +61,7 @@ export default function MfaPage() {
       <Card className={authCardClassName}>
         <CardHeader className="text-center">
           <AuthBrand />
-          <div className="mx-auto mt-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+          <div className="mx-auto mt-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <KeyRound className="h-6 w-6 text-primary" strokeWidth={1.75} aria-hidden />
           </div>
           <CardTitle className="mt-4 text-2xl font-semibold tracking-tight">Two-factor verification</CardTitle>
@@ -88,7 +88,7 @@ export default function MfaPage() {
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={loading}>
+            <Button type="submit" className="h-9 w-full cursor-pointer rounded-md shadow-sm" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Verify and continue
             </Button>

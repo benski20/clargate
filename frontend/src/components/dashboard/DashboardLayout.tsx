@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
+import { cn } from "@/lib/utils";
 import type { User, UserRole } from "@/lib/types";
 
 interface NavItem {
@@ -102,12 +103,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   function UserBlock({ compact }: { compact?: boolean }) {
     return (
-      <div className={`flex items-center gap-3 ${compact ? "px-1" : "px-2"}`}>
-        <Avatar className="h-10 w-10 shrink-0 border border-border/80 shadow-sm">
+      <div className={`flex items-center gap-3 ${compact ? "px-1" : "px-1"}`}>
+        <Avatar className="h-9 w-9 shrink-0 border border-border/60 shadow-sm">
           <AvatarFallback className="bg-muted text-xs font-medium text-foreground">{initials}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{appUser?.full_name || "—"}</p>
+          <p className="truncate text-sm font-semibold text-foreground">{appUser?.full_name || "—"}</p>
           <p className="truncate text-xs text-muted-foreground">{appUser?.email}</p>
         </div>
       </div>
@@ -117,20 +118,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   function SidebarContent() {
     return (
       <div className="flex h-full flex-col">
-        <div className="px-4 pb-4 pt-5">
-          <Link href="/" className="block font-[var(--font-heading)] text-lg font-medium tracking-tight text-foreground">
+        <div className="px-5 pb-4 pt-6">
+          <Link href="/" className="block font-semibold text-xl tracking-tight text-foreground">
             Arbiter
           </Link>
-          <p className="mt-0.5 text-[0.6rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
             Workspace
           </p>
         </div>
 
-        <div className="px-3 pb-4">
+        <div className="px-4 pb-6">
           <UserBlock />
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-4">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
           {filteredNav.map((item) => {
             const isActive =
               pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -139,30 +140,33 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
-                className={`flex cursor-pointer items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200 ${
                   isActive
-                    ? "bg-muted text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    ? "bg-primary/5 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
-                <item.icon className="h-4 w-4 shrink-0 opacity-90" />
+                <item.icon className="h-4 w-4 shrink-0" />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="mt-auto border-t border-border/80 p-2">
+        <div className="mt-auto border-t border-border/60 p-3">
           <DropdownMenu open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DropdownMenuTrigger>
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-                Settings
-              </button>
-            </DropdownMenuTrigger>
+            <DropdownMenuTrigger
+              nativeButton={false}
+              render={
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4 shrink-0" />
+                  Settings
+                </button>
+              }
+            />
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem className="cursor-pointer">
                 <Settings className="mr-2 h-4 w-4" />
@@ -203,19 +207,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-muted/50">
-      <aside className="sticky top-0 hidden h-screen w-[17.5rem] shrink-0 p-4 md:block">
-        <div
-          className={`flex h-full flex-col overflow-hidden rounded-3xl border border-border/80 bg-card shadow-[0_2px_8px_-2px_rgba(0,0,0,0.06),0_1px_2px_-1px_rgba(0,0,0,0.04)]`}
-        >
+    <div className="flex min-h-screen bg-background">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-border/60 bg-muted/20 md:block">
+        <div className="flex h-full flex-col overflow-hidden">
           <SidebarContent />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border/80 bg-card/95 px-4 backdrop-blur-md md:hidden">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur-md md:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger render={<Button variant="ghost" size="icon" className="cursor-pointer rounded-2xl" />}>
+            <SheetTrigger render={<Button variant="ghost" size="icon" className="cursor-pointer rounded-md" />}>
               <Menu className="h-5 w-5" />
             </SheetTrigger>
             <SheetContent side="left" className="w-[min(100%,18rem)] border-r border-border/80 p-0">
@@ -224,7 +226,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </SheetContent>
           </Sheet>
-          <span className="font-[var(--font-heading)] text-base font-medium tracking-tight">Arbiter</span>
+          <span className="font-semibold text-base tracking-tight">Arbiter</span>
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto px-4 py-6 md:px-8 md:py-10 lg:px-10">

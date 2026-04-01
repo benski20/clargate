@@ -63,7 +63,7 @@ export default function MyProposalsPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="font-[var(--font-heading)] text-2xl font-medium tracking-tight md:text-3xl">
+            <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">
               My proposals
             </h1>
             <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
@@ -72,7 +72,7 @@ export default function MyProposalsPage() {
           </div>
         </div>
         <Button
-          className="h-11 w-full shrink-0 cursor-pointer gap-2 rounded-full bg-foreground px-8 text-background hover:bg-foreground/90 sm:w-auto"
+          className="h-9 w-full shrink-0 cursor-pointer gap-2 rounded-md bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90 sm:w-auto"
           render={<Link href="/dashboard/proposals/new" />}
         >
           <Plus className="h-4 w-4" />
@@ -82,7 +82,7 @@ export default function MyProposalsPage() {
 
       <Card className={dashboardCardClass}>
         <CardHeader>
-          <CardTitle className="font-[var(--font-heading)] text-lg font-medium">All proposals</CardTitle>
+          <CardTitle className="font-semibold text-lg">All proposals</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -96,7 +96,7 @@ export default function MyProposalsPage() {
                 No proposals yet. Create your first proposal to get started.
               </p>
               <Button
-                className="mt-5 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
+                className="mt-5 cursor-pointer gap-2 rounded-md bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                 render={<Link href="/dashboard/proposals/new" />}
               >
                 <Plus className="h-4 w-4" />
@@ -109,7 +109,7 @@ export default function MyProposalsPage() {
                 <Link
                   key={p.id}
                   href={`/dashboard/proposals/${p.id}`}
-                  className="flex cursor-pointer items-center justify-between rounded-2xl border border-transparent px-4 py-3 transition-colors duration-200 hover:border-border hover:bg-muted/50"
+                  className="flex cursor-pointer items-center justify-between rounded-lg border border-transparent px-4 py-3 transition-colors duration-200 hover:border-border hover:bg-muted/50"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-foreground">{p.title}</p>

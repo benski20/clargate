@@ -94,7 +94,7 @@ export default function LoginPage() {
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={loading}>
+            <Button type="submit" className="h-9 w-full cursor-pointer rounded-md shadow-sm" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign in
             </Button>
@@ -113,7 +113,7 @@ export default function LoginPage() {
             <Button
               variant="outline"
               type="button"
-              className="h-11 cursor-pointer rounded-full"
+              className="h-9 cursor-pointer rounded-md shadow-sm"
               disabled={!!oauthProvider || loading}
               onClick={() => handleSSOLogin("google")}
             >
@@ -123,7 +123,7 @@ export default function LoginPage() {
             <Button
               variant="outline"
               type="button"
-              className="h-11 cursor-pointer rounded-full"
+              className="h-9 cursor-pointer rounded-md shadow-sm"
               disabled={!!oauthProvider || loading}
               onClick={() => handleSSOLogin("azure")}
             >

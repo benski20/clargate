@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, FileText, MessageSquare, Clock, Loader2 } from "lucide-react";
+import { Plus, FileText, MessageSquare, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
+import { GradientCard } from "@/components/ui/gradient-card";
 import {
   dashboardCardClass,
   DashboardWelcome,
@@ -14,9 +14,126 @@ import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import type { Proposal, UserRole } from "@/lib/types";
 
+type QuickGradient = "orange" | "gray" | "purple" | "green";
+
+type DashboardQuickCard = {
+  badgeText: string;
+  badgeColor: string;
+  title: string;
+  description: string;
+  ctaText: string;
+  ctaHref: string;
+  gradient: QuickGradient;
+};
+
+function dashboardQuickCards(role: UserRole | null): DashboardQuickCard[] {
+  if (role === "pi") {
+    return [
+      {
+        badgeText: "Start",
+        badgeColor: "#ea580c",
+        title: "New proposal",
+        description:
+          "Open a draft, attach documents, and submit when your package is complete.",
+        ctaText: "Create proposal",
+        ctaHref: "/dashboard/proposals/new",
+        gradient: "orange",
+      },
+      {
+        badgeText: "Track",
+        badgeColor: "#64748b",
+        title: "My proposals",
+        description:
+          "See every submission, status, and update in one place—no duplicate list here.",
+        ctaText: "Open full list",
+        ctaHref: "/dashboard/proposals",
+        gradient: "gray",
+      },
+      {
+        badgeText: "At a glance",
+        badgeColor: "#8b5cf6",
+        title: "Summary metrics",
+        description:
+          "Jump to your totals, items under review, and drafts that still need action.",
+        ctaText: "Go to stats",
+        ctaHref: "/dashboard#dashboard-stats",
+        gradient: "purple",
+      },
+    ];
+  }
+  if (role === "admin") {
+    return [
+      {
+        badgeText: "Pipeline",
+        badgeColor: "#ea580c",
+        title: "Submissions",
+        description:
+          "Triage the full institutional queue, assignments, and next steps.",
+        ctaText: "Open queue",
+        ctaHref: "/dashboard/admin",
+        gradient: "orange",
+      },
+      {
+        badgeText: "Intake",
+        badgeColor: "#64748b",
+        title: "Inbox",
+        description:
+          "Catch administrative messages and items that need a quick response.",
+        ctaText: "Go to inbox",
+        ctaHref: "/dashboard/admin/inbox",
+        gradient: "gray",
+      },
+      {
+        badgeText: "Institution",
+        badgeColor: "#059669",
+        title: "Configure",
+        description:
+          "AI guidance, review settings, and institutional defaults for submissions.",
+        ctaText: "Open settings",
+        ctaHref: "/dashboard/admin/configure",
+        gradient: "green",
+      },
+    ];
+  }
+  if (role === "reviewer") {
+    return [
+      {
+        badgeText: "Assignments",
+        badgeColor: "#ea580c",
+        title: "My reviews",
+        description:
+          "Continue assigned proposals, leave feedback, and update review status.",
+        ctaText: "Open reviews",
+        ctaHref: "/dashboard/reviewer",
+        gradient: "orange",
+      },
+      {
+        badgeText: "Summary",
+        badgeColor: "#64748b",
+        title: "Activity snapshot",
+        description:
+          "Totals above update as you complete reviews—use them to prioritize your queue.",
+        ctaText: "Go to stats",
+        ctaHref: "/dashboard#dashboard-stats",
+        gradient: "gray",
+      },
+      {
+        badgeText: "Product",
+        badgeColor: "#8b5cf6",
+        title: "Arbiter overview",
+        description:
+          "Revisit how Arbiter fits your institution’s review workflow from the home page.",
+        ctaText: "View home",
+        ctaHref: "/",
+        gradient: "purple",
+      },
+    ];
+  }
+  return [];
+}
+
 export default function DashboardPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [welcomeName, setWelcomeName] = useState("");
   const [role, setRole] = useState<UserRole | null>(null);
 
@@ -39,10 +156,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     db
-      .getProposals({ pageSize: 5 })
+      .getProposals({ pageSize: 500 })
       .then(setProposals)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
   }, []);
 
   const stats = {
@@ -64,11 +180,11 @@ export default function DashboardPage() {
             subtitle="Here is a concise view of your proposals."
           />
         ) : (
-          <div className="h-24 w-full max-w-md animate-pulse rounded-2xl bg-muted/60" aria-hidden />
+          <div className="h-24 w-full max-w-md animate-pulse rounded-lg bg-muted/60" aria-hidden />
         )}
         {role === "pi" && (
           <Button
-            className="h-11 w-full shrink-0 cursor-pointer gap-2 rounded-full bg-foreground px-8 text-background hover:bg-foreground/90 lg:w-auto"
+            className="h-9 w-full shrink-0 cursor-pointer gap-2 rounded-md bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90 lg:w-auto"
             render={<Link href="/dashboard/proposals/new" />}
           >
             <Plus className="h-4 w-4" />
@@ -77,18 +193,18 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div id="dashboard-stats" className="grid gap-4 scroll-mt-24 sm:grid-cols-3">
         <Card className={dashboardCardClass}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Total
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted">
-              <FileText className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
+              <FileText className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-[var(--font-heading)] text-3xl font-medium tabular-nums tracking-tight">
+            <div className="font-semibold text-3xl tabular-nums tracking-tight">
               {stats.total}
             </div>
           </CardContent>
@@ -98,12 +214,12 @@ export default function DashboardPage() {
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Under review
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted">
-              <Clock className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
+              <Clock className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-[var(--font-heading)] text-3xl font-medium tabular-nums tracking-tight">
+            <div className="font-semibold text-3xl tabular-nums tracking-tight">
               {stats.active}
             </div>
           </CardContent>
@@ -113,64 +229,45 @@ export default function DashboardPage() {
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Needs action
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted">
-              <MessageSquare className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
+              <MessageSquare className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-[var(--font-heading)] text-3xl font-medium tabular-nums tracking-tight">
+            <div className="font-semibold text-3xl tabular-nums tracking-tight">
               {stats.needsAction}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card className={dashboardCardClass}>
-        <CardHeader>
-          <CardTitle className="font-[var(--font-heading)] text-lg font-medium">Recent proposals</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
-            </div>
-          ) : proposals.length === 0 ? (
-            <div className="py-10 text-center">
-              <FileText className="mx-auto h-10 w-10 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                No proposals yet. Create your first proposal to get started.
-              </p>
-              {role === "pi" && (
-                <Button
-                  className="mt-5 cursor-pointer gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
-                  render={<Link href="/dashboard/proposals/new" />}
-                >
-                  <Plus className="h-4 w-4" />
-                  New proposal
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {proposals.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/dashboard/proposals/${p.id}`}
-                  className="flex cursor-pointer items-center justify-between rounded-2xl border border-transparent px-4 py-3 transition-colors duration-200 hover:border-border hover:bg-muted/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-foreground">{p.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Updated {new Date(p.updated_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <StatusBadge status={p.status} />
-                </Link>
+      <div>
+        <p className="mb-4 font-mono text-[0.65rem] font-normal uppercase tracking-[0.2em] text-muted-foreground">
+          Quick links
+        </p>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+          {role === null
+            ? [0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-[180px] animate-pulse rounded-2xl bg-muted/70 md:h-[200px]"
+                  aria-hidden
+                />
+              ))
+            : dashboardQuickCards(role).map((card) => (
+                <GradientCard
+                  key={`${card.ctaHref}-${card.title}`}
+                  badgeText={card.badgeText}
+                  badgeColor={card.badgeColor}
+                  title={card.title}
+                  description={card.description}
+                  ctaText={card.ctaText}
+                  ctaHref={card.ctaHref}
+                  gradient={card.gradient}
+                />
               ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

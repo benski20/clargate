@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -22,14 +22,92 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
+import { TreeView } from "@/components/ui/tree-view";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const HIDDEN_FORM_SECTIONS = new Set(["ai_workspace", "submission_snapshot", "entry_mode"]);
 
 const PI_TABS = ["details", "documents", "letters", "messages"] as const;
 type PiTab = (typeof PI_TABS)[number];
+
+function markdownToPlainText(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s*\d+\.\s+/gm, "• ")
+    .replace(/^\s*[-*+]\s+/gm, "• ")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
+    .trim();
+}
+
+function renderJsonValue(value: unknown): ReactNode {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return markdownToPlainText(value);
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return (
+      <ul className="list-inside list-disc space-y-1 text-muted-foreground">
+        {value.map((item, i) => (
+          <li key={i}>{renderJsonValue(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    return (
+      <pre className="mt-1 max-h-[min(24rem,50vh)] overflow-auto rounded-lg border border-border/50 bg-muted/30 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    );
+  }
+  return String(value);
+}
+
+function renderFormSectionBody(sectionKey: string, data: unknown): ReactNode {
+  if (data === null || data === undefined) return null;
+
+  if (typeof data === "string" || typeof data === "number" || typeof data === "boolean") {
+    return <div className="text-sm leading-relaxed text-muted-foreground">{renderJsonValue(data)}</div>;
+  }
+
+  if (Array.isArray(data)) {
+    return <div className="text-sm">{renderJsonValue(data)}</div>;
+  }
+
+  if (typeof data === "object") {
+    const entries = Object.entries(data as Record<string, unknown>).filter(
+      ([, value]) => value !== null && value !== undefined && value !== "",
+    );
+
+    if (entries.length === 0) {
+      return <div className="text-sm text-muted-foreground italic">No details provided.</div>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {entries.map(([key, value]) => (
+          <div key={`${sectionKey}-${key}`} className="border-b border-border/40 pb-3 last:border-0 last:pb-0">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {key.replace(/_/g, " ")}
+            </div>
+            <div className="mt-1.5 text-sm text-foreground">{renderJsonValue(value)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return renderJsonValue(data);
+}
 
 function ProposalDetailInner() {
   const params = useParams();
@@ -39,8 +117,6 @@ function ProposalDetailInner() {
   const proposalId = params.id as string;
   const justSubmitted = searchParams.get("submitted") === "1";
   const justResubmitted = searchParams.get("resubmitted") === "1";
-  const tabParam = searchParams.get("tab");
-  const activeTab: PiTab = PI_TABS.includes(tabParam as PiTab) ? (tabParam as PiTab) : "details";
 
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,12 +124,55 @@ function ProposalDetailInner() {
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeNode, setActiveNode] = useState<string | null>(null);
 
-  function setTab(next: PiTab) {
-    const q = new URLSearchParams(searchParams.toString());
-    q.set("tab", next);
-    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
-  }
+  const validFormSections = proposal?.form_data
+    ? Object.entries(proposal.form_data).filter(
+        ([section, data]) =>
+          !HIDDEN_FORM_SECTIONS.has(section) &&
+          data !== null &&
+          typeof data === "object" &&
+          !Array.isArray(data),
+      )
+    : [];
+
+  useEffect(() => {
+    if (!activeNode && proposal) {
+      if (validFormSections.length > 0) {
+        setActiveNode(validFormSections[0][0]);
+      } else {
+        setActiveNode("documents");
+      }
+    }
+  }, [validFormSections, activeNode, proposal]);
+
+  const treeData = [
+    {
+      id: "details-group",
+      label: "Details",
+      icon: <FileText className="h-4 w-4" />,
+      children: validFormSections.map(([section]) => ({
+        id: section,
+        label: section.replace(/_/g, " "),
+        icon: <FileText className="h-4 w-4" />,
+      })),
+    },
+    {
+      id: "documents",
+      label: "Documents",
+      icon: <Download className="h-4 w-4" />,
+    },
+    {
+      id: "letters",
+      label: "IRB feedback",
+      icon: <ScrollText className="h-4 w-4" />,
+    },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: <MessageSquare className="h-4 w-4" />,
+    },
+  ];
 
   useEffect(() => {
     Promise.all([
@@ -142,7 +261,7 @@ function ProposalDetailInner() {
     <div className="space-y-6">
       {justSubmitted ? (
         <div
-          className="flex gap-3 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/40"
+          className="flex gap-3 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/40"
           role="status"
         >
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
@@ -158,7 +277,7 @@ function ProposalDetailInner() {
 
       {justResubmitted ? (
         <div
-          className="flex gap-3 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/40"
+          className="flex gap-3 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/40"
           role="status"
         >
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
@@ -174,7 +293,7 @@ function ProposalDetailInner() {
 
       {proposal.status === "revisions_requested" && sentRevisionLetters.length > 0 ? (
         <div
-          className="flex flex-col gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30"
+          className="flex flex-col gap-3 rounded-md border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:bg-amber-950/30"
           role="status"
         >
           <div>
@@ -190,7 +309,7 @@ function ProposalDetailInner() {
             variant="secondary"
             size="sm"
             className="shrink-0 cursor-pointer"
-            onClick={() => setTab("letters")}
+            onClick={() => setActiveNode("letters")}
           >
             <ScrollText className="mr-2 h-4 w-4" />
             View IRB feedback
@@ -209,7 +328,7 @@ function ProposalDetailInner() {
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="font-[var(--font-heading)] text-2xl font-bold">{proposal.title}</h1>
+            <h1 className="font-semibold text-2xl">{proposal.title}</h1>
             <StatusBadge status={proposal.status} />
           </div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -231,255 +350,230 @@ function ProposalDetailInner() {
         ) : null}
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setTab(v as PiTab)}>
-        <TabsList className="h-auto flex-wrap rounded-2xl border border-border/80 bg-muted/50 p-1">
-          <TabsTrigger value="details" className="cursor-pointer rounded-xl">
-            <FileText className="mr-2 h-4 w-4" />
-            Details
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="cursor-pointer rounded-xl">
-            <Download className="mr-2 h-4 w-4" />
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="letters" className="cursor-pointer rounded-xl">
-            <ScrollText className="mr-2 h-4 w-4" />
-            IRB feedback
-            {sentRevisionLetters.length > 0 ? (
-              <span className="ml-1.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[0.65rem] font-medium tabular-nums">
-                {sentRevisionLetters.length}
-              </span>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="messages" className="cursor-pointer rounded-xl">
-            <MessageSquare className="mr-2 h-4 w-4" />
-            Messages
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-6 md:flex-row md:items-start">
+        {/* Sidebar navigation */}
+        <div className="w-full shrink-0 md:w-64">
+          <TreeView
+            className="border-none bg-transparent p-0"
+            data={treeData}
+            defaultExpandedIds={["details-group"]}
+            selectedIds={activeNode ? [activeNode] : []}
+            onNodeClick={(node) => {
+              if (node.children) return;
+              setActiveNode(node.id);
+            }}
+            showIcons={true}
+            showLines={false}
+          />
+        </div>
 
-        <TabsContent value="details" className="mt-6">
-          <div className="grid gap-4">
-            {proposal.form_data &&
-              Object.entries(proposal.form_data)
-                .filter(
-                  ([section, data]) =>
-                    !HIDDEN_FORM_SECTIONS.has(section) &&
-                    data !== null &&
-                    typeof data === "object" &&
-                    !Array.isArray(data),
-                )
-                .map(([section, data]) => (
-                  <Card className={dashboardCardClass} key={section}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base capitalize">
-                        {section.replace(/_/g, " ")}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {Object.entries(data as Record<string, string>).map(
-                        ([key, value]) =>
-                          value &&
-                          typeof value === "string" && (
-                            <div key={key}>
-                              <span className="text-sm font-medium capitalize text-foreground">
-                                {key.replace(/_/g, " ")}:
-                              </span>{" "}
-                              <span className="text-sm text-muted-foreground">{value}</span>
-                            </div>
-                          ),
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="letters" className="mt-6">
-          <Card className={dashboardCardClass}>
-            <CardHeader className="pb-2">
-              <CardTitle className="font-sans text-base font-semibold">IRB feedback</CardTitle>
-              <CardDescription>
-                Formal revision letters from your IRB office. Status also appears in the header (
-                <strong>Revisions requested</strong>).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              {sentRevisionLetters.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-border/80 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
-                  No formal letters have been sent yet. When your office requests revisions, the letter will
-                  appear here and you will receive an email if your institution has mail enabled.
-                </p>
-              ) : (
-                sentRevisionLetters.map((letter) => (
-                  <div
-                    key={letter.id}
-                    className="rounded-2xl border border-border/80 bg-muted/10 p-4"
-                  >
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Revision letter
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Sent{" "}
-                        {letter.sent_at
-                          ? new Date(letter.sent_at).toLocaleString(undefined, {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            })
-                          : "—"}
-                      </span>
-                    </div>
-                    <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
-                      {letter.content}
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="documents" className="mt-6">
-          <Card className={dashboardCardClass}>
-            <CardContent className="pt-6">
-              {proposal.documents.length === 0 && !submissionSnapshot ? (
-                <p className="text-center text-sm text-muted-foreground py-8">
-                  No documents uploaded yet.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {submissionSnapshot ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{submissionSnapshot.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Submitted package (database) ·{" "}
-                            {new Date(submissionSnapshot.submitted_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="cursor-pointer"
-                          onClick={downloadSubmissionSnapshot}
-                        >
-                          <Download className="mr-1.5 h-4 w-4" />
-                          Markdown
-                        </Button>
-                        {docxDocument ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="cursor-pointer"
-                            onClick={() => void downloadProposalDocument(docxDocument.id)}
-                          >
-                            <Download className="mr-1.5 h-4 w-4" />
-                            Word (.docx)
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                  {proposal.documents
-                    .filter((doc) => {
-                      if (docxDocument && doc.id === docxDocument.id) return false;
-                      if (
-                        submissionSnapshot &&
-                        doc.file_name === submissionSnapshot.file_name
-                      ) {
-                        return false;
-                      }
-                      return true;
-                    })
-                    .map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{doc.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(doc.uploaded_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="cursor-pointer"
-                        type="button"
-                        onClick={() => void downloadProposalDocument(doc.id)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="messages" className="mt-6">
-          <Card className={dashboardCardClass}>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[400px] p-4">
-                {messages.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    No messages yet. Start a conversation with the IRB office.
+        {/* Main content area */}
+        <div className="min-w-0 flex-1">
+          {activeNode === "documents" ? (
+            <Card className={dashboardCardClass}>
+              <CardContent className="pt-6">
+                {proposal.documents.length === 0 && !submissionSnapshot ? (
+                  <p className="text-center text-sm text-muted-foreground py-8">
+                    No documents uploaded yet.
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className="rounded-lg bg-muted/50 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">
-                            {msg.sender_name || "Unknown"}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(msg.created_at).toLocaleString()}
-                          </span>
+                  <div className="space-y-2">
+                    {submissionSnapshot ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{submissionSnapshot.file_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Submitted package (database) ·{" "}
+                              {new Date(submissionSnapshot.submitted_at).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                        <p className="mt-1 text-sm text-foreground">{msg.body}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="cursor-pointer"
+                            onClick={downloadSubmissionSnapshot}
+                          >
+                            <Download className="mr-1.5 h-4 w-4" />
+                            Markdown
+                          </Button>
+                          {docxDocument ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="cursor-pointer"
+                              onClick={() => void downloadProposalDocument(docxDocument.id)}
+                            >
+                              <Download className="mr-1.5 h-4 w-4" />
+                              Word (.docx)
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {proposal.documents
+                      .filter((doc) => {
+                        if (docxDocument && doc.id === docxDocument.id) return false;
+                        if (
+                          submissionSnapshot &&
+                          doc.file_name === submissionSnapshot.file_name
+                        ) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between rounded-lg border border-border p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{doc.file_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(doc.uploaded_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="cursor-pointer"
+                          type="button"
+                          onClick={() => void downloadProposalDocument(doc.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                   </div>
                 )}
-              </ScrollArea>
-              <Separator />
-              <div className="flex gap-2 p-4">
-                <Input
-                  placeholder="Type a message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !sending && sendMessage()}
-                  disabled={sending}
-                  className={`rounded-full ${dashboardInputClass}`}
-                />
-                <Button
-                  size="icon"
-                  className="cursor-pointer"
-                  onClick={sendMessage}
-                  disabled={sending}
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+              </CardContent>
+            </Card>
+          ) : activeNode === "letters" ? (
+            <Card className={dashboardCardClass}>
+              <CardHeader className="pb-2">
+                <CardTitle className="font-sans text-base font-semibold">IRB feedback</CardTitle>
+                <CardDescription>
+                  Formal revision letters from your IRB office. Status also appears in the header (
+                  <strong>Revisions requested</strong>).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-2">
+                {sentRevisionLetters.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+                    No formal letters have been sent yet. When your office requests revisions, the letter will
+                    appear here and you will receive an email if your institution has mail enabled.
+                  </p>
+                ) : (
+                  sentRevisionLetters.map((letter) => (
+                    <div
+                      key={letter.id}
+                      className="rounded-lg border border-border/60 bg-muted/10 p-4"
+                    >
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Revision letter
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Sent{" "}
+                          {letter.sent_at
+                            ? new Date(letter.sent_at).toLocaleString(undefined, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                        {letter.content}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          ) : activeNode === "messages" ? (
+            <Card className={dashboardCardClass}>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[400px] p-4">
+                  {messages.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      No messages yet. Start a conversation with the IRB office.
+                    </p>
                   ) : (
-                    <Send className="h-4 w-4" />
+                    <div className="space-y-3">
+                      {messages.map((msg) => (
+                        <div key={msg.id} className="rounded-lg bg-muted/50 p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              {msg.sender_name || "Unknown"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(msg.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-foreground">{msg.body}</p>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                </ScrollArea>
+                <Separator />
+                <div className="flex gap-2 p-4">
+                  <Input
+                    placeholder="Type a message..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !sending && sendMessage()}
+                    disabled={sending}
+                    className={`rounded-md ${dashboardInputClass}`}
+                  />
+                  <Button
+                    size="icon"
+                    className="cursor-pointer"
+                    onClick={sendMessage}
+                    disabled={sending}
+                  >
+                    {sending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            validFormSections.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No form details available for this proposal.
+              </p>
+            ) : (
+              validFormSections
+                .filter(([section]) => section === activeNode)
+                .map(([section, data]) => (
+                  <Card className={dashboardCardClass} key={section}>
+                    <CardHeader className="border-b border-border/40 pb-4">
+                      <CardTitle className="text-lg capitalize tracking-tight">
+                        {section.replace(/_/g, " ")}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      {renderFormSectionBody(section, data)}
+                    </CardContent>
+                  </Card>
+                ))
+            )
+          )}
+        </div>
+      </div>
     </div>
   );
 }

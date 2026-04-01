@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
+import { TreeView } from "@/components/ui/tree-view";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
@@ -153,9 +154,6 @@ function AdminProposalDetailInner() {
   const proposalId = params.id as string;
 
   const tabParam = searchParams.get("tab");
-  const activeTab: TabValue = TAB_VALUES.includes(tabParam as TabValue)
-    ? (tabParam as TabValue)
-    : "summary";
 
   const [proposal, setProposal] = useState<ProposalDetail | null>(null);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
@@ -179,6 +177,50 @@ function AdminProposalDetailInner() {
   const [banner, setBanner] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionNote, setRevisionNote] = useState("");
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+
+  const validFormSections = proposal?.form_data
+    ? Object.entries(proposal.form_data).filter(
+        ([section, data]) =>
+          !ADMIN_DETAILS_SKIP.has(section) &&
+          data !== null &&
+          typeof data === "object" &&
+          !Array.isArray(data),
+      )
+    : [];
+
+  useEffect(() => {
+    if (!activeNode && proposal) {
+      setActiveNode("summary");
+    }
+  }, [activeNode, proposal]);
+
+  const treeData = [
+    {
+      id: "summary",
+      label: "AI Summary",
+    },
+    {
+      id: "details-group",
+      label: "Details",
+      children: validFormSections.map(([section]) => ({
+        id: section,
+        label: section.replace(/_/g, " "),
+      })),
+    },
+    {
+      id: "reviewers",
+      label: "Reviewers",
+    },
+    {
+      id: "letter",
+      label: "Revision Letter",
+    },
+    {
+      id: "messages",
+      label: "Messages",
+    },
+  ];
 
   useEffect(() => {
     Promise.all([
@@ -516,7 +558,7 @@ function AdminProposalDetailInner() {
         {error ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{error}</span>
@@ -526,7 +568,7 @@ function AdminProposalDetailInner() {
         {banner ? (
           <div
             role="status"
-            className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-muted/40 px-4 py-3 text-sm text-foreground"
+            className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/40 px-4 py-3 text-sm text-foreground"
           >
             <span>{banner}</span>
             <Button
@@ -728,7 +770,7 @@ function AdminProposalDetailInner() {
             </div>
 
             {canRequestRevisions ? (
-              <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-border/90 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/80 bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Propose revisions to the PI</p>
                   <p className="text-xs leading-relaxed text-muted-foreground">
@@ -781,7 +823,7 @@ function AdminProposalDetailInner() {
               placeholder="e.g. Please expand the consent section per our call."
               value={revisionNote}
               onChange={(e) => setRevisionNote(e.target.value)}
-              className="min-h-[120px] resize-none rounded-xl border-border/80 bg-background text-sm leading-relaxed"
+              className="min-h-[120px] resize-none rounded-md border-border/80 bg-background text-sm leading-relaxed"
             />
           </div>
           <DialogFooter>
@@ -801,42 +843,26 @@ function AdminProposalDetailInner() {
         </DialogContent>
       </Dialog>
 
-      <Tabs value={activeTab} onValueChange={(v) => setTab(v as TabValue)} className="flex flex-1 flex-col gap-4">
-        <TabsList className="grid h-auto w-full grid-cols-0 gap-10 rounded-xl border border-border/0 bg-muted/30 p-0 shadow-none sm:grid-cols-3 md:grid-cols-5">
-          <TabsTrigger
-            value="summary"
-            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
-          >
-            <span className="min-w-0 text-balance leading-tight">AI Summary</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="details"
-            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
-          >
-            <span className="min-w-0 text-balance leading-tight">Details</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="reviewers"
-            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
-          >
-            <span className="min-w-0 text-balance leading-tight">Reviewers</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="letter"
-            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
-          >
-            <span className="min-w-0 text-balance leading-tight">Revision Letter</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="messages"
-            className="!h-10 !min-h-10 !w-full !min-w-0 !flex-1 !border-0 !bg-transparent !shadow-none inline-flex cursor-pointer items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium text-muted-foreground after:!hidden ring-0 hover:bg-muted/60 hover:text-foreground data-active:!bg-card data-active:!text-foreground data-active:!shadow-sm sm:px-3 sm:text-sm"
-          >
-            <span className="min-w-0 text-balance leading-tight">Messages</span>
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col gap-6 md:flex-row md:items-start">
+        {/* Sidebar navigation */}
+        <div className="w-full shrink-0 md:w-64">
+          <TreeView
+            className="border-none bg-transparent p-0"
+            data={treeData}
+            defaultExpandedIds={["details-group"]}
+            selectedIds={activeNode ? [activeNode] : []}
+            onNodeClick={(node) => {
+              if (node.children) return;
+              setActiveNode(node.id);
+            }}
+            showIcons={false}
+            showLines={false}
+          />
+        </div>
 
-        <div className="min-h-[min(480px,calc(100vh-16rem))]">
-          <TabsContent value="summary" className="mt-0 outline-none">
+        {/* Main content area */}
+        <div className="min-w-0 flex-1">
+          {activeNode === "summary" ? (
             <Card className={dashboardCardClass}>
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
                 <div className="space-y-1">
@@ -857,8 +883,8 @@ function AdminProposalDetailInner() {
               </CardHeader>
               <CardContent className="pt-6">
                 {complianceFlags.length > 0 ? (
-                  <details className="group mb-5 rounded-2xl border border-amber-500/35 bg-amber-500/5 open:bg-amber-500/[0.07]">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-left outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                  <details className="group mb-5 rounded-lg border border-amber-500/35 bg-amber-500/5 open:bg-amber-500/[0.07]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 text-left outline-none marker:content-none [&::-webkit-details-marker]:hidden">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                           AI flagged items
@@ -872,7 +898,7 @@ function AdminProposalDetailInner() {
                     <div className="border-t border-amber-500/25 px-4 pb-4 pt-2">
                       <ul className="space-y-2">
                         {complianceFlags.slice(0, 8).map((f, i) => (
-                          <li key={String(f.id ?? i)} className="rounded-xl border border-border/60 bg-background/80 p-3">
+                          <li key={String(f.id ?? i)} className="rounded-md border border-border/60 bg-background/80 p-3">
                             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                               {String(f.severity ?? "info")} · {String(f.section_key ?? "general")}
                             </div>
@@ -894,7 +920,7 @@ function AdminProposalDetailInner() {
                         return (
                           <div
                             key={key}
-                            className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5"
+                            className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
                           >
                             <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                               {key.replace(/_/g, " ")}
@@ -907,8 +933,8 @@ function AdminProposalDetailInner() {
                       })}
                     </div>
                     {Object.entries(summary).some(([key]) => !SUMMARY_COMPACT_KEYS.has(key)) ? (
-                      <details className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15">
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                      <details className="group rounded-lg border border-border/60 bg-muted/10 open:bg-muted/15">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
                           <span>Full AI summary</span>
                           <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
                         </summary>
@@ -935,7 +961,7 @@ function AdminProposalDetailInner() {
                     ) : null}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                  <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
                     <p className="text-sm text-muted-foreground">
                       Generate a summary to see risk level, population, methodology, and pathway suggestions for this
                       protocol.
@@ -944,97 +970,19 @@ function AdminProposalDetailInner() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="details" className="mt-0 outline-none">
-            <Card className={dashboardCardClass}>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
-                <div className="space-y-1">
-                  <CardTitle className="font-sans text-base font-semibold tracking-tight">Submission details</CardTitle>
-                  <CardDescription>
-                    PI intake by section. Expand each block to review answers; internal AI/workspace fields are hidden
-                    here.
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                {(() => {
-                  const rows =
-                    proposal.form_data && Object.keys(proposal.form_data).length > 0
-                      ? Object.entries(proposal.form_data).filter(([section]) => !ADMIN_DETAILS_SKIP.has(section))
-                      : [];
-                  const hasHiddenOnly =
-                    proposal.form_data &&
-                    Object.keys(proposal.form_data).length > 0 &&
-                    rows.length === 0;
-
-                  return (
-                    <>
-                      <div className="mb-5 grid gap-2 sm:grid-cols-2">
-                        <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
-                          <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                            Status
-                          </div>
-                          <div className="mt-1 flex items-center gap-2">
-                            <StatusBadge status={proposal.status} />
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
-                          <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                            Documents
-                          </div>
-                          <div className="mt-1 text-sm font-medium leading-snug text-foreground">
-                            {proposal.document_count}
-                          </div>
-                        </div>
-                      </div>
-
-                      {rows.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
-                          <p className="text-sm text-muted-foreground">
-                            {hasHiddenOnly
-                              ? "No sections to show here (internal AI/workspace fields are hidden)."
-                              : "No intake data on file."}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {rows.map(([section, data], sectionIndex) => (
-                            <details
-                              key={section}
-                              className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15"
-                              open={sectionIndex === 0}
-                            >
-                              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium capitalize outline-none marker:content-none [&::-webkit-details-marker]:hidden">
-                                <span>{section.replace(/_/g, " ")}</span>
-                                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-                              </summary>
-                              <div className="border-t border-border/40 px-4 pb-4 pt-3">
-                                {renderFormSectionBody(section, data)}
-                              </div>
-                            </details>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="reviewers" className="mt-0 space-y-4 outline-none">
-            {assignments.length > 0 ? (
-              <Card className={dashboardCardClass}>
+          ) : activeNode === "reviewers" ? (
+            <div className="space-y-4">
+              {assignments.length > 0 ? (
+                <Card className={dashboardCardClass}>
                 <CardHeader>
                   <CardTitle className="font-sans text-base font-semibold">Current assignments</CardTitle>
                   <CardDescription>Reviewers who have been invited for this protocol.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {assignments.map((a) => (
-                    <div
+                      <div
                       key={a.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 px-4 py-3"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-4 py-3"
                     >
                       <div>
                         <p className="text-sm font-medium">{a.reviewer_name || "Reviewer"}</p>
@@ -1085,7 +1033,7 @@ function AdminProposalDetailInner() {
 
             {reviews.length > 0 && (
               <details className={`group ${dashboardCardClass}`}>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-6 py-4 font-sans text-base font-semibold outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-6 py-4 font-sans text-base font-semibold outline-none marker:content-none [&::-webkit-details-marker]:hidden">
                   <span>Submitted reviews ({reviews.length})</span>
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
                 </summary>
@@ -1111,11 +1059,10 @@ function AdminProposalDetailInner() {
                     </div>
                   ))}
                 </CardContent>
-              </details>
-            )}
-          </TabsContent>
-
-          <TabsContent value="letter" className="mt-0 outline-none">
+                </details>
+              )}
+            </div>
+          ) : activeNode === "letter" ? (
             <Card className={dashboardCardClass}>
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
                 <div className="space-y-1">
@@ -1141,7 +1088,7 @@ function AdminProposalDetailInner() {
                   placeholder="Write or paste the revision letter to the PI..."
                   value={revisionLetter}
                   onChange={(e) => setRevisionLetter(e.target.value)}
-                  className="min-h-[280px] resize-y rounded-2xl font-sans text-sm leading-relaxed"
+                  className="min-h-[280px] resize-y rounded-xl font-sans text-sm leading-relaxed"
                 />
                 {pendingLetterId ? (
                   <p className="text-xs text-muted-foreground">
@@ -1165,8 +1112,8 @@ function AdminProposalDetailInner() {
                 </div>
 
                 {letters.filter((l) => l.type === "revision").length > 0 ? (
-                  <details className="group rounded-2xl border border-border/60 bg-muted/10 open:bg-muted/15">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
+                  <details className="group rounded-lg border border-border/60 bg-muted/10 open:bg-muted/15">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
                       <span>
                         Recent letters (
                         {letters.filter((l) => l.type === "revision").length})
@@ -1193,9 +1140,7 @@ function AdminProposalDetailInner() {
                 ) : null}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="messages" className="mt-0 outline-none">
+          ) : activeNode === "messages" ? (
             <Card className={dashboardCardClass}>
               <CardContent className="p-0">
                 <ScrollArea className="h-[min(420px,50vh)] p-4">
@@ -1230,7 +1175,7 @@ function AdminProposalDetailInner() {
                       }
                     }}
                     disabled={sending}
-                    className={`rounded-full ${dashboardInputClass}`}
+                    className={`rounded-md ${dashboardInputClass}`}
                   />
                   <Button
                     size="icon"
@@ -1243,9 +1188,30 @@ function AdminProposalDetailInner() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          ) : (
+            validFormSections.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No form details available for this proposal.
+              </p>
+            ) : (
+              validFormSections
+                .filter(([section]) => section === activeNode)
+                .map(([section, data]) => (
+                  <Card className={dashboardCardClass} key={section}>
+                    <CardHeader className="border-b border-border/40 pb-4">
+                      <CardTitle className="text-lg capitalize tracking-tight">
+                        {section.replace(/_/g, " ")}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      {renderFormSectionBody(section, data)}
+                    </CardContent>
+                  </Card>
+                ))
+            )
+          )}
         </div>
-      </Tabs>
+      </div>
     </div>
   );
 }

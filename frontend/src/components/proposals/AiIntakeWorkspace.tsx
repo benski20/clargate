@@ -17,13 +17,21 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  MoreHorizontal,
   StickyNote,
   Upload,
   Wand2,
   X,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -90,6 +98,8 @@ export function AiIntakeWorkspace({
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [packageS3Error, setPackageS3Error] = useState<string | null>(null);
   const [packageUploading, setPackageUploading] = useState(false);
+  const [packageViewMode, setPackageViewMode] = useState<"preview" | "source">("preview");
+  const [consentViewMode, setConsentViewMode] = useState<"preview" | "source">("preview");
   const [revisionSuggestions, setRevisionSuggestions] = useState<string[]>([]);
   const [reviewBusy, setReviewBusy] = useState(false);
   const bootRef = useRef(false);
@@ -676,7 +686,7 @@ export function AiIntakeWorkspace({
 
   if (existingProposalId && hydrationStatus === "loading") {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 bg-[#fafaf9] px-4 dark:bg-background">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 bg-background px-4">
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading proposal" />
         <p className="text-sm text-muted-foreground">Loading your workspace…</p>
       </div>
@@ -690,8 +700,8 @@ export function AiIntakeWorkspace({
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-sm">
-          <h1 className="font-[var(--font-heading)] text-xl font-medium tracking-tight">
+        <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm">
+          <h1 className="font-semibold text-xl tracking-tight">
             Workspace not available
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
@@ -705,15 +715,15 @@ export function AiIntakeWorkspace({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden bg-[#fafaf9] sm:h-[calc(100dvh-7rem)] sm:max-h-[calc(100dvh-7rem)] dark:bg-background">
-      <header className="flex shrink-0 items-center gap-3 border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-md md:px-6">
+    <div className="fixed inset-0 z-[45] flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-background">
+      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border/60 bg-background px-4 md:px-8">
         <Button variant="ghost" size="icon" className="cursor-pointer shrink-0" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <h1 className="truncate font-[var(--font-heading)] text-lg font-medium tracking-tight md:text-xl">
+            <h1 className="truncate font-semibold text-lg tracking-tight md:text-xl">
               {isRevisionResubmit
                 ? "Revise submission"
                 : existingProposalId
@@ -739,16 +749,16 @@ export function AiIntakeWorkspace({
             placeholder="Study title"
             value={suggestedTitle}
             onChange={(e) => setSuggestedTitle(e.target.value)}
-            className="h-9 w-48 rounded-full border-border/80 bg-background text-sm md:w-64"
+            className="h-9 w-48 rounded-md border-border/60 bg-background text-sm shadow-sm md:w-64"
           />
         </div>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
         {variant === "upload" ? (
-          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 md:min-h-0 md:border-b-0 md:border-r">
-            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 bg-background md:min-h-0 md:border-b-0 md:border-r">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Your materials
               </span>
               {reviewBusy ? (
@@ -758,8 +768,8 @@ export function AiIntakeWorkspace({
                 </span>
               ) : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch]">
-              <div className="space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 lg:p-8 [-webkit-overflow-scrolling:touch]">
+              <div className="mx-auto w-full max-w-[120rem] space-y-6">
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Upload PDFs or plain text — up to {Math.round(maxFileBytes / (1024 * 1024))} MB per file for
                   in-app analysis, up to {maxAttachments} files. We map materials to a protocol (no manual
@@ -775,7 +785,7 @@ export function AiIntakeWorkspace({
                     onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
                     placeholder="Extra context: funding, prior IRB, recruitment limits…"
                     rows={4}
-                    className="resize-y rounded-2xl border-border/80 bg-background text-sm"
+                    className="resize-y rounded-md border-border/60 bg-background text-sm"
                     disabled={reviewBusy}
                   />
                 </div>
@@ -787,7 +797,7 @@ export function AiIntakeWorkspace({
                   multiple
                   onChange={(e) => void ingestFiles(e.target.files)}
                 />
-                <button
+                  <button
                   type="button"
                   disabled={
                     ingestBusy || reviewBusy || ws.context_attachments.length >= maxAttachments
@@ -803,7 +813,7 @@ export function AiIntakeWorkspace({
                     void ingestFiles(e.dataTransfer.files);
                   }}
                   className={cn(
-                    "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30",
+                    "flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-background px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30 shadow-sm",
                     (ingestBusy || reviewBusy || ws.context_attachments.length >= maxAttachments) &&
                       "pointer-events-none opacity-50",
                   )}
@@ -811,10 +821,12 @@ export function AiIntakeWorkspace({
                   {ingestBusy ? (
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   ) : (
-                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/5">
+                      <Upload className="h-6 w-6 text-primary" />
+                    </div>
                   )}
-                  <p className="mt-2 text-sm font-medium text-foreground">Drop files or click to upload</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className="mt-4 text-sm font-medium text-foreground">Drop files or click to upload</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
                     PDF or text · max {Math.round(maxFileBytes / (1024 * 1024))} MB each · {maxAttachments}{" "}
                     files
                   </p>
@@ -852,7 +864,7 @@ export function AiIntakeWorkspace({
                 ) : null}
                 <Button
                   type="button"
-                  className="w-full cursor-pointer rounded-full"
+                  className="w-full cursor-pointer rounded-md shadow-sm"
                   disabled={reviewBusy || ws.context_attachments.length === 0}
                   onClick={() => void runFullAiReview()}
                 >
@@ -872,7 +884,7 @@ export function AiIntakeWorkspace({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="cursor-pointer rounded-full text-xs"
+                    className="cursor-pointer rounded-md text-xs shadow-sm"
                     disabled={reviewBusy || consentBusy}
                     onClick={() => void runConsent()}
                   >
@@ -882,7 +894,7 @@ export function AiIntakeWorkspace({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="cursor-pointer rounded-full text-xs"
+                    className="cursor-pointer rounded-md text-xs shadow-sm"
                     disabled={reviewBusy || complianceBusy}
                     onClick={() => void runCompliance()}
                   >
@@ -893,9 +905,9 @@ export function AiIntakeWorkspace({
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 md:min-h-0 md:border-b-0 md:border-r">
-            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 bg-background md:min-h-0 md:border-b-0 md:border-r">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
+              <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Conversational intake
               </span>
               {aiBusy ? (
@@ -907,9 +919,9 @@ export function AiIntakeWorkspace({
             </div>
             <div
               ref={chatScrollRef}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [-webkit-overflow-scrolling:touch]"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 lg:p-8 [-webkit-overflow-scrolling:touch]"
             >
-              <div className="space-y-3 py-4">
+              <div className="mx-auto w-full max-w-[120rem] space-y-4">
                 <AnimatePresence initial={false}>
                   {ws.messages.map((m, i) => (
                     <motion.div
@@ -917,7 +929,7 @@ export function AiIntakeWorkspace({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "max-w-[95%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                        "max-w-[95%] rounded-xl px-4 py-3 text-sm leading-relaxed",
                         m.role === "user"
                           ? "ml-auto bg-foreground text-background"
                           : "mr-auto border border-border/80 bg-card text-foreground shadow-sm",
@@ -929,59 +941,61 @@ export function AiIntakeWorkspace({
                 </AnimatePresence>
               </div>
             </div>
-            <div className="shrink-0 border-t border-border/60 p-3">
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Answer or ask a question…"
-                  disabled={aiBusy}
-                  className="h-11 flex-1 rounded-full border-border/80"
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void sendChat())
-                  }
-                />
-                <Button
-                  size="icon"
-                  className="h-11 w-11 shrink-0 cursor-pointer rounded-full"
-                  disabled={aiBusy}
-                  onClick={() => void sendChat()}
-                >
-                  {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="cursor-pointer rounded-full text-xs"
-                  disabled={consentBusy}
-                  onClick={() => void runConsent()}
-                >
-                  <FileText className="mr-1.5 h-3.5 w-3.5" />
-                  Generate consent form
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="cursor-pointer rounded-full text-xs"
-                  disabled={complianceBusy}
-                  onClick={() => void runCompliance()}
-                >
-                  <Scale className="mr-1.5 h-3.5 w-3.5" />
-                  Run compliance check
-                </Button>
+            <div className="shrink-0 border-t border-border/60 bg-background p-4 lg:p-6">
+              <div className="mx-auto w-full max-w-[120rem]">
+                <div className="flex gap-2">
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Answer or ask a question…"
+                    disabled={aiBusy}
+                    className="h-11 flex-1 rounded-md border-border/60 shadow-sm"
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void sendChat())
+                    }
+                  />
+                  <Button
+                    size="icon"
+                    className="h-11 w-11 shrink-0 cursor-pointer rounded-md shadow-sm"
+                    disabled={aiBusy}
+                    onClick={() => void sendChat()}
+                  >
+                    {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-md text-xs shadow-sm"
+                    disabled={consentBusy}
+                    onClick={() => void runConsent()}
+                  >
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    Generate consent form
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer rounded-md text-xs shadow-sm"
+                    disabled={complianceBusy}
+                    onClick={() => void runCompliance()}
+                  >
+                    <Scale className="mr-1.5 h-3.5 w-3.5" />
+                    Run compliance check
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* Context + outputs */}
-        <div className="flex h-full min-h-[36vh] flex-col bg-white md:min-h-0 dark:bg-muted/20">
-          <div className="flex shrink-0 items-center gap-1 border-b border-border/60 px-2 py-2">
-            <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+        <div className="flex h-full min-h-[36vh] flex-col bg-muted/10 md:min-h-0">
+          <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/40 bg-muted/30 p-1">
               {(
                 [
                   ["context", "Workspace", Library],
@@ -995,10 +1009,10 @@ export function AiIntakeWorkspace({
                   type="button"
                   onClick={() => setRightTab(key)}
                   className={cn(
-                    "flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                    "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     rightTab === key
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -1007,18 +1021,25 @@ export function AiIntakeWorkspace({
               ))}
             </div>
             {ws.phase === "compliance" && ws.predicted_category ? (
-              <span className="ml-auto hidden rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground sm:inline">
+              <span className="hidden rounded-md bg-background px-2.5 py-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground shadow-sm ring-1 ring-border/50 sm:inline">
                 Predicted: {ws.predicted_category.replace("_", " ")}
               </span>
             ) : null}
           </div>
 
           <ScrollArea className="min-h-0 flex-1">
-            <div className="space-y-4 p-4 md:p-6">
+            <div
+              className={cn(
+                "mx-auto w-full max-w-[120rem]",
+                rightTab === "consent" || rightTab === "package"
+                  ? "flex min-h-[calc(100dvh-9rem)] flex-col gap-3 p-4 md:p-5"
+                  : "space-y-8 p-6 lg:p-12",
+              )}
+            >
               {rightTab === "context" ? (
                 <div className="space-y-6">
                   <div>
-                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       <StickyNote className="h-3.5 w-3.5" />
                       Notes for the AI
                     </div>
@@ -1027,9 +1048,9 @@ export function AiIntakeWorkspace({
                       onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
                       placeholder="Grant boilerplate, prior IRB stipulations, lab SOPs, recruitment copy, anything Gemini should treat as ground truth alongside the chat…"
                       rows={6}
-                      className="min-h-[120px] resize-y rounded-2xl border-border/80 bg-background text-sm leading-relaxed"
+                      className="min-h-[120px] resize-y rounded-md border-border/60 bg-background text-sm leading-relaxed shadow-sm"
                     />
-                    <p className="mt-1.5 text-[0.7rem] text-muted-foreground">
+                    <p className="mt-2 text-[0.75rem] text-muted-foreground leading-relaxed">
                       {variant === "upload"
                         ? "Add notes here for consent and compliance. Files are uploaded in the left panel."
                         : "Notes and uploads are included on every AI call (intake, consent, compliance). There is no separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it asks you to confirm something, answer here or add detail in notes."}
@@ -1038,7 +1059,7 @@ export function AiIntakeWorkspace({
 
                   {variant !== "upload" ? (
                     <div>
-                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <Upload className="h-3.5 w-3.5" />
                         Upload materials
                       </div>
@@ -1064,7 +1085,7 @@ export function AiIntakeWorkspace({
                           void ingestFiles(e.dataTransfer.files);
                         }}
                         className={cn(
-                          "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30",
+                          "flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-background px-4 py-8 text-center transition-colors hover:border-border hover:bg-muted/30 shadow-sm",
                           (ingestBusy || ws.context_attachments.length >= maxAttachments) &&
                             "pointer-events-none opacity-50",
                         )}
@@ -1072,12 +1093,14 @@ export function AiIntakeWorkspace({
                         {ingestBusy ? (
                           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         ) : (
-                          <Upload className="h-8 w-8 text-muted-foreground" />
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/5">
+                            <Upload className="h-6 w-6 text-primary" />
+                          </div>
                         )}
-                        <p className="mt-2 text-sm font-medium text-foreground">
+                        <p className="mt-4 text-sm font-medium text-foreground">
                           Drop files here or click to upload
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1.5 text-xs text-muted-foreground">
                           PDF or plain text · up to {Math.round(maxFileBytes / (1024 * 1024))} MB each · max{" "}
                           {maxAttachments} files · text is used as AI context and saved with your draft
                         </p>
@@ -1118,37 +1141,84 @@ export function AiIntakeWorkspace({
               ) : null}
 
               {rightTab === "consent" ? (
-                <div className="space-y-4">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   {consentBusy ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                    <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                       Generating consent at ~8th grade reading level…
                     </div>
                   ) : null}
                   {ws.consent_missing.length > 0 ? (
-                    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                        Highlight — elements to strengthen
-                      </p>
-                      <ul className="list-inside list-disc space-y-1 text-sm text-amber-900/90 dark:text-amber-100/90">
+                    <div className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+                      <ul className="list-inside list-disc space-y-0.5 text-xs text-amber-900/90 dark:text-amber-100/90">
                         {ws.consent_missing.map((item, i) => (
                           <li key={i}>{item}</li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-                  <Textarea
-                    value={ws.consent_markdown ?? ""}
-                    onChange={(e) => setWs((w) => ({ ...w, consent_markdown: e.target.value }))}
-                    rows={24}
-                    className="min-h-[320px] rounded-2xl border-border/80 bg-background font-mono text-sm leading-relaxed"
-                    placeholder="Consent form will appear here…"
-                  />
+                  <div
+                    className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60 bg-background shadow-sm"
+                    role="region"
+                    aria-label="Consent document"
+                  >
+                    <div
+                      className="flex shrink-0 items-center justify-between border-b border-border/60 bg-muted/25 px-3 py-2"
+                      role="toolbar"
+                      aria-label="Preview or Markdown source"
+                    >
+                      <div className="inline-flex rounded-md border border-border/50 bg-background p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setConsentViewMode("preview")}
+                          className={cn(
+                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                            consentViewMode === "preview"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConsentViewMode("source")}
+                          className={cn(
+                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                            consentViewMode === "source"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Markdown
+                        </button>
+                      </div>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+                      {consentViewMode === "preview" ? (
+                        (ws.consent_markdown ?? "").trim() ? (
+                          <ProposalMarkdownPreview markdown={ws.consent_markdown ?? ""} />
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            No consent text yet. Switch to <strong className="text-foreground">Markdown</strong>{" "}
+                            to edit, or generate from the workspace.
+                          </p>
+                        )
+                      ) : (
+                        <Textarea
+                          value={ws.consent_markdown ?? ""}
+                          onChange={(e) => setWs((w) => ({ ...w, consent_markdown: e.target.value }))}
+                          className="box-border min-h-[calc(100dvh-15rem)] w-full resize-y rounded-md border-border/60 bg-background font-mono text-sm leading-relaxed"
+                          placeholder="Consent form will appear here…"
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
               {rightTab === "compliance" ? (
-                <div className="space-y-4">
+                <div className="space-y-8">
                   {complianceBusy || reviewBusy ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1165,7 +1235,7 @@ export function AiIntakeWorkspace({
                     </p>
                   ) : null}
                   {variant === "upload" && revisionSuggestions.length > 0 ? (
-                    <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4">
+                    <div className="rounded-md border border-primary/25 bg-primary/5 p-4">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
                         Revision suggestions
                       </p>
@@ -1186,7 +1256,7 @@ export function AiIntakeWorkspace({
                             scrollToSection(f.section_key as ProtocolSectionKey | "consent");
                           }}
                           className={cn(
-                            "w-full rounded-2xl border px-4 py-3 text-left text-sm transition-colors",
+                            "w-full rounded-md border px-4 py-3 text-left text-sm transition-colors",
                             f.severity === "error"
                               ? "border-red-500/40 bg-red-500/5"
                               : f.severity === "warning"
@@ -1219,71 +1289,115 @@ export function AiIntakeWorkspace({
               ) : null}
 
               {rightTab === "package" ? (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-[var(--font-heading)] text-sm font-medium">Completed proposal package</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Review everything that will be stored with your submission. 
-                    </p>
-                  </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   {!proposalId ? (
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      Save a draft first (wait for “Saving…” to finish) before downloading or uploading the
-                      package.
+                    <p className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                      Finish saving a draft before downloading or uploading the package.
                     </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="cursor-pointer rounded-full"
-                        onClick={() =>
-                          downloadProposalPackageMarkdown(
-                            packageMarkdown,
-                            proposalPackageFilename(proposalId),
-                          )
-                        }
-                      >
-                        <FileDown className="mr-1.5 h-3.5 w-3.5" />
-                        Download .md
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="cursor-pointer rounded-full"
-                        disabled={packageUploading}
-                        onClick={() => void uploadPackageToS3()}
-                      >
-                        {packageUploading ? (
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <FileText className="mr-1.5 h-3.5 w-3.5" />
-                        )}
-                        Save to proposal files (S3)
-                      </Button>
-                    </div>
-                  )}
-                  {packageS3Error ? (
-                    <p className="text-sm text-amber-800 dark:text-amber-200">{packageS3Error}</p>
                   ) : null}
-                  <div className="max-h-[min(52vh,28rem)] overflow-auto rounded-2xl border border-border/80 bg-muted/30 p-4">
-                    <pre className="whitespace-pre-wrap break-words font-mono text-[0.75rem] leading-relaxed text-foreground">
-                      {packageMarkdown}
-                    </pre>
+                  {packageS3Error ? (
+                    <p className="shrink-0 text-xs text-amber-800 dark:text-amber-200">{packageS3Error}</p>
+                  ) : null}
+
+                  <div
+                    className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60 bg-background shadow-sm"
+                    role="region"
+                    aria-label="Proposal package for submission"
+                  >
+                    <div
+                      className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/25 px-3 py-2"
+                      role="toolbar"
+                      aria-label="View and export"
+                    >
+                      <div className="inline-flex rounded-md border border-border/50 bg-background p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setPackageViewMode("preview")}
+                          className={cn(
+                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                            packageViewMode === "preview"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPackageViewMode("source")}
+                          className={cn(
+                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                            packageViewMode === "source"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Markdown
+                        </button>
+                      </div>
+                      {proposalId ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            nativeButton={false}
+                            render={
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 cursor-pointer gap-1.5 px-2.5 text-xs"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
+                                Actions
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem
+                              className="cursor-pointer text-sm"
+                              onClick={() =>
+                                downloadProposalPackageMarkdown(
+                                  packageMarkdown,
+                                  proposalPackageFilename(proposalId),
+                                )
+                              }
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                              Download Markdown (.md)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer text-sm"
+                              disabled={packageUploading}
+                              onClick={() => void uploadPackageToS3()}
+                            >
+                              {packageUploading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <FileText className="h-3.5 w-3.5" />
+                              )}
+                              Save to proposal files
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+                      {packageViewMode === "preview" ? (
+                        <ProposalMarkdownPreview markdown={packageMarkdown} />
+                      ) : (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-[0.75rem] leading-relaxed text-foreground">
+                          {packageMarkdown}
+                        </pre>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-                      <h3 className="font-[var(--font-heading)] text-sm font-medium">
-                        {isRevisionResubmit ? "Resubmit revised package" : "Submit for IRB review"}
-                      </h3>
+                  <div className="shrink-0 rounded-lg border border-border/60 bg-background p-4 shadow-sm">
                       {!proposalId ? (
-                        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
                           Waiting for proposal to finish saving…
                         </p>
                       ) : !complianceComplete ? (
-                        <p className="mt-2 text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           {variant === "upload" ? (
                             <>
                               Run <strong className="text-foreground">AI review</strong> on the left or open
@@ -1300,7 +1414,7 @@ export function AiIntakeWorkspace({
                         </p>
                       ) : (
                         <>
-                          <p className="mt-2 text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground">
                             <strong className="text-foreground">Predicted category:</strong>{" "}
                             {ws.predicted_category!.replace("_", " ")} (informational) ·{" "}
                             <strong className="text-foreground">Title:</strong> {suggestedTitle || "Draft study"}
@@ -1310,7 +1424,7 @@ export function AiIntakeWorkspace({
                               ? "Resubmit updates your stored package (Markdown snapshot and Word when configured), uploads files to storage, and sets status to Resubmitted for the IRB team."
                               : "Submit saves this package in the database (snapshot) and uploads the same file to S3 via the app server. If the upload fails, fix the message above and try again."}
                           </p>
-                          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 bg-muted/30 p-3 text-sm">
+                          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-md border border-border/60 bg-muted/30 p-3 text-sm">
                             <input
                               type="checkbox"
                               className="mt-1 size-4 shrink-0 cursor-pointer rounded border-border accent-foreground"
@@ -1318,13 +1432,13 @@ export function AiIntakeWorkspace({
                               onChange={(e) => setProposalReviewAcknowledged(e.target.checked)}
                             />
                             <span className="text-foreground">
-                              I have reviewed the complete proposal package above (including the Markdown
-                              preview). I understand it will be stored with my submission.
+                              I have reviewed the package above and understand it will be stored with my
+                              submission.
                             </span>
                           </label>
-                          <div className="mt-4 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2">
                             <Button
-                              className="cursor-pointer rounded-full"
+                              className="cursor-pointer rounded-md shadow-sm"
                               disabled={submitting || !canSubmitProposal}
                               onClick={() => void submitFinal()}
                               title={
@@ -1338,13 +1452,13 @@ export function AiIntakeWorkspace({
                               ) : (
                                 <Check className="mr-2 h-4 w-4" />
                               )}
-                              {isRevisionResubmit ? "Resubmit revised package" : "Submit proposal"}
+                              {isRevisionResubmit ? "Resubmit to IRB" : "Submit to IRB"}
                             </Button>
                             <Link
                               href="/dashboard/proposals"
                               className={cn(
                                 buttonVariants({ variant: "outline" }),
-                                "inline-flex cursor-pointer rounded-full no-underline",
+                                "inline-flex cursor-pointer rounded-md no-underline",
                               )}
                             >
                               Cancel

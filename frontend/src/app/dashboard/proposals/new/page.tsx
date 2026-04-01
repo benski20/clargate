@@ -59,7 +59,7 @@ export default function NewProposalPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="font-[var(--font-heading)] text-2xl font-medium tracking-tight md:text-3xl">
+          <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">
             New proposal
           </h1>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
@@ -73,12 +73,12 @@ export default function NewProposalPage() {
         <button
           type="button"
           onClick={() => setEntryMode("upload")}
-          className="group flex cursor-pointer flex-col rounded-2xl border border-border/80 bg-card p-6 text-left shadow-sm transition-all hover:border-border hover:shadow-md"
+          className="group flex cursor-pointer flex-col rounded-xl border border-border/60 bg-card p-6 text-left shadow-sm transition-all hover:border-border hover:shadow-md"
         >
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
-            <FileUp className="h-5 w-5 text-foreground" />
+          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
+            <FileUp className="h-5 w-5 text-primary" />
           </div>
-          <h2 className="font-[var(--font-heading)] text-lg font-medium tracking-tight">
+          <h2 className="font-semibold text-lg tracking-tight">
             Upload &amp; complete form
           </h2>
           <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
@@ -94,12 +94,12 @@ export default function NewProposalPage() {
         <button
           type="button"
           onClick={() => setEntryMode("ai")}
-          className="group flex cursor-pointer flex-col rounded-2xl border border-border/80 bg-card p-6 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+          className="group flex cursor-pointer flex-col rounded-xl border border-border/60 bg-card p-6 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
         >
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
+          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
             <MessageSquareText className="h-5 w-5 text-primary" />
           </div>
-          <h2 className="font-[var(--font-heading)] text-lg font-medium tracking-tight">Draft with AI</h2>
+          <h2 className="font-semibold text-lg tracking-tight">Draft with AI</h2>
           <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
             Conversational intake, live IRB-style protocol, consent draft, compliance check, then submit —
             split-pane workspace.

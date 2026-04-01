@@ -132,7 +132,7 @@ export default function AdminUsersPage() {
                 if (!open) setCodeError(null);
               }}
             >
-              <DialogTrigger render={<Button variant="outline" className="h-11 cursor-pointer gap-2 rounded-full" />}>
+              <DialogTrigger render={<Button variant="outline" className="h-9 cursor-pointer gap-2 rounded-md shadow-sm" />}>
                 <KeyRound className="h-4 w-4" />
                 New signup code
               </DialogTrigger>
@@ -207,7 +207,7 @@ export default function AdminUsersPage() {
         <CardContent className="p-6">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <h2 className="font-[var(--font-heading)] text-lg font-medium tracking-tight">Signup codes</h2>
+              <h2 className="font-semibold text-lg tracking-tight">Signup codes</h2>
               <p className="text-sm text-muted-foreground">
                 Codes tie new accounts to your institution and role. Share with users who sign up at{" "}
                 <span className="font-mono text-xs">/signup</span>.
@@ -316,8 +316,8 @@ export default function AdminUsersPage() {
                         variant="secondary"
                         className={
                           u.is_active
-                            ? "rounded-full border-0 bg-foreground text-background"
-                            : "rounded-full border-0 bg-muted text-muted-foreground"
+                            ? "rounded-md border-0 bg-primary text-primary-foreground shadow-sm"
+                            : "rounded-md border-0 bg-muted text-muted-foreground"
                         }
                       >
                         {u.is_active ? "Active" : "Pending"}

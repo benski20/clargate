@@ -7,7 +7,7 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   return (
-    <Badge variant="secondary" className={`${STATUS_COLORS[status]} border-0`}>
+    <Badge variant="secondary" className={`${STATUS_COLORS[status]} rounded-md border-0 shadow-sm font-medium`}>
       {STATUS_LABELS[status]}
     </Badge>
   );

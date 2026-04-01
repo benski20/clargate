@@ -121,7 +121,7 @@ export default function SignupPage() {
       <AuthShell>
         <Card className={`${authCardClassName} text-center`}>
           <CardHeader>
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <Check className="h-6 w-6 text-primary" strokeWidth={2.5} aria-hidden />
             </div>
             <CardTitle className="text-2xl font-semibold tracking-tight">Check your email</CardTitle>
@@ -132,7 +132,7 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" className="h-11 w-full cursor-pointer rounded-full" render={<Link href="/login" />}>
+            <Button variant="outline" className="h-9 w-full cursor-pointer rounded-md shadow-sm" render={<Link href="/login" />}>
               Back to sign in
             </Button>
           </CardContent>
@@ -223,7 +223,7 @@ export default function SignupPage() {
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={loading}>
+            <Button type="submit" className="h-9 w-full cursor-pointer rounded-md shadow-sm" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create account
             </Button>

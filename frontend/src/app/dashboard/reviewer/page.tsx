@@ -65,7 +65,7 @@ export default function ReviewerDashboard() {
           subtitle="Proposals assigned to you for review."
         />
       ) : (
-        <div className="h-24 max-w-md animate-pulse rounded-2xl bg-muted/60" aria-hidden />
+        <div className="h-24 max-w-md animate-pulse rounded-lg bg-muted/60" aria-hidden />
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -74,12 +74,12 @@ export default function ReviewerDashboard() {
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Pending
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted">
-              <Clock className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
+              <Clock className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-[var(--font-heading)] text-3xl font-medium tabular-nums tracking-tight">
+            <div className="font-semibold text-3xl tabular-nums tracking-tight">
               {pending.length}
             </div>
           </CardContent>
@@ -89,12 +89,12 @@ export default function ReviewerDashboard() {
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Completed
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted">
-              <CheckCircle2 className="h-4 w-4 text-foreground" strokeWidth={1.5} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
+              <CheckCircle2 className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-[var(--font-heading)] text-3xl font-medium tabular-nums tracking-tight">
+            <div className="font-semibold text-3xl tabular-nums tracking-tight">
               {completed.length}
             </div>
           </CardContent>
@@ -126,8 +126,8 @@ export default function ReviewerDashboard() {
                 >
                   <CardContent className="flex items-center justify-between py-5">
                     <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-muted">
-                        <ClipboardList className="h-5 w-5 text-foreground" strokeWidth={1.5} />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/5">
+                        <ClipboardList className="h-5 w-5 text-primary" strokeWidth={2} />
                       </div>
                       <div>
                         <p className="font-medium text-foreground">
@@ -138,7 +138,7 @@ export default function ReviewerDashboard() {
                         </p>
                       </div>
                     </div>
-                    <Badge variant="secondary" className={`${statusInfo.color} rounded-full border-0`}>
+                    <Badge variant="secondary" className={`${statusInfo.color} rounded-md border-0 shadow-sm`}>
                       {statusInfo.label}
                     </Badge>
                   </CardContent>

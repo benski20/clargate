@@ -1,3 +1,3 @@
 /** Shared auth surface — thin border, neutral shadow */
 export const authCardClassName =
-  "w-full rounded-2xl border border-border bg-card shadow-sm shadow-black/[0.04]";
+  "w-full rounded-xl border border-border/60 bg-card shadow-sm";

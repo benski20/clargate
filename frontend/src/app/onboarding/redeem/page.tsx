@@ -130,7 +130,7 @@ export default function RedeemSignupCodePage() {
               />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" className="h-11 w-full cursor-pointer rounded-full" disabled={submitting}>
+            <Button type="submit" className="h-9 w-full cursor-pointer rounded-md shadow-sm" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Join workspace
             </Button>

@@ -1,15 +1,15 @@
 import { cn } from "@/lib/utils";
 
-/** Soft elevated surface — editorial warm chrome */
+/** Soft elevated surface — sleek enterprise */
 export const dashboardCardClass =
-  "rounded-3xl border border-border/90 bg-card shadow-[0_2px_8px_-2px_rgba(10,10,10,0.06),0_1px_2px_-1px_rgba(10,10,10,0.04)]";
+  "rounded-xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:shadow-md";
 
 /** Filters / toolbars that sit above cards */
 export const dashboardToolbarClass =
   "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between";
 
-/** Rounded inputs matching dashboard chrome */
-export const dashboardInputClass = "h-11 rounded-2xl border-border/80 bg-background";
+/** Clean enterprise inputs */
+export const dashboardInputClass = "h-9 rounded-md border-border/60 bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 export function DashboardPageHeader({
   eyebrow,
@@ -37,7 +37,7 @@ export function DashboardPageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-1 font-[var(--font-heading)] text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+        <h1 className="mt-1 font-semibold text-2xl tracking-tight text-foreground md:text-3xl">
           {title}
         </h1>
         {description ? (
@@ -71,7 +71,7 @@ export function DashboardWelcome({
       <p className="font-mono text-[0.65rem] font-normal uppercase tracking-[0.2em] text-muted-foreground">
         Workspace
       </p>
-      <h1 className="mt-3 font-[var(--font-heading)] text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+      <h1 className="mt-2 font-semibold text-3xl tracking-tight text-foreground md:text-4xl">
         Welcome, {given || "—"}
       </h1>
       {subtitle ? (

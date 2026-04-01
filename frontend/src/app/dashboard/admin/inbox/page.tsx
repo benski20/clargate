@@ -48,8 +48,8 @@ export default function AdminInboxPage() {
                 className={`${dashboardCardClass} cursor-pointer transition-colors duration-200 hover:bg-muted/40`}
               >
                 <CardContent className="flex items-center gap-4 py-5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-muted">
-                    <MessageSquare className="h-5 w-5 text-foreground" strokeWidth={1.5} />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/5">
+                    <MessageSquare className="h-5 w-5 text-primary" strokeWidth={2} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -57,7 +57,7 @@ export default function AdminInboxPage() {
                       {item.unread_count > 0 && (
                         <Badge
                           variant="secondary"
-                          className="rounded-full border-0 bg-foreground text-xs text-background"
+                          className="rounded-md border-0 bg-primary text-xs font-medium text-primary-foreground shadow-sm"
                         >
                           {item.unread_count}
                         </Badge>

@@ -174,7 +174,7 @@ export default function ConfigurePage() {
       />
 
       {loadError && (
-        <p className="rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {loadError}
         </p>
       )}
@@ -187,7 +187,7 @@ export default function ConfigurePage() {
         <Card className={dashboardCardClass}>
           <CardHeader className="space-y-3 pb-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <CardTitle className="flex items-center gap-2.5 font-[var(--font-heading)] text-xl font-medium tracking-tight text-foreground">
+              <CardTitle className="flex items-center gap-2.5 font-semibold text-xl tracking-tight text-foreground">
                 <BookMarked className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
                 AI context library
               </CardTitle>
@@ -236,7 +236,7 @@ export default function ConfigurePage() {
                 return (
                   <TabsContent key={section.category} value={section.category} className="mt-0 space-y-6">
                     <div className="space-y-1.5">
-                      <h3 className="font-[var(--font-heading)] text-lg font-medium tracking-tight text-foreground">
+                      <h3 className="font-semibold text-lg tracking-tight text-foreground">
                         {section.title}
                       </h3>
                       <p className="text-sm leading-relaxed text-muted-foreground">{section.description}</p>
