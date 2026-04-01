@@ -45,7 +45,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
 import { db } from "@/lib/database";
-import { invokeEdgeFunction } from "@/lib/edge-functions";
+import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type {
@@ -402,10 +402,7 @@ function AdminProposalDetailInner() {
     setAssigning(true);
     setError(null);
     try {
-      await invokeEdgeFunction("assign-reviewers", {
-        proposal_id: proposalId,
-        reviewer_user_ids: [selectedReviewer],
-      });
+      await assignReviewersViaApi(proposalId, [selectedReviewer]);
       setSelectedReviewer("");
       const next = await db.getReviewAssignmentsForProposal(proposalId);
       setAssignments(next);
