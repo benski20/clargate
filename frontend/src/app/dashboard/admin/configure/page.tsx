@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TreeView } from "@/components/ui/tree-view";
 import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
 import { cn } from "@/lib/utils";
 import type { InstitutionAiGuidanceCategory, InstitutionAiGuidanceRow } from "@/lib/types";
@@ -165,6 +165,19 @@ export default function ConfigurePage() {
 
   const totalItems = items.length;
 
+  const [activeSection, setActiveSection] = useState<string | null>(SECTIONS[0].category);
+
+  const treeData = [
+    {
+      id: "guidance-group",
+      label: "AI Context Library",
+      children: SECTIONS.map((s) => ({
+        id: s.category,
+        label: TAB_LABELS[s.category],
+      })),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <DashboardPageHeader
@@ -184,81 +197,55 @@ export default function ConfigurePage() {
           <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
         </div>
       ) : (
-        <Card className={dashboardCardClass}>
-          <CardHeader className="space-y-3 pb-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <CardTitle className="flex items-center gap-2.5 font-semibold text-xl tracking-tight text-foreground">
-                <BookMarked className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-                AI context library
-              </CardTitle>
-              <p className="font-mono text-[0.65rem] font-normal uppercase tracking-[0.16em] text-muted-foreground">
-                {totalItems} {totalItems === 1 ? "item" : "items"}
-              </p>
-            </div>
-            <p className="max-w-2xl text-sm leading-[1.6] text-muted-foreground">
-              Pick a category, review what is saved, then add text or upload a file.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue={SECTIONS[0].category} className="gap-0">
-              <TabsList
-                variant="line"
-                className="mb-8 h-auto w-full flex-wrap justify-start gap-1 rounded-none border-0 border-b border-border/70 bg-transparent p-0 pb-px"
-              >
-                {SECTIONS.map((section) => {
-                  const n = byCategory(section.category).length;
-                  return (
-                    <TabsTrigger
-                      key={section.category}
-                      value={section.category}
-                      className={cn(
-                        "cursor-pointer rounded-md border border-transparent px-3 py-2 text-[0.8125rem] font-medium transition-colors",
-                        "text-muted-foreground hover:text-foreground",
-                        "data-active:border-border/80 data-active:bg-muted/40 data-active:text-foreground data-active:shadow-none",
-                      )}
-                    >
-                      {TAB_LABELS[section.category]}
-                      {n > 0 ? (
-                        <span className="ml-1.5 rounded border border-border/60 bg-background px-1.5 py-px text-[0.65rem] font-medium tabular-nums text-muted-foreground">
-                          {n}
-                        </span>
-                      ) : null}
-                    </TabsTrigger>
-                  );
-                })}
-              </TabsList>
+        <div className="flex flex-col gap-6 md:flex-row md:items-start">
+          <div className="w-full shrink-0 md:w-64">
+            <TreeView
+              className="border-none bg-transparent p-0"
+              data={treeData}
+              defaultExpandedIds={["guidance-group"]}
+              selectedIds={activeSection ? [activeSection] : []}
+              onNodeClick={(node) => {
+                if (node.children) return;
+                setActiveSection(node.id);
+              }}
+              showIcons={false}
+              showLines={false}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            {SECTIONS.filter((s) => s.category === activeSection).map((section) => {
+              const rows = byCategory(section.category);
+              const busy = savingCategory === section.category || uploadingCategory === section.category;
+              const mode = addMode[section.category];
 
-              {SECTIONS.map((section) => {
-                const rows = byCategory(section.category);
-                const busy = savingCategory === section.category || uploadingCategory === section.category;
-                const mode = addMode[section.category];
-
-                return (
-                  <TabsContent key={section.category} value={section.category} className="mt-0 space-y-6">
-                    <div className="space-y-1.5">
-                      <h3 className="font-semibold text-lg tracking-tight text-foreground">
+              return (
+                <Card className={dashboardCardClass} key={section.category}>
+                  <CardHeader className="border-b border-border/40 pb-4">
+                    <div className="flex flex-col gap-1.5">
+                      <CardTitle className="text-lg tracking-tight">
                         {section.title}
-                      </h3>
+                      </CardTitle>
                       <p className="text-sm leading-relaxed text-muted-foreground">{section.description}</p>
                     </div>
-
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-8">
                     {rows.length > 0 ? (
                       <div>
-                        <p className="mb-2 font-mono text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                          Saved
+                        <p className="mb-3 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          Saved Items ({rows.length})
                         </p>
-                        <ul className="space-y-2">
+                        <ul className="space-y-3">
                           {rows.map((row) => (
                             <li
                               key={row.id}
-                              className="flex items-start justify-between gap-3 rounded-lg border border-border/80 bg-muted/25 px-4 py-3"
+                              className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-muted/10 px-4 py-4"
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium leading-snug text-foreground">
                                   {row.title?.trim() ||
                                     (row.content_type === "file" ? row.file_name : "Text note")}
                                 </p>
-                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground line-clamp-2">
+                                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-3">
                                   {row.content_type === "file" ? "File · " : "Text · "}
                                   {previewContent(row)}
                                   {previewContent(row).length >= 160 ? "…" : ""}
@@ -268,7 +255,7 @@ export default function ConfigurePage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="shrink-0 cursor-pointer text-muted-foreground hover:text-destructive"
+                                className="shrink-0 cursor-pointer text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 disabled={deletingId === row.id}
                                 onClick={() => void remove(row.id)}
                                 aria-label="Remove"
@@ -284,18 +271,20 @@ export default function ConfigurePage() {
                         </ul>
                       </div>
                     ) : (
-                      <p className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground">
-                        Nothing in this category yet. Add text or a file below.
-                      </p>
+                      <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          Nothing in this category yet. Add text or a file below.
+                        </p>
+                      </div>
                     )}
 
-                    <div className="rounded-xl border border-border/80 bg-muted/15 p-4 sm:p-5">
-                      <p className="mb-4 font-mono text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        Add entry
+                    <div className="rounded-xl border border-border/60 bg-muted/5 p-5">
+                      <p className="mb-5 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-foreground">
+                        Add new entry
                       </p>
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-foreground">Optional label</label>
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-foreground">Label (Optional)</label>
                           <Input
                             data-upload-title={section.category}
                             placeholder="e.g. Social-behavioral template"
@@ -378,9 +367,9 @@ export default function ConfigurePage() {
                             </Button>
                           </div>
                         ) : (
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-background px-3.5 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-background px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
                                 <Upload className="h-4 w-4 opacity-80" strokeWidth={2} />
                                 Choose file
                                 <input
@@ -405,12 +394,12 @@ export default function ConfigurePage() {
                         )}
                       </div>
                     </div>
-                  </TabsContent>
-                );
-              })}
-            </Tabs>
-          </CardContent>
-        </Card>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -4,10 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Inbox, Loader2, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
+import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
 import type { InboxItem } from "@/lib/types";
+
+function formatThreadDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function AdminInboxPage() {
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -22,7 +31,7 @@ export default function AdminInboxPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <DashboardPageHeader
         eyebrow="Administration"
         title="Inbox"
@@ -35,48 +44,67 @@ export default function AdminInboxPage() {
         </div>
       ) : items.length === 0 ? (
         <Card className={dashboardCardClass}>
-          <CardContent className="flex flex-col items-center py-14">
-            <Inbox className="h-10 w-10 text-muted-foreground/40" />
-            <p className="mt-3 text-sm text-muted-foreground">No messages yet.</p>
+          <CardContent className="flex flex-col items-center py-12">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border/50 bg-muted/30">
+              <Inbox className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
+            </div>
+            <p className="mt-4 text-sm font-medium text-foreground">No messages yet</p>
+            <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
+              When PIs or reviewers message on proposals, threads will appear here.
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <Link key={item.proposal_id} href={`/dashboard/admin/proposals/${item.proposal_id}`}>
-              <Card
-                className={`${dashboardCardClass} cursor-pointer transition-colors duration-200 hover:bg-muted/40`}
-              >
-                <CardContent className="flex items-center gap-4 py-5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/5">
-                    <MessageSquare className="h-5 w-5 text-primary" strokeWidth={2} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-medium text-foreground">{item.proposal_title}</p>
-                      {item.unread_count > 0 && (
-                        <Badge
-                          variant="secondary"
-                          className="rounded-md border-0 bg-primary text-xs font-medium text-primary-foreground shadow-sm"
-                        >
-                          {item.unread_count}
-                        </Badge>
-                      )}
+        <Card className={cn(dashboardCardClass, "overflow-hidden p-0")}>
+          <ul className="divide-y divide-border/50">
+            {items.map((item) => {
+              const preview =
+                item.last_message_sender_name && item.last_message_body
+                  ? `${item.last_message_sender_name}: ${item.last_message_body}`
+                  : item.last_message_body ?? "No preview";
+
+              return (
+                <li key={item.proposal_id}>
+                  <Link
+                    href={`/dashboard/admin/proposals/${item.proposal_id}?tab=messages`}
+                    className={cn(
+                      "group flex gap-3 px-4 py-3.5 transition-colors sm:gap-4 sm:px-5",
+                      "hover:bg-muted/35 focus-visible:bg-muted/35 focus-visible:outline-none",
+                      "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    )}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/40 bg-muted/25 text-muted-foreground transition-colors group-hover:border-border/60 group-hover:bg-muted/40">
+                      <MessageSquare className="h-4 w-4" strokeWidth={2} />
                     </div>
-                    <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                      {item.last_message_sender_name}: {item.last_message_body}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {item.last_message_at
-                      ? new Date(item.last_message_at).toLocaleDateString()
-                      : "—"}
-                  </span>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="truncate text-sm font-medium text-foreground sm:text-[0.9375rem]">
+                            {item.proposal_title}
+                          </span>
+                          {item.unread_count > 0 ? (
+                            <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-semibold tabular-nums text-primary">
+                              {item.unread_count}
+                            </span>
+                          ) : null}
+                        </div>
+                        <time
+                          dateTime={item.last_message_at ?? undefined}
+                          className="shrink-0 text-xs tabular-nums text-muted-foreground"
+                        >
+                          {formatThreadDate(item.last_message_at)}
+                        </time>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-sm leading-snug text-muted-foreground">
+                        {preview}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       )}
     </div>
   );

@@ -190,10 +190,10 @@ function AdminProposalDetailInner() {
     : [];
 
   useEffect(() => {
-    if (!activeNode && proposal) {
-      setActiveNode("summary");
-    }
-  }, [activeNode, proposal]);
+    const fromUrl =
+      tabParam && TAB_VALUES.includes(tabParam as TabValue) ? (tabParam as TabValue) : null;
+    setActiveNode(fromUrl ?? "summary");
+  }, [tabParam, proposalId]);
 
   const treeData = [
     {
