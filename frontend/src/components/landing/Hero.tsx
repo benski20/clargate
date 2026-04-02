@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 export function Hero() {
   return (
     <section className="relative flex min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] flex-col overflow-hidden border-b border-[#DCD8D0]">
-      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)]">
+      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)] md:ml-[28%] md:w-[72%]">
         <div className="absolute top-[clamp(2rem,4vw,4rem)] right-[clamp(2rem,4vw,4rem)] z-10 hidden text-right lg:block">
           <div className="mb-2 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#555555] uppercase">
             Network Status
