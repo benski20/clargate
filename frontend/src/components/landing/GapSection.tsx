@@ -35,8 +35,8 @@ export function GapSection() {
           </div>
           <div className="border-t border-[#DCD8D0] pt-8 md:col-span-8">
             <SyncBlock>
-              Submissions are scattered across email, PDFs, and spreadsheets—leaving teams with{" "}
-              <span className="italic text-[#555555]">no single source of truth</span> for status.
+              Email, PDFs, and spreadsheets—no{" "}
+              <span className="italic text-[#555555]">single source of truth</span> for status.
             </SyncBlock>
           </div>
         </div>
@@ -47,8 +47,8 @@ export function GapSection() {
           </div>
           <div className="border-t border-[#DCD8D0] pt-8 md:col-span-8">
             <SyncBlock>
-              Administrators lose hours coaching rewrites, chasing down documents, and{" "}
-              <span className="italic text-[#555555]">drafting revision letters by hand</span>.
+              Admins lose hours to rewrites, document chases, and{" "}
+              <span className="italic text-[#555555]">revision letters by hand</span>.
             </SyncBlock>
           </div>
         </div>
@@ -59,9 +59,8 @@ export function GapSection() {
           </div>
           <div className="border-t border-[#DCD8D0] pt-8 md:col-span-6">
             <SyncBlock>
-              Guidelines are interpreted differently across reviewers, resulting in{" "}
-              <span className="italic text-[#555555]">inconsistent outcomes</span> for
-              investigators.
+              Reviewers read guidelines differently—{" "}
+              <span className="italic text-[#555555]">inconsistent outcomes</span> for investigators.
             </SyncBlock>
           </div>
         </div>

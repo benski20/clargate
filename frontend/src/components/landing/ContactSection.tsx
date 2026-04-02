@@ -14,7 +14,7 @@ export function ContactSection() {
     const body = encodeURIComponent(
       `Institution: ${org}\nApproximate annual submissions: ${volume}\nContact email: ${email}`
     );
-    window.location.href = `mailto:partners@aribter.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:contact@arbitercp.com?subject=${subject}&body=${body}`;
   }
 
   return (
@@ -71,10 +71,10 @@ export function ContactSection() {
                   Direct Inquiry
                 </span>
                 <a
-                  href="mailto:partners@aribter.com"
+                  href="mailto:contact@arbitercp.com"
                   className="font-sans text-[clamp(1rem,1.05vw,1.125rem)] font-light text-[#FDFBF7] transition-colors hover:text-white/70"
                 >
-                  partners@aribter.com
+                  contact@arbitercp.com
                 </a>
               </div>
               <div>

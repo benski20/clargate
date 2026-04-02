@@ -1,41 +1,9 @@
 import { ArrowRight } from "lucide-react";
-import { HeroCanvas } from "@/components/landing/HeroCanvas";
 
 export function Hero() {
   return (
-    <section className="relative flex min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] flex-col overflow-hidden border-b border-[#DCD8D0] md:flex-row">
-      <div className="group relative h-[40vh] w-full overflow-hidden border-b border-[#DCD8D0] bg-[#F4F1EA] md:h-auto md:w-[28%] md:border-r md:border-b-0">
-        <HeroCanvas />
-        <div className="absolute top-[clamp(1.5rem,5vw,4rem)] left-[clamp(1.5rem,5vw,4rem)] font-mono text-xs tracking-[0.15em] text-[#555555] uppercase">
-          Governed Workspace / Ver-01
-        </div>
-        <div className="pointer-events-none absolute right-[clamp(1.5rem,5vw,4rem)] bottom-[clamp(1.5rem,5vw,4rem)] left-[clamp(1.5rem,5vw,4rem)] flex items-end justify-between">
-          <div className="relative h-16 w-px overflow-hidden bg-[#DCD8D0]">
-            <div className="absolute top-0 left-0 h-1/2 w-full animate-pulse bg-[#0A0A0A]" />
-          </div>
-        </div>
-      </div>
-
-      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)] md:w-[72%]">
-        <div className="absolute top-1/4 left-0 h-px w-full bg-[#DCD8D0]/50" />
-        <div className="absolute top-0 left-[20%] h-full w-px bg-[#DCD8D0]/50" />
-
-        <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-end overflow-hidden pr-[5%] opacity-[0.03]">
-          <svg
-            viewBox="0 0 200 200"
-            className="h-auto w-[80%] text-[#0A0A0A]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="0.5"
-            aria-hidden
-          >
-            <rect x="40" y="40" width="120" height="120" />
-            <rect x="60" y="60" width="80" height="80" />
-            <path d="M100 0 L100 200" />
-            <path d="M0 100 L200 100" />
-          </svg>
-        </div>
-
+    <section className="relative flex min-h-[calc(100svh-clamp(4.5rem,7vw,6.5rem))] flex-col overflow-hidden border-b border-[#DCD8D0]">
+      <div className="relative z-10 flex w-full flex-col justify-center bg-[#FDFBF7] p-[clamp(1.5rem,5vw,4rem)]">
         <div className="absolute top-[clamp(2rem,4vw,4rem)] right-[clamp(2rem,4vw,4rem)] z-10 hidden text-right lg:block">
           <div className="mb-2 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#555555] uppercase">
             Network Status
