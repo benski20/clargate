@@ -27,9 +27,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import { cn } from "@/lib/utils";
@@ -90,6 +92,8 @@ function DashboardSidebarPanel({
   onSettingsOpenChange,
   onLogout,
   onCollapseRequest,
+  onExpandRequest,
+  compact,
 }: {
   appUser: User;
   pathname: string;
@@ -100,7 +104,12 @@ function DashboardSidebarPanel({
   onLogout: () => void;
   /** Desktop rail only: collapse the sidebar */
   onCollapseRequest?: () => void;
+  /** Desktop rail only: expand from icon-only mode */
+  onExpandRequest?: () => void;
+  /** Narrow icon rail (desktop sidebar collapsed) */
+  compact?: boolean;
 }) {
+  const router = useRouter();
   const initials =
     appUser.full_name
       ?.split(" ")
@@ -133,6 +142,166 @@ function DashboardSidebarPanel({
   }
 
   const showStaffCollapsible = isInstitutionStaff && adminSectionItems.length > 0;
+  const adminSectionTitle = appUser.role === "reviewer" ? "Institution" : "Administration";
+  const adminHasActiveChild = adminSectionItems.some((item) => linkIsActive(pathname, item.href));
+
+  if (compact) {
+    return (
+      <TooltipProvider delay={0}>
+        <div className="flex h-full w-full flex-col items-stretch">
+          <div className="flex flex-col items-center gap-2 border-b border-sidebar-border px-2 pb-3 pt-4">
+            <Tooltip>
+              <TooltipTrigger className="cursor-pointer rounded-md outline-none">
+                <Link
+                  href="/"
+                  onClick={onNavigate}
+                  className="flex h-9 w-9 items-center justify-center rounded-md font-semibold text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+                  aria-label="Arbiter home"
+                >
+                  A
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                Arbiter
+              </TooltipContent>
+            </Tooltip>
+            {onExpandRequest ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 cursor-pointer text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={onExpandRequest}
+                aria-label="Expand sidebar"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex justify-center px-2 py-3">
+            <Tooltip>
+              <TooltipTrigger className="cursor-pointer rounded-full outline-none">
+                <Avatar className="h-9 w-9 shrink-0 border border-border/60 shadow-sm">
+                  <AvatarFallback className="bg-muted text-xs font-medium text-foreground">{initials}</AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8} className="max-w-[14rem]">
+                <p className="font-medium">{appUser.full_name || "—"}</p>
+                <p className="text-muted-foreground">{appUser.email}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-4" aria-label="Workspace">
+            {flatNav.map((item) => {
+              const isActive = linkIsActive(pathname, item.href);
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger className="cursor-pointer rounded-md outline-none">
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-label={item.label}
+                      className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+                        isActive
+                          ? "bg-primary/5 text-primary"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={8}>
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+
+            {showStaffCollapsible ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  nativeButton={false}
+                  render={
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-colors duration-200 outline-none",
+                        adminHasActiveChild
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                      aria-label={adminSectionTitle}
+                      aria-haspopup="menu"
+                    >
+                      <Shield className="h-4 w-4 shrink-0" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-44">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    {adminSectionTitle}
+                  </DropdownMenuLabel>
+                  {adminSectionItems.map((item) => (
+                    <DropdownMenuItem
+                      key={item.href}
+                      className="cursor-pointer gap-2"
+                      onClick={() => {
+                        router.push(item.href);
+                        onNavigate();
+                      }}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </nav>
+
+          <div className="mt-auto border-t border-sidebar-border p-2">
+            <div className="flex justify-center">
+              <DropdownMenu open={settingsOpen} onOpenChange={onSettingsOpenChange}>
+                <DropdownMenuTrigger
+                  nativeButton={false}
+                  render={
+                    <button
+                      type="button"
+                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      aria-label="Settings and account"
+                      aria-haspopup="menu"
+                    >
+                      <Settings className="h-4 w-4 shrink-0" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="end" side="right" sideOffset={8} className="w-56">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      onSettingsOpenChange(false);
+                      void onLogout();
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+      </TooltipProvider>
+    );
+  }
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -313,11 +482,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 overflow-hidden bg-sidebar transition-[width] duration-200 ease-out md:block",
-          sidebarExpanded ? "w-64 border-r border-sidebar-border" : "w-0 border-0 pointer-events-none"
+          sidebarExpanded ? "w-64 border-r border-sidebar-border" : "w-14 border-r border-sidebar-border"
         )}
-        aria-hidden={!sidebarExpanded}
       >
-        <div className="flex h-full w-64 min-w-64 flex-col overflow-hidden">
+        <div
+          className={cn(
+            "flex h-full flex-col overflow-hidden transition-[width] duration-200 ease-out",
+            sidebarExpanded ? "w-64 min-w-64" : "w-14 min-w-14"
+          )}
+        >
           <DashboardSidebarPanel
             appUser={appUser}
             pathname={pathname}
@@ -326,7 +499,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
             onLogout={handleLogout}
-            onCollapseRequest={() => setSidebarExpanded(false)}
+            onCollapseRequest={sidebarExpanded ? () => setSidebarExpanded(false) : undefined}
+            onExpandRequest={!sidebarExpanded ? () => setSidebarExpanded(true) : undefined}
+            compact={!sidebarExpanded}
           />
         </div>
       </aside>
@@ -360,18 +535,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </SheetContent>
           </Sheet>
-          {!sidebarExpanded ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="hidden cursor-pointer rounded-md md:inline-flex"
-              onClick={() => setSidebarExpanded(true)}
-              aria-label="Expand sidebar"
-            >
-              <PanelLeftOpen className="h-5 w-5" />
-            </Button>
-          ) : null}
           <span className="font-semibold text-base tracking-tight">Arbiter</span>
         </header>
 
