@@ -15,6 +15,9 @@ import {
   ScrollText,
   Loader2,
   BookMarked,
+  Shield,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -29,6 +32,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import { cn } from "@/lib/utils";
+import { SidebarNavCollapsible } from "@/components/ui/sidebar-with-submenu";
 import type { User, UserRole } from "@/lib/types";
 
 interface NavItem {
@@ -53,6 +57,153 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+function linkIsActive(pathname: string, href: string) {
+  return pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+}
+
+function DashboardSidebarPanel({
+  appUser,
+  pathname,
+  filteredNav,
+  onNavigate,
+  settingsOpen,
+  onSettingsOpenChange,
+  onLogout,
+  onCollapseRequest,
+}: {
+  appUser: User;
+  pathname: string;
+  filteredNav: NavItem[];
+  onNavigate: () => void;
+  settingsOpen: boolean;
+  onSettingsOpenChange: (open: boolean) => void;
+  onLogout: () => void;
+  /** Desktop rail only: collapse the sidebar */
+  onCollapseRequest?: () => void;
+}) {
+  const initials =
+    appUser.full_name
+      ?.split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?";
+
+  const isAdmin = appUser.role === "admin";
+  const dashboardItem = filteredNav.find((item) => item.href === "/dashboard");
+  const adminSectionItems = isAdmin ? filteredNav.filter((item) => item.href !== "/dashboard") : [];
+  const flatNav = isAdmin && dashboardItem ? [dashboardItem] : filteredNav;
+
+  return (
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex items-start justify-between gap-2 border-b border-sidebar-border px-4 pb-4 pt-6 sm:px-5">
+        <div className="min-w-0">
+          <Link href="/" className="block font-semibold text-xl tracking-tight text-sidebar-foreground">
+            Arbiter
+          </Link>
+          <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+            Workspace
+          </p>
+        </div>
+        {onCollapseRequest ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 cursor-pointer text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={onCollapseRequest}
+            aria-label="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="px-4 pb-5 pt-5">
+        <div className="flex items-center gap-3 px-1">
+          <Avatar className="h-9 w-9 shrink-0 border border-border/60 shadow-sm">
+            <AvatarFallback className="bg-muted text-xs font-medium text-foreground">{initials}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-foreground">{appUser.full_name || "—"}</p>
+            <p className="truncate text-xs text-muted-foreground">{appUser.email}</p>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
+        {flatNav.map((item) => {
+          const isActive = linkIsActive(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200",
+                isActive
+                  ? "bg-primary/5 text-primary"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </Link>
+          );
+        })}
+
+        {isAdmin && adminSectionItems.length > 0 ? (
+          <SidebarNavCollapsible
+            title="Administration"
+            icon={Shield}
+            onNavigate={onNavigate}
+            items={adminSectionItems.map((item) => ({
+              href: item.href,
+              label: item.label,
+              icon: item.icon,
+              isActive: linkIsActive(pathname, item.href),
+            }))}
+          />
+        ) : null}
+      </nav>
+
+      <div className="mt-auto border-t border-sidebar-border p-3">
+        <DropdownMenu open={settingsOpen} onOpenChange={onSettingsOpenChange}>
+          <DropdownMenuTrigger
+            nativeButton={false}
+            render={
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                Settings
+              </button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem className="cursor-pointer">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                onSettingsOpenChange(false);
+                void onLogout();
+              }}
+              className="cursor-pointer"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -60,6 +211,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [appUser, setAppUser] = useState<User | null | undefined>(undefined);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Desktop sidebar: collapsed by default */
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,102 +246,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const filteredNav = navItems.filter((item) => appUser && item.roles.includes(appUser.role));
-  const initials =
-    appUser?.full_name
-      ?.split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2) || "?";
-
-  function UserBlock({ compact }: { compact?: boolean }) {
-    return (
-      <div className={`flex items-center gap-3 ${compact ? "px-1" : "px-1"}`}>
-        <Avatar className="h-9 w-9 shrink-0 border border-border/60 shadow-sm">
-          <AvatarFallback className="bg-muted text-xs font-medium text-foreground">{initials}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{appUser?.full_name || "—"}</p>
-          <p className="truncate text-xs text-muted-foreground">{appUser?.email}</p>
-        </div>
-      </div>
-    );
-  }
-
-  function SidebarContent() {
-    return (
-      <div className="flex h-full flex-col">
-        <div className="px-5 pb-4 pt-6">
-          <Link href="/" className="block font-semibold text-xl tracking-tight text-foreground">
-            Arbiter
-          </Link>
-          <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-            Workspace
-          </p>
-        </div>
-
-        <div className="px-4 pb-6">
-          <UserBlock />
-        </div>
-
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
-          {filteredNav.map((item) => {
-            const isActive =
-              pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200 ${
-                  isActive
-                    ? "bg-primary/5 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mt-auto border-t border-border/60 p-3">
-          <DropdownMenu open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DropdownMenuTrigger
-              nativeButton={false}
-              render={
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Settings className="h-4 w-4 shrink-0" />
-                  Settings
-                </button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem className="cursor-pointer">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setSettingsOpen(false);
-                  void handleLogout();
-                }}
-                className="cursor-pointer"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    );
-  }
 
   if (appUser === undefined) {
     return (
@@ -208,24 +265,68 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-border/60 bg-muted/20 md:block">
-        <div className="flex h-full flex-col overflow-hidden">
-          <SidebarContent />
+      <aside
+        className={cn(
+          "sticky top-0 hidden h-screen shrink-0 overflow-hidden bg-sidebar transition-[width] duration-200 ease-out md:block",
+          sidebarExpanded ? "w-64 border-r border-sidebar-border" : "w-0 border-0 pointer-events-none"
+        )}
+        aria-hidden={!sidebarExpanded}
+      >
+        <div className="flex h-full w-64 min-w-64 flex-col overflow-hidden">
+          <DashboardSidebarPanel
+            appUser={appUser}
+            pathname={pathname}
+            filteredNav={filteredNav}
+            onNavigate={() => setMobileOpen(false)}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+            onLogout={handleLogout}
+            onCollapseRequest={() => setSidebarExpanded(false)}
+          />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur-md md:hidden">
+        <header
+          className={cn(
+            "sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur-md",
+            sidebarExpanded && "md:hidden"
+          )}
+        >
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger render={<Button variant="ghost" size="icon" className="cursor-pointer rounded-md" />}>
+            <SheetTrigger
+              render={
+                <Button variant="ghost" size="icon" className="cursor-pointer rounded-md md:hidden" aria-label="Open menu" />
+              }
+            >
               <Menu className="h-5 w-5" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-[min(100%,18rem)] border-r border-border/80 p-0">
-              <div className="flex h-full flex-col p-4">
-                <SidebarContent />
+            <SheetContent side="left" className="w-[min(100%,18rem)] border-r border-sidebar-border bg-sidebar p-0">
+              <div className="flex h-full flex-col">
+                <DashboardSidebarPanel
+                  appUser={appUser}
+                  pathname={pathname}
+                  filteredNav={filteredNav}
+                  onNavigate={() => setMobileOpen(false)}
+                  settingsOpen={settingsOpen}
+                  onSettingsOpenChange={setSettingsOpen}
+                  onLogout={handleLogout}
+                />
               </div>
             </SheetContent>
           </Sheet>
+          {!sidebarExpanded ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden cursor-pointer rounded-md md:inline-flex"
+              onClick={() => setSidebarExpanded(true)}
+              aria-label="Expand sidebar"
+            >
+              <PanelLeftOpen className="h-5 w-5" />
+            </Button>
+          ) : null}
           <span className="font-semibold text-base tracking-tight">Arbiter</span>
         </header>
 

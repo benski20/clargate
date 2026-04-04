@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Filter, Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Filter, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,9 +25,21 @@ import {
   dashboardCardClass,
   dashboardInputClass,
   DashboardPageHeader,
+  DashboardSearchInput,
 } from "@/components/dashboard/dashboard-ui";
+import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
 import type { Proposal } from "@/lib/types";
+
+const STATUS_FILTER_LABEL: Record<string, string> = {
+  all: "All statuses",
+  submitted: "Submitted",
+  initial_review: "Initial review",
+  revisions_requested: "Revisions requested",
+  under_committee_review: "Committee review",
+  approved: "Approved",
+  rejected: "Rejected",
+};
 
 export default function AdminDashboardPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -52,20 +63,29 @@ export default function AdminDashboardPage() {
         description="Review and manage all proposals for your institution."
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by title or PI name..."
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
+          <DashboardSearchInput
+            placeholder="Search by title or PI name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className={`pl-9 ${dashboardInputClass}`}
+            className="w-full"
+            aria-label="Search proposals"
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
-          <SelectTrigger className={`w-full sm:w-52 ${dashboardInputClass}`}>
-            <Filter className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Filter by status" />
+          <SelectTrigger
+            size="default"
+            className={cn(
+              "w-full min-w-0 gap-2 rounded-md sm:w-56",
+              dashboardInputClass,
+              "h-9 px-3 py-0 text-sm shadow-sm"
+            )}
+          >
+            <Filter className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <SelectValue placeholder="Filter by status">
+              {(value) => STATUS_FILTER_LABEL[String(value)] ?? String(value)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>

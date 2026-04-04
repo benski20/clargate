@@ -1,4 +1,8 @@
+import * as React from "react";
+import { Search } from "lucide-react";
+
 import { cn } from "@/lib/utils";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 
 /** Soft elevated surface — sleek enterprise */
 export const dashboardCardClass =
@@ -10,6 +14,32 @@ export const dashboardToolbarClass =
 
 /** Clean enterprise inputs */
 export const dashboardInputClass = "h-9 rounded-md border-border/60 bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+/**
+ * Search field with a leading icon — avoids padding conflicts between `pl-*` and `px-3`
+ * on plain `Input` + absolute icons.
+ */
+export function DashboardSearchInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof InputGroupInput>) {
+  return (
+    <InputGroup
+      className={cn(
+        "h-9 min-h-9 rounded-md border-border/60 bg-background shadow-sm transition-colors",
+        "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring"
+      )}
+    >
+      <InputGroupAddon className="pl-3 text-muted-foreground [&>svg]:pointer-events-none">
+        <Search className="size-4 shrink-0" aria-hidden />
+      </InputGroupAddon>
+      <InputGroupInput
+        className={cn("h-9 min-h-0 text-sm placeholder:text-muted-foreground", className)}
+        {...props}
+      />
+    </InputGroup>
+  );
+}
 
 export function DashboardPageHeader({
   eyebrow,
