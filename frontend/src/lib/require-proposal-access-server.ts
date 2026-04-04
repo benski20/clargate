@@ -2,7 +2,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { createServiceClient } from "@/lib/supabase-service";
 
 /**
- * PI (owner), admin, or assigned reviewer for the same institution may access proposal documents.
+ * PI (owner), institution staff (admin/reviewer) on non-draft proposals, or assigned reviewer on drafts.
  */
 export async function requireProposalDocumentAccess(proposalId: string): Promise<
   | { ok: true; appUser: { id: string; institution_id: string; role: string } }
@@ -47,25 +47,25 @@ export async function requireProposalDocumentAccess(proposalId: string): Promise
     return { ok: false, status: 404, message: "Proposal not found" };
   }
 
-  if (role === "admin") {
+  if (role === "admin" || role === "reviewer") {
     if (proposal.status === "draft") {
+      if (role === "reviewer") {
+        const { data: ra } = await svc
+          .from("review_assignments")
+          .select("id")
+          .eq("proposal_id", proposalId)
+          .eq("reviewer_user_id", appUser.id)
+          .maybeSingle();
+        if (ra) {
+          return { ok: true, appUser: { id: appUser.id, institution_id: appUser.institution_id, role } };
+        }
+      }
       return { ok: false, status: 404, message: "Proposal not found" };
     }
     return { ok: true, appUser: { id: appUser.id, institution_id: appUser.institution_id, role } };
   }
   if (role === "pi" && proposal.pi_user_id === appUser.id) {
     return { ok: true, appUser: { id: appUser.id, institution_id: appUser.institution_id, role } };
-  }
-  if (role === "reviewer") {
-    const { data: ra } = await svc
-      .from("review_assignments")
-      .select("id")
-      .eq("proposal_id", proposalId)
-      .eq("reviewer_user_id", appUser.id)
-      .maybeSingle();
-    if (ra) {
-      return { ok: true, appUser: { id: appUser.id, institution_id: appUser.institution_id, role } };
-    }
   }
 
   return { ok: false, status: 403, message: "Forbidden" };

@@ -54,11 +54,12 @@ import type {
   ProposalStatus,
   Review,
   ReviewAssignment,
+  ReviewDecision,
   Message,
   User,
 } from "@/lib/types";
 
-const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages"] as const;
+const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages", "submit_review"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 /** Large / internal blobs — hide from admin Details for clarity (PI still has full data elsewhere). */
@@ -178,6 +179,18 @@ function AdminProposalDetailInner() {
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionNote, setRevisionNote] = useState("");
   const [activeNode, setActiveNode] = useState<string | null>(null);
+  /** When set, reviewers see AI summary / details / messages but not workflow or admin-only tabs. */
+  const [staffRole, setStaffRole] = useState<string | null>(null);
+  const [appUserId, setAppUserId] = useState<string | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<ReviewDecision | "">("");
+  const [reviewComments, setReviewComments] = useState({
+    overall: "",
+    methodology: "",
+    ethics: "",
+    risk_assessment: "",
+    recommendations: "",
+  });
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const validFormSections = proposal?.form_data
     ? Object.entries(proposal.form_data).filter(
@@ -195,51 +208,46 @@ function AdminProposalDetailInner() {
     setActiveNode(fromUrl ?? "summary");
   }, [tabParam, proposalId]);
 
-  const treeData = [
-    {
-      id: "summary",
-      label: "AI Summary",
-    },
-    {
-      id: "details-group",
-      label: "Details",
-      children: validFormSections.map(([section]) => ({
-        id: section,
-        label: section.replace(/_/g, " "),
-      })),
-    },
-    {
-      id: "reviewers",
-      label: "Reviewers",
-    },
-    {
-      id: "letter",
-      label: "Revision Letter",
-    },
-    {
-      id: "messages",
-      label: "Messages",
-    },
-  ];
+  /** Reviewers must not land on admin-only tabs from bookmarks. */
+  useEffect(() => {
+    if (staffRole !== "reviewer") return;
+    if (tabParam !== "reviewers" && tabParam !== "letter") return;
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("tab", "summary");
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+  }, [staffRole, tabParam, pathname, router, searchParams]);
 
   useEffect(() => {
-    Promise.all([
-      db.getProposal(proposalId),
-      db.getReviews(proposalId).catch(() => []),
-      db.getReviewAssignmentsForProposal(proposalId).catch(() => []),
-      db.getProposalLetters(proposalId).catch(() => []),
-      db.getLatestAiSummary(proposalId).catch(() => null),
-      db.getMessages(proposalId).catch(() => []),
-      db.getInstitutionUsers().catch(() => []),
-    ])
-      .then(([p, r, a, letterRows, aiSummary, m, u]) => {
+    let cancelled = false;
+    (async () => {
+      const u = await db.getCurrentAppUser();
+      if (cancelled) return;
+      setStaffRole(u?.role ?? null);
+      setAppUserId(u?.id ?? null);
+      const isAdmin = u?.role === "admin";
+
+      const instUsersPromise = isAdmin
+        ? db.getInstitutionUsers().catch(() => [])
+        : Promise.resolve([] as User[]);
+
+      try {
+        const [p, r, a, letterRows, aiSummary, m, uList] = await Promise.all([
+          db.getProposal(proposalId),
+          db.getReviews(proposalId).catch(() => []),
+          db.getReviewAssignmentsForProposal(proposalId).catch(() => []),
+          db.getProposalLetters(proposalId).catch(() => []),
+          db.getLatestAiSummary(proposalId).catch(() => null),
+          db.getMessages(proposalId).catch(() => []),
+          instUsersPromise,
+        ]);
+        if (cancelled) return;
         setProposal(p as ProposalDetail);
         setReviews(r as Review[]);
         setAssignments(a as ReviewAssignment[]);
         setLetters(letterRows as Letter[]);
         if (aiSummary) setSummary(aiSummary);
         setMessages(m as Message[]);
-        setUsers(u as User[]);
+        setUsers(uList as User[]);
 
         const list = letterRows as Letter[];
         const unsent = list.find((l) => l.type === "revision" && !l.sent_at);
@@ -247,8 +255,13 @@ function AdminProposalDetailInner() {
           setRevisionLetter(unsent.content);
           setPendingLetterId(unsent.id);
         }
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [proposalId]);
 
   function setTab(next: TabValue) {
@@ -414,6 +427,31 @@ function AdminProposalDetailInner() {
     }
   }
 
+  async function handleSubmitReviewerForm() {
+    if (!reviewDecision) return;
+    const mine = assignments.find((a) => appUserId && a.reviewer_user_id === appUserId);
+    if (!mine) {
+      setError("No review assignment found for your account on this proposal.");
+      return;
+    }
+    if (mine.status === "submitted") return;
+    setReviewSubmitting(true);
+    setError(null);
+    try {
+      await db.submitReview(mine.id, reviewDecision, reviewComments);
+      setAssignments((prev) =>
+        prev.map((a) => (a.id === mine.id ? { ...a, status: "submitted" as const } : a)),
+      );
+      const nextReviews = await db.getReviews(proposalId);
+      setReviews(nextReviews as Review[]);
+      setBanner("Your review was submitted. The IRB office will be notified.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  }
+
   async function sendMessage() {
     if (!newMessage.trim()) return;
     setSending(true);
@@ -442,6 +480,52 @@ function AdminProposalDetailInner() {
   if (!proposal) {
     return <p className="text-muted-foreground">Proposal not found.</p>;
   }
+
+  const isStaffReviewer = staffRole === "reviewer";
+
+  const myReviewerAssignment =
+    isStaffReviewer && appUserId
+      ? assignments.find((a) => a.reviewer_user_id === appUserId)
+      : undefined;
+
+  const treeData = [
+    {
+      id: "summary",
+      label: "AI Summary",
+    },
+    {
+      id: "details-group",
+      label: "Details",
+      children: validFormSections.map(([section]) => ({
+        id: section,
+        label: section.replace(/_/g, " "),
+      })),
+    },
+    ...(isStaffReviewer
+      ? []
+      : [
+          {
+            id: "reviewers",
+            label: "Reviewers",
+          },
+          {
+            id: "letter",
+            label: "Revision Letter",
+          },
+        ]),
+    {
+      id: "messages",
+      label: "Messages",
+    },
+    ...(isStaffReviewer
+      ? [
+          {
+            id: "submit_review",
+            label: "Submit Review",
+          },
+        ]
+      : []),
+  ];
 
   const reviewers = users.filter((u) => u.role === "reviewer");
   const submittedAt = proposal.submitted_at
@@ -667,6 +751,7 @@ function AdminProposalDetailInner() {
           </Card>
         ) : null}
 
+        {!isStaffReviewer ? (
         <Card className={dashboardCardClass}>
           <CardHeader className="space-y-1 pb-2">
             <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
@@ -799,6 +884,7 @@ function AdminProposalDetailInner() {
             ) : null}
           </CardContent>
         </Card>
+        ) : null}
       </div>
 
       <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
@@ -851,6 +937,9 @@ function AdminProposalDetailInner() {
             onNodeClick={(node) => {
               if (node.children) return;
               setActiveNode(node.id);
+              if (TAB_VALUES.includes(node.id as TabValue)) {
+                setTab(node.id as TabValue);
+              }
             }}
             showIcons={false}
             showLines={false}
@@ -865,7 +954,9 @@ function AdminProposalDetailInner() {
                 <div className="space-y-1">
                   <CardTitle className="font-sans text-base font-semibold tracking-tight">AI-generated summary</CardTitle>
                   <CardDescription>
-                    Structured triage view for administrators. Regenerate after the PI updates the submission.
+                    {isStaffReviewer
+                      ? "Structured triage view with risk, population, and pathway suggestions. Regenerate after the PI updates the submission."
+                      : "Structured triage view for administrators. Regenerate after the PI updates the submission."}
                   </CardDescription>
                 </div>
                 <Button
@@ -994,39 +1085,41 @@ function AdminProposalDetailInner() {
               </Card>
             ) : null}
 
-            <Card className={dashboardCardClass}>
-              <CardHeader>
-                <CardTitle className="font-sans text-base font-semibold">Assign reviewer</CardTitle>
-                <CardDescription>Reviewers receive an email with the proposal title.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
-                    <SelectTrigger className="flex-1 rounded-xl">
-                      <SelectValue placeholder="Select a reviewer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {reviewers.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.full_name} ({r.email})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    className="cursor-pointer shrink-0 sm:w-auto"
-                    onClick={() => void assignReviewer()}
-                    disabled={!selectedReviewer || assigning}
-                  >
-                    {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                    Assign
-                  </Button>
-                </div>
-                {reviewers.length === 0 ? (
-                  <p className="mt-3 text-xs text-muted-foreground">No reviewer accounts in your institution yet.</p>
-                ) : null}
-              </CardContent>
-            </Card>
+            {!isStaffReviewer ? (
+              <Card className={dashboardCardClass}>
+                <CardHeader>
+                  <CardTitle className="font-sans text-base font-semibold">Assign reviewer</CardTitle>
+                  <CardDescription>Reviewers receive an email with the proposal title.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
+                      <SelectTrigger className="flex-1 rounded-xl">
+                        <SelectValue placeholder="Select a reviewer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {reviewers.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.full_name} ({r.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      className="cursor-pointer shrink-0 sm:w-auto"
+                      onClick={() => void assignReviewer()}
+                      disabled={!selectedReviewer || assigning}
+                    >
+                      {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                      Assign
+                    </Button>
+                  </div>
+                  {reviewers.length === 0 ? (
+                    <p className="mt-3 text-xs text-muted-foreground">No reviewer accounts in your institution yet.</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             {reviews.length > 0 && (
               <details className={`group ${dashboardCardClass}`}>
@@ -1185,6 +1278,138 @@ function AdminProposalDetailInner() {
                 </div>
               </CardContent>
             </Card>
+          ) : activeNode === "submit_review" ? (
+            !isStaffReviewer ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                This section is only for assigned reviewers.
+              </p>
+            ) : !myReviewerAssignment ? (
+              <Card className={dashboardCardClass}>
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                  You do not have a review assignment for this proposal.
+                </CardContent>
+              </Card>
+            ) : myReviewerAssignment.status === "submitted" ? (
+              <Card className={dashboardCardClass}>
+                <CardContent className="flex flex-col items-center py-12">
+                  <div className="rounded-lg bg-primary/5 p-3 text-primary">
+                    <Send className="h-6 w-6 text-foreground" />
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold">Review submitted</h3>
+                  <p className="mt-1 text-center text-sm text-muted-foreground">
+                    Thank you. Your decision and comments are on record for the IRB office.
+                  </p>
+                  <Button
+                    type="button"
+                    className="mt-6 cursor-pointer"
+                    onClick={() => {
+                      setTab("summary");
+                      setActiveNode("summary");
+                    }}
+                  >
+                    Back to AI Summary
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className={dashboardCardClass}>
+                <CardHeader>
+                  <CardTitle className="font-sans text-base font-semibold">Your review</CardTitle>
+                  <CardDescription>
+                    Submit a formal recommendation for this protocol. The IRB administrator will see your decision and
+                    comments.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label>Decision</Label>
+                    <Select
+                      value={reviewDecision}
+                      onValueChange={(v) => setReviewDecision(v as ReviewDecision)}
+                    >
+                      <SelectTrigger className="rounded-md">
+                        <SelectValue placeholder="Select your decision" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="approve">Approve</SelectItem>
+                        <SelectItem value="minor_modifications">Approve with minor modifications</SelectItem>
+                        <SelectItem value="revisions_required">Revisions required</SelectItem>
+                        <SelectItem value="reject">Reject</SelectItem>
+                        <SelectItem value="table">Table for discussion</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Overall assessment</Label>
+                    <Textarea
+                      variant="lg"
+                      rows={5}
+                      placeholder="Summarize strengths, concerns, and whether the protocol is ready for IRB consideration."
+                      value={reviewComments.overall}
+                      onChange={(e) => setReviewComments((c) => ({ ...c, overall: e.target.value }))}
+                      className="min-h-[8.5rem]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Methodology</Label>
+                    <Textarea
+                      variant="md"
+                      rows={3}
+                      placeholder="Comment on design, procedures, data collection, and analysis as described."
+                      value={reviewComments.methodology}
+                      onChange={(e) => setReviewComments((c) => ({ ...c, methodology: e.target.value }))}
+                      className="min-h-[5rem]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Ethical considerations</Label>
+                    <Textarea
+                      variant="md"
+                      rows={3}
+                      placeholder="Note consent, vulnerable populations, privacy, and any ethical gaps."
+                      value={reviewComments.ethics}
+                      onChange={(e) => setReviewComments((c) => ({ ...c, ethics: e.target.value }))}
+                      className="min-h-[5rem]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Risk assessment</Label>
+                    <Textarea
+                      variant="md"
+                      rows={3}
+                      placeholder="Describe risks to participants and whether safeguards are adequate."
+                      value={reviewComments.risk_assessment}
+                      onChange={(e) => setReviewComments((c) => ({ ...c, risk_assessment: e.target.value }))}
+                      className="min-h-[5rem]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-foreground">Recommendations</Label>
+                    <Textarea
+                      variant="md"
+                      rows={3}
+                      placeholder="List concrete changes, clarifications, or conditions before approval."
+                      value={reviewComments.recommendations}
+                      onChange={(e) => setReviewComments((c) => ({ ...c, recommendations: e.target.value }))}
+                      className="min-h-[5rem]"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    className="h-9 w-full cursor-pointer gap-2 rounded-md sm:w-auto"
+                    onClick={() => void handleSubmitReviewerForm()}
+                    disabled={!reviewDecision || reviewSubmitting}
+                  >
+                    {reviewSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Submit review
+                  </Button>
+                </CardContent>
+              </Card>
+            )
           ) : (
             validFormSections.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">

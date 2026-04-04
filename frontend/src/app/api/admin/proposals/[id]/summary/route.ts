@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { requireAdminSession } from "@/lib/require-admin-server";
+import { requireAdminOrAssignedReviewerForProposal } from "@/lib/require-proposal-staff-server";
 import { createServiceClient } from "@/lib/supabase-service";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
 
@@ -50,12 +50,12 @@ export async function POST(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAdminSession();
+  const { id: proposalId } = await context.params;
+
+  const auth = await requireAdminOrAssignedReviewerForProposal(proposalId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
-
-  const { id: proposalId } = await context.params;
 
   let svc: ReturnType<typeof createServiceClient>;
   try {

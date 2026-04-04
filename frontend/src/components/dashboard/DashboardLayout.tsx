@@ -43,17 +43,30 @@ interface NavItem {
   roles: UserRole[];
 }
 
+/** Admin: full administration section in the collapsible nav. */
+const ADMIN_SECTION_NAV_HREFS = new Set([
+  "/dashboard/admin",
+  "/dashboard/admin/inbox",
+  "/dashboard/admin/users",
+  "/dashboard/admin/audit",
+  "/dashboard/admin/configure",
+]);
+
+/** Reviewer: submissions queue + inbox only (no users, audit, or configure). */
+const REVIEWER_STAFF_NAV_HREFS = new Set(["/dashboard/admin", "/dashboard/admin/inbox"]);
+
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "reviewer", "pi"] },
   { label: "My Proposals", href: "/dashboard/proposals", icon: FileText, roles: ["pi"] },
+  { label: "Inbox", href: "/dashboard/inbox", icon: Inbox, roles: ["pi"] },
   {
     label: "Your institution",
     href: "/dashboard/institution",
     icon: Building2,
-    roles: ["pi"],
+    roles: ["pi", "reviewer"],
   },
-  { label: "Submissions", href: "/dashboard/admin", icon: ClipboardList, roles: ["admin"] },
-  { label: "Inbox", href: "/dashboard/admin/inbox", icon: Inbox, roles: ["admin"] },
+  { label: "Submissions", href: "/dashboard/admin", icon: ClipboardList, roles: ["admin", "reviewer"] },
+  { label: "Inbox", href: "/dashboard/admin/inbox", icon: Inbox, roles: ["admin", "reviewer"] },
   { label: "Users", href: "/dashboard/admin/users", icon: Users, roles: ["admin"] },
   { label: "Audit Log", href: "/dashboard/admin/audit", icon: ScrollText, roles: ["admin"] },
   { label: "Configure", href: "/dashboard/admin/configure", icon: BookMarked, roles: ["admin"] },
@@ -96,10 +109,30 @@ function DashboardSidebarPanel({
       .toUpperCase()
       .slice(0, 2) || "?";
 
-  const isAdmin = appUser.role === "admin";
+  const isInstitutionStaff = appUser.role === "admin" || appUser.role === "reviewer";
   const dashboardItem = filteredNav.find((item) => item.href === "/dashboard");
-  const adminSectionItems = isAdmin ? filteredNav.filter((item) => item.href !== "/dashboard") : [];
-  const flatNav = isAdmin && dashboardItem ? [dashboardItem] : filteredNav;
+  const institutionItem = filteredNav.find((item) => item.href === "/dashboard/institution");
+  const myReviewsItem = filteredNav.find((item) => item.href === "/dashboard/reviewer");
+
+  let flatNav: NavItem[];
+  let adminSectionItems: NavItem[];
+
+  if (appUser.role === "admin") {
+    flatNav = dashboardItem ? [dashboardItem] : [];
+    adminSectionItems = filteredNav.filter(
+      (item) => item.href !== "/dashboard" && ADMIN_SECTION_NAV_HREFS.has(item.href),
+    );
+  } else if (appUser.role === "reviewer") {
+    flatNav = [dashboardItem, institutionItem, myReviewsItem].filter(
+      (item): item is NavItem => Boolean(item),
+    );
+    adminSectionItems = filteredNav.filter((item) => REVIEWER_STAFF_NAV_HREFS.has(item.href));
+  } else {
+    flatNav = filteredNav;
+    adminSectionItems = [];
+  }
+
+  const showStaffCollapsible = isInstitutionStaff && adminSectionItems.length > 0;
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -159,9 +192,9 @@ function DashboardSidebarPanel({
           );
         })}
 
-        {isAdmin && adminSectionItems.length > 0 ? (
+        {showStaffCollapsible ? (
           <SidebarNavCollapsible
-            title="Administration"
+            title={appUser.role === "reviewer" ? "Institution" : "Administration"}
             icon={Shield}
             onNavigate={onNavigate}
             items={adminSectionItems.map((item) => ({

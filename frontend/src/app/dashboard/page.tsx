@@ -50,6 +50,16 @@ function dashboardQuickCards(role: UserRole | null): DashboardQuickCard[] {
         gradient: "gray",
       },
       {
+        badgeText: "Messages",
+        badgeColor: "#8b5cf6",
+        title: "Inbox",
+        description:
+          "IRB and PI message threads across your proposals in one place.",
+        ctaText: "Go to inbox",
+        ctaHref: "/dashboard/inbox",
+        gradient: "purple",
+      },
+      {
         badgeText: "Institution",
         badgeColor: "#059669",
         title: "Learn about your institution",
@@ -98,34 +108,34 @@ function dashboardQuickCards(role: UserRole | null): DashboardQuickCard[] {
   if (role === "reviewer") {
     return [
       {
-        badgeText: "Assignments",
+        badgeText: "Pipeline",
         badgeColor: "#ea580c",
-        title: "My reviews",
+        title: "Submissions",
         description:
-          "Continue assigned proposals, leave feedback, and update review status.",
-        ctaText: "Open reviews",
-        ctaHref: "/dashboard/reviewer",
+          "Open proposals in your institutional queue that you are assigned to review.",
+        ctaText: "Open queue",
+        ctaHref: "/dashboard/admin",
         gradient: "orange",
       },
       {
-        badgeText: "Summary",
+        badgeText: "Intake",
         badgeColor: "#64748b",
-        title: "Activity snapshot",
+        title: "Inbox",
         description:
-          "Totals above update as you complete reviews—use them to prioritize your queue.",
-        ctaText: "Go to stats",
-        ctaHref: "/dashboard#dashboard-stats",
+          "Message threads on proposals you are assigned to review.",
+        ctaText: "Go to inbox",
+        ctaHref: "/dashboard/admin/inbox",
         gradient: "gray",
       },
       {
-        badgeText: "Product",
-        badgeColor: "#8b5cf6",
-        title: "Arbiter overview",
+        badgeText: "Institution",
+        badgeColor: "#059669",
+        title: "Learn about your institution",
         description:
-          "Revisit how Arbiter fits your institution’s review workflow from the home page.",
-        ctaText: "View home",
-        ctaHref: "/",
-        gradient: "purple",
+          "Read-only rules, guidelines, examples, and local policies configured by your IRB office.",
+        ctaText: "View guidance",
+        ctaHref: "/dashboard/institution",
+        gradient: "green",
       },
     ];
   }

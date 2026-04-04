@@ -32,8 +32,8 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization")!;
     const user = await getCallerUser(authHeader);
 
-    if (user.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Admin only" }), {
+    if (user.role !== "admin" && user.role !== "reviewer") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

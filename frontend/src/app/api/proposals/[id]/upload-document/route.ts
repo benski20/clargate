@@ -47,9 +47,9 @@ export async function POST(
       return NextResponse.json({ error: "User not found" }, { status: 403 });
     }
 
-    if (appUser.role === "admin") {
+    if (appUser.role === "admin" || appUser.role === "reviewer") {
       return NextResponse.json(
-        { error: "Administrators cannot upload proposal documents." },
+        { error: "Only the proposal owner can upload documents." },
         { status: 403 },
       );
     }

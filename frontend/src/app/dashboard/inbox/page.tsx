@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Inbox, Loader2, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
@@ -18,49 +19,56 @@ function formatThreadDate(iso: string | null): string {
   });
 }
 
-export default function AdminInboxPage() {
+export default function PiInboxPage() {
+  const router = useRouter();
   const [role, setRole] = useState<UserRole | null>(null);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
-      const u = await db.getCurrentAppUser();
-      if (!cancelled) setRole(u?.role ?? null);
+      const appUser = await db.getCurrentAppUser();
+      if (!appUser?.role) {
+        router.replace("/dashboard");
+        return;
+      }
+      if (appUser.role === "admin" || appUser.role === "reviewer") {
+        router.replace("/dashboard/admin/inbox");
+        return;
+      }
+      if (appUser.role !== "pi") {
+        router.replace("/dashboard");
+        return;
+      }
+      setRole("pi");
       try {
         const rows = await db.getInbox();
-        if (!cancelled) setItems(rows);
+        setItems(rows as InboxItem[]);
       } catch {
-        if (!cancelled) setItems([]);
+        setItems([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [router]);
 
-  const proposalHref = (id: string) => `/dashboard/admin/proposals/${id}?tab=messages`;
+  if (loading || role !== "pi") {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <DashboardPageHeader
-        eyebrow="Administration"
+        eyebrow="Messages"
         title="Inbox"
-        description={
-          role === "reviewer"
-            ? "Message threads on proposals you are assigned to review."
-            : "All message threads across proposals."
-        }
+        description="Message threads on your proposals."
       />
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
-        </div>
-      ) : items.length === 0 ? (
+      {items.length === 0 ? (
         <Card className={dashboardCardClass}>
           <CardContent className="flex flex-col items-center py-12">
             <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border/50 bg-muted/30">
@@ -68,9 +76,7 @@ export default function AdminInboxPage() {
             </div>
             <p className="mt-4 text-sm font-medium text-foreground">No messages yet</p>
             <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-              {role === "reviewer"
-                ? "When there is activity on your assigned proposals, threads will appear here."
-                : "When PIs or reviewers message on proposals, threads will appear here."}
+              When you or your IRB office exchange messages on a proposal, threads will appear here.
             </p>
           </CardContent>
         </Card>
@@ -86,7 +92,7 @@ export default function AdminInboxPage() {
               return (
                 <li key={item.proposal_id}>
                   <Link
-                    href={proposalHref(item.proposal_id)}
+                    href={`/dashboard/proposals/${item.proposal_id}?tab=messages`}
                     className={cn(
                       "group flex gap-3 px-4 py-3.5 transition-colors sm:gap-4 sm:px-5",
                       "hover:bg-muted/35 focus-visible:bg-muted/35 focus-visible:outline-none",

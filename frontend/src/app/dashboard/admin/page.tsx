@@ -29,7 +29,7 @@ import {
 } from "@/components/dashboard/dashboard-ui";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
-import type { Proposal } from "@/lib/types";
+import type { Proposal, UserRole } from "@/lib/types";
 
 const STATUS_FILTER_LABEL: Record<string, string> = {
   all: "All statuses",
@@ -42,18 +42,37 @@ const STATUS_FILTER_LABEL: Record<string, string> = {
 };
 
 export default function AdminDashboardPage() {
+  const [role, setRole] = useState<UserRole | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
-    db
-      .getProposals({ status: statusFilter, search, pageSize: 50 })
-      .then(setProposals)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const u = await db.getCurrentAppUser();
+      if (!cancelled) setRole(u?.role ?? null);
+      try {
+        const list = await db.getProposals({ status: statusFilter, search, pageSize: 50 });
+        if (!cancelled) setProposals(list);
+      } catch {
+        if (!cancelled) setProposals([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [search, statusFilter]);
+
+  function proposalHref(proposalId: string) {
+    return role === "reviewer"
+      ? `/dashboard/admin/proposals/${proposalId}?tab=messages`
+      : `/dashboard/admin/proposals/${proposalId}`;
+  }
 
   return (
     <div className="space-y-8">
@@ -130,7 +149,7 @@ export default function AdminDashboardPage() {
                   <TableRow key={p.id} className="cursor-pointer hover:bg-accent">
                     <TableCell>
                       <Link
-                        href={`/dashboard/admin/proposals/${p.id}`}
+                        href={proposalHref(p.id)}
                         className="font-medium text-foreground hover:underline"
                       >
                         {p.title}
@@ -155,7 +174,7 @@ export default function AdminDashboardPage() {
                         variant="ghost"
                         size="sm"
                         className="cursor-pointer"
-                        render={<Link href={`/dashboard/admin/proposals/${p.id}`} />}
+                        render={<Link href={proposalHref(p.id)} />}
                       >
                         View
                       </Button>

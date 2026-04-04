@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -126,25 +126,38 @@ function ProposalDetailInner() {
   const [loading, setLoading] = useState(true);
   const [activeNode, setActiveNode] = useState<string | null>(null);
 
-  const validFormSections = proposal?.form_data
-    ? Object.entries(proposal.form_data).filter(
-        ([section, data]) =>
-          !HIDDEN_FORM_SECTIONS.has(section) &&
-          data !== null &&
-          typeof data === "object" &&
-          !Array.isArray(data),
-      )
-    : [];
+  const validFormSections = useMemo(
+    () =>
+      proposal?.form_data
+        ? Object.entries(proposal.form_data).filter(
+            ([section, data]) =>
+              !HIDDEN_FORM_SECTIONS.has(section) &&
+              data !== null &&
+              typeof data === "object" &&
+              !Array.isArray(data),
+          )
+        : [],
+    [proposal?.form_data],
+  );
+
+  const tabFromUrl = searchParams.get("tab");
 
   useEffect(() => {
-    if (!activeNode && proposal) {
-      if (validFormSections.length > 0) {
-        setActiveNode(validFormSections[0][0]);
-      } else {
-        setActiveNode("documents");
-      }
+    if (!proposal) return;
+    const validLeafTabs = new Set<string>(["documents", "letters", "messages"]);
+    for (const [section] of validFormSections) {
+      validLeafTabs.add(section);
     }
-  }, [validFormSections, activeNode, proposal]);
+    if (tabFromUrl && validLeafTabs.has(tabFromUrl)) {
+      setActiveNode(tabFromUrl);
+      return;
+    }
+    setActiveNode((prev) => {
+      if (prev) return prev;
+      if (validFormSections.length > 0) return validFormSections[0][0];
+      return "documents";
+    });
+  }, [proposal, tabFromUrl, validFormSections]);
 
   const treeData = [
     {

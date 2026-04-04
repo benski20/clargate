@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BookMarked, FileUp, Loader2, Pencil, Trash2, Upload } from "lucide-react";
+import { db } from "@/lib/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,8 @@ function previewContent(row: InstitutionAiGuidanceRow): string {
 }
 
 export default function ConfigurePage() {
+  const router = useRouter();
+  const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
   const [items, setItems] = useState<InstitutionAiGuidanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -57,10 +61,23 @@ export default function ConfigurePage() {
   }, []);
 
   useEffect(() => {
+    (async () => {
+      const appUser = await db.getCurrentAppUser();
+      if (appUser?.role !== "admin") {
+        router.replace("/dashboard");
+        setAccess("denied");
+        return;
+      }
+      setAccess("allowed");
+    })();
+  }, [router]);
+
+  useEffect(() => {
+    if (access !== "allowed") return;
     refresh()
       .catch(() => setLoadError("Could not load configuration"))
       .finally(() => setLoading(false));
-  }, [refresh]);
+  }, [access, refresh]);
 
   async function saveText(category: InstitutionAiGuidanceCategory) {
     const draft = textDraft[category];
@@ -148,6 +165,14 @@ export default function ConfigurePage() {
       })),
     },
   ];
+
+  if (access === "loading" || access === "denied") {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

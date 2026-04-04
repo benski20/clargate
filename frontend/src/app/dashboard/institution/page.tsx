@@ -26,7 +26,11 @@ export default function PiInstitutionPage() {
         router.replace("/dashboard");
         return;
       }
-      if (appUser.role !== "pi" && appUser.role !== "admin") {
+      if (
+        appUser.role !== "pi" &&
+        appUser.role !== "admin" &&
+        appUser.role !== "reviewer"
+      ) {
         router.replace("/dashboard");
         return;
       }
@@ -89,9 +93,13 @@ export default function PiInstitutionPage() {
         eyebrow="Your institution"
         title="Learn about your institution"
         description={
-          institutionName
-            ? `Reference materials, rules, and guidelines configured for ${institutionName}—the same context Arbiter uses when helping you draft and review submissions.`
-            : "Reference materials, rules, and guidelines your IRB office configured in Arbiter—the same context used when helping you draft and review submissions."
+          role === "reviewer"
+            ? institutionName
+              ? `Read-only reference materials, rules, and guidelines for ${institutionName}. Administrators edit these in Configure; reviewers cannot change them here.`
+              : "Read-only reference materials, rules, and guidelines for your institution—the same context used when you review submissions."
+            : institutionName
+              ? `Reference materials, rules, and guidelines configured for ${institutionName}—the same context Arbiter uses when helping you draft and review submissions.`
+              : "Reference materials, rules, and guidelines your IRB office configured in Arbiter—the same context used when helping you draft and review submissions."
         }
       />
 
@@ -109,9 +117,18 @@ export default function PiInstitutionPage() {
               Nothing published yet
             </CardTitle>
             <CardDescription>
-              When your IRB administrator adds example proposals, rules, guidelines, or institutional
-              specifics in <span className="font-medium text-foreground">Configure</span>, they will
-              appear here for your whole team.
+              {role === "reviewer" ? (
+                <>
+                  When your IRB administrator publishes example proposals, rules, guidelines, or institutional
+                  specifics, they will appear here for reviewers and investigators.
+                </>
+              ) : (
+                <>
+                  When your IRB administrator adds example proposals, rules, guidelines, or institutional
+                  specifics in <span className="font-medium text-foreground">Configure</span>, they will
+                  appear here for your whole team.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
         </Card>

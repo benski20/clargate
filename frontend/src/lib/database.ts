@@ -232,10 +232,15 @@ export const db = {
 
   async getMyAssignments() {
     const supabase = getClient();
-    const { data, error } = await supabase
+    const appUser = await this.getCurrentAppUser();
+    let query = supabase
       .from("review_assignments")
       .select("*, proposals(title)")
       .order("assigned_at", { ascending: false });
+    if (appUser?.role === "reviewer") {
+      query = query.eq("reviewer_user_id", appUser.id);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   },
@@ -331,7 +336,7 @@ export const db = {
     return data;
   },
 
-  /** PI/admin: rows for your institution (RLS). Used for the “learn about your institution” page. */
+  /** PI/admin/reviewer: rows for your institution (RLS). Used for the “learn about your institution” page. */
   async getInstitutionGuidance(): Promise<InstitutionAiGuidanceRow[]> {
     const supabase = getClient();
     const { data, error } = await supabase

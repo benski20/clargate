@@ -34,9 +34,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (user.role === "admin") {
+    if (user.role === "admin" || user.role === "reviewer") {
       return new Response(
-        JSON.stringify({ error: "Administrators cannot upload proposal documents." }),
+        JSON.stringify({ error: "Only the proposal owner can upload documents." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

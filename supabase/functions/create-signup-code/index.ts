@@ -12,7 +12,7 @@ function randomCode(): string {
   return s;
 }
 
-/** Admin only: create a new redeemable signup code for this institution. */
+/** Institution staff: create a new redeemable signup code for this institution. */
 Deno.serve(async (req) => {
   const corsResp = handleCors(req);
   if (corsResp) return corsResp;
@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
     const user = await getCallerUser(authHeader);
     const appRole = String((user as { role?: string }).role ?? "").toLowerCase();
 
-    if (appRole !== "admin") {
-      return new Response(JSON.stringify({ error: "Admin only" }), {
+    if (appRole !== "admin" && appRole !== "reviewer") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

@@ -120,7 +120,7 @@ export default function ReviewerDashboard() {
               (Date.now() - new Date(a.assigned_at).getTime()) / (1000 * 60 * 60 * 24)
             );
             return (
-              <Link key={a.id} href={`/dashboard/reviewer/proposals/${a.proposal_id}`}>
+              <Link key={a.id} href={`/dashboard/admin/proposals/${a.proposal_id}?tab=messages`}>
                 <Card
                   className={`${dashboardCardClass} cursor-pointer transition-colors duration-200 hover:bg-muted/40`}
                 >

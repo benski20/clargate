@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, KeyRound, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,8 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 export default function AdminUsersPage() {
+  const router = useRouter();
+  const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
   const [users, setUsers] = useState<User[]>([]);
   const [codes, setCodes] = useState<SignupCodeRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +61,19 @@ export default function AdminUsersPage() {
   });
 
   useEffect(() => {
+    (async () => {
+      const appUser = await db.getCurrentAppUser();
+      if (appUser?.role !== "admin") {
+        router.replace("/dashboard");
+        setAccess("denied");
+        return;
+      }
+      setAccess("allowed");
+    })();
+  }, [router]);
+
+  useEffect(() => {
+    if (access !== "allowed") return;
     let cancelled = false;
     (async () => {
       try {
@@ -83,7 +99,7 @@ export default function AdminUsersPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [access]);
 
   async function handleCreateCode(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +131,14 @@ export default function AdminUsersPage() {
     } finally {
       setRoleUpdatingId(null);
     }
+  }
+
+  if (access === "loading" || access === "denied") {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
   }
 
   return (

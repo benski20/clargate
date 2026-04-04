@@ -5,7 +5,7 @@ import { getPresignedDownloadUrl } from "@/lib/s3-server";
 export const runtime = "nodejs";
 
 /**
- * Presigned GET for an institutional guidance file (PI/admin, same institution via RLS).
+ * Presigned GET for an institutional guidance file (PI/admin/reviewer, same institution via RLS).
  */
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -29,7 +29,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "User not found" }, { status: 403 });
     }
 
-    if (appUser.role !== "pi" && appUser.role !== "admin") {
+    if (appUser.role !== "pi" && appUser.role !== "admin" && appUser.role !== "reviewer") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

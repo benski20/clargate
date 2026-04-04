@@ -23,8 +23,12 @@ export async function requireAdminSession(): Promise<
     .eq("supabase_uid", user.id)
     .single();
 
-  if (error || !appUser || appUser.role !== "admin") {
-    return { ok: false, status: 403, message: "Admin only" };
+  if (error || !appUser) {
+    return { ok: false, status: 403, message: "Forbidden" };
+  }
+  const role = appUser.role as string;
+  if (role !== "admin") {
+    return { ok: false, status: 403, message: "Forbidden" };
   }
 
   return {
