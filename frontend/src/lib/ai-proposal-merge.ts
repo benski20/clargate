@@ -1,11 +1,16 @@
 import type { AiWorkspaceState } from "@/lib/ai-proposal-types";
 
 /** Maps AI workspace into existing proposal form_data keys for downstream views. */
-export function buildFormDataFromAiWorkspace(ai: AiWorkspaceState, studyTitle: string): Record<string, unknown> {
+export function buildFormDataFromAiWorkspace(
+  ai: AiWorkspaceState,
+  studyTitle: string,
+  opts?: { entryMode?: "ai_draft" | "upload_review" },
+): Record<string, unknown> {
   const p = ai.protocol;
   const title = studyTitle.trim() || "Draft study";
+  const entryMode = opts?.entryMode ?? "ai_draft";
   return {
-    entry_mode: "ai_draft",
+    entry_mode: entryMode,
     ai_workspace: ai,
     study_info: {
       title,

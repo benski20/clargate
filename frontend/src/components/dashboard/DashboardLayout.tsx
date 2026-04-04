@@ -247,6 +247,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const filteredNav = navItems.filter((item) => appUser && item.roles.includes(appUser.role));
 
+  /** AI intake / upload workspace needs more horizontal room while keeping the dashboard shell */
+  const wideMainContent =
+    pathname.startsWith("/dashboard/proposals/new") ||
+    /\/dashboard\/proposals\/[^/]+\/edit$/.test(pathname);
+
   if (appUser === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/50">
@@ -331,7 +336,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto px-4 py-6 md:px-8 md:py-10 lg:px-10">
-          <div className="mx-auto max-w-6xl">{children}</div>
+          <div className={cn("mx-auto w-full", wideMainContent ? "max-w-[1600px]" : "max-w-6xl")}>
+            {children}
+          </div>
         </main>
       </div>
     </div>

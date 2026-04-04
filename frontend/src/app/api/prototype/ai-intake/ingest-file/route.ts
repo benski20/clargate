@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mammoth from "mammoth";
 import pdf from "pdf-parse";
 
 export const runtime = "nodejs";
@@ -32,6 +33,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ text: (data.text || "").trim() });
     }
 
+    const isDocx =
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      lower.endsWith(".docx");
+    if (isDocx) {
+      const result = await mammoth.extractRawText({ buffer: buf });
+      return NextResponse.json({ text: (result.value || "").trim() });
+    }
+
     const isText =
       mimeType.startsWith("text/") ||
       ["application/json", "application/xml"].includes(mimeType) ||
@@ -44,7 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          "Unsupported type. Use PDF or plain text (.txt, .md, .csv, .json, .html).",
+          "Unsupported type. Use PDF, Word (.docx), or plain text (.txt, .md, .csv, .json, .html).",
       },
       { status: 400 },
     );

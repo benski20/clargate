@@ -124,3 +124,19 @@ export const PROTOCOL_SECTION_LABELS: Record<ProtocolSectionKey, string> = {
   confidentiality: "Confidentiality",
   consent_process: "Consent process",
 };
+
+export function protocolHasReviewContent(protocol: ProtocolDraft): boolean {
+  return PROTOCOL_SECTION_KEYS.some((k) => (protocol[k] ?? "").trim().length > 0);
+}
+
+/** Single markdown document for upload-flow AI review (section notes, not a reformatted protocol). */
+export function buildProtocolReviewMarkdown(protocol: ProtocolDraft): string {
+  const parts: string[] = [];
+  for (const k of PROTOCOL_SECTION_KEYS) {
+    const v = (protocol[k] ?? "").trim();
+    if (v) {
+      parts.push(`### ${PROTOCOL_SECTION_LABELS[k]}\n\n${v}`);
+    }
+  }
+  return parts.join("\n\n");
+}

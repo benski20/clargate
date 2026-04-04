@@ -118,3 +118,40 @@ export async function generatePlainText({
   if (!text?.trim()) throw new Error("Empty model response");
   return text.trim();
 }
+
+/** Multi-turn plain text (no tools) — e.g. upload-flow contextual assistant. */
+export async function generateMultiTurnText({
+  systemInstruction,
+  history,
+  userText,
+  temperature = 0.35,
+  maxOutputTokens = 4096,
+}: {
+  systemInstruction: string;
+  history: AiChatMessage[];
+  userText: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}): Promise<string> {
+  const genAI = getGeminiClient();
+  const { systemInstruction: sys, prior } = mergeLeadingAssistantsIntoSystem(
+    systemInstruction,
+    history,
+  );
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: sys,
+  });
+  const contents: Content[] = prior.map((m) => ({
+    role: m.role === "user" ? "user" : "model",
+    parts: [{ text: m.content }],
+  }));
+  contents.push({ role: "user", parts: [{ text: userText }] });
+  const result = await model.generateContent({
+    contents,
+    generationConfig: { temperature, maxOutputTokens },
+  });
+  const text = result.response.text();
+  if (!text?.trim()) throw new Error("Empty model response");
+  return text.trim();
+}

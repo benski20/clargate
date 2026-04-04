@@ -17,19 +17,14 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
-  MoreHorizontal,
   StickyNote,
   Upload,
   Wand2,
   X,
+  MessageCircle,
+  Save,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,8 +34,11 @@ import { db } from "@/lib/database";
 import type { ProposalStatus } from "@/lib/types";
 import { supplementaryFromWorkspace } from "@/lib/ai-context";
 import {
+  buildProtocolReviewMarkdown,
   emptyAiWorkspace,
   normalizeAiWorkspace,
+  protocolHasReviewContent,
+  type AiChatMessage,
   type AiWorkspaceState,
   type ProtocolSectionKey,
 } from "@/lib/ai-proposal-types";
@@ -102,8 +100,14 @@ export function AiIntakeWorkspace({
   const [consentViewMode, setConsentViewMode] = useState<"preview" | "source">("preview");
   const [revisionSuggestions, setRevisionSuggestions] = useState<string[]>([]);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [sourcePreviewIndex, setSourcePreviewIndex] = useState(0);
+  const [uploadChatOpen, setUploadChatOpen] = useState(false);
+  const [uploadChatMessages, setUploadChatMessages] = useState<AiChatMessage[]>([]);
+  const [uploadChatInput, setUploadChatInput] = useState("");
+  const [uploadChatBusy, setUploadChatBusy] = useState(false);
   const bootRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const uploadChatScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const packageMarkdown = useMemo(
@@ -136,25 +140,52 @@ export function AiIntakeWorkspace({
     Boolean(proposalId) && complianceComplete && proposalReviewAcknowledged;
 
   const persist = useCallback(
-    async (next: AiWorkspaceState, title: string) => {
+    async (next: AiWorkspaceState, title: string): Promise<string | null> => {
       setSaving(true);
       try {
-        const merged = buildFormDataFromAiWorkspace(next, title);
+        const merged = buildFormDataFromAiWorkspace(next, title, {
+          entryMode: variant === "upload" ? "upload_review" : "ai_draft",
+        });
         const t = title.trim() || "Draft study";
         if (!proposalId) {
           const created = await db.createProposal(t, merged);
-          setProposalId(created.id as string);
-        } else {
-          await db.updateProposal(proposalId, { title: t, form_data: merged });
+          const newId = created.id as string;
+          setProposalId(newId);
+          return newId;
         }
+        await db.updateProposal(proposalId, { title: t, form_data: merged });
+        return proposalId;
       } catch {
-        /* non-blocking */
+        return null;
       } finally {
         setSaving(false);
       }
     },
-    [proposalId],
+    [proposalId, variant],
   );
+
+  /** Saves workspace to the database and uploads the Markdown record to proposal file storage. */
+  async function saveDraftAndFiles() {
+    setPackageS3Error(null);
+    const id = await persist(ws, suggestedTitle);
+    if (!id) return;
+    setPackageUploading(true);
+    try {
+      const md = buildProposalPackageMarkdown(ws, suggestedTitle);
+      const file = new File([md], proposalPackageFilename(id), {
+        type: "text/markdown",
+      });
+      await db.presignUploadProposalFile(id, file);
+    } catch (e) {
+      setPackageS3Error(e instanceof Error ? e.message : "Could not save to proposal files.");
+    } finally {
+      setPackageUploading(false);
+    }
+  }
+
+  function focusSubmissionIssue() {
+    setRightTab(variant === "upload" ? "compliance" : "package");
+  }
 
   useEffect(() => {
     if (existingProposalId && hydrationStatus !== "ready") return;
@@ -216,6 +247,27 @@ export function AiIntakeWorkspace({
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [ws.messages, aiBusy]);
+
+  useEffect(() => {
+    if (variant === "upload" && rightTab === "package") {
+      setRightTab("context");
+    }
+  }, [variant, rightTab]);
+
+  useEffect(() => {
+    if (variant !== "upload") return;
+    setSourcePreviewIndex((i) => {
+      const n = ws.context_attachments.length;
+      if (n === 0) return 0;
+      return Math.min(Math.max(0, i), n - 1);
+    });
+  }, [variant, ws.context_attachments.length]);
+
+  useEffect(() => {
+    const el = uploadChatScrollRef.current;
+    if (!el || variant !== "upload") return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [uploadChatMessages, uploadChatBusy, variant]);
 
   useEffect(() => {
     if (variant === "upload") return;
@@ -310,6 +362,47 @@ export function AiIntakeWorkspace({
     }
   }
 
+  async function sendUploadAssistantMessage() {
+    const text = uploadChatInput.trim();
+    if (!text || uploadChatBusy || variant !== "upload") return;
+    const historyForApi = [...uploadChatMessages];
+    setUploadChatInput("");
+    setUploadChatMessages([...historyForApi, { role: "user", content: text }]);
+    setUploadChatBusy(true);
+    try {
+      const res = await fetch("/api/prototype/ai-intake/upload-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historyForApi,
+          user_message: text,
+          protocol: ws.protocol,
+          supplementary_context: supplementaryFromWorkspace(ws),
+          compliance_flags: ws.compliance_flags,
+          revision_suggestions: revisionSuggestions,
+          consent_markdown: ws.consent_markdown,
+          suggested_title: suggestedTitle,
+        }),
+      });
+      const data = (await res.json()) as { assistant_message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || "Assistant failed");
+      setUploadChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.assistant_message || "" },
+      ]);
+    } catch {
+      setUploadChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I could not reach the assistant. Check your connection and API configuration.",
+        },
+      ]);
+    } finally {
+      setUploadChatBusy(false);
+    }
+  }
+
   async function ingestFiles(fileList: FileList | null) {
     if (!fileList?.length || ingestBusy) return;
     setIngestError(null);
@@ -361,8 +454,29 @@ export function AiIntakeWorkspace({
           } else {
             text = (data.text || "").trim();
           }
+        } else if (
+          mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+          name.toLowerCase().endsWith(".docx")
+        ) {
+          const base64 = await blobToBase64(file);
+          const res = await fetch("/api/prototype/ai-intake/ingest-file", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              mimeType:
+                mime || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              base64,
+            }),
+          });
+          const data = (await res.json()) as { text?: string; error?: string };
+          if (!res.ok) {
+            err = data.error || `Could not extract Word document: ${name}`;
+          } else {
+            text = (data.text || "").trim();
+          }
         } else {
-          err = `"${name}" is not a supported type (PDF or plain text).`;
+          err = `"${name}" is not a supported type (PDF, Word .docx, or plain text).`;
         }
 
         if (err) {
@@ -496,13 +610,17 @@ export function AiIntakeWorkspace({
       const synRes = await fetch("/api/prototype/ai-intake/synthesize-protocol", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_text: combined, title: suggestedTitle }),
+        body: JSON.stringify({
+          raw_text: combined,
+          title: suggestedTitle,
+          mode: "upload_review",
+        }),
       });
       const synData = (await synRes.json()) as {
         protocol?: AiWorkspaceState["protocol"];
         error?: string;
       };
-      if (!synRes.ok) throw new Error(synData.error || "Could not structure protocol from materials.");
+      if (!synRes.ok) throw new Error(synData.error || "Could not generate review notes from materials.");
 
       let next: AiWorkspaceState = {
         ...ws,
@@ -588,23 +706,6 @@ export function AiIntakeWorkspace({
     setRightTab("context");
   }
 
-  async function uploadPackageToS3() {
-    if (!proposalId) return;
-    setPackageS3Error(null);
-    setPackageUploading(true);
-    try {
-      const md = buildProposalPackageMarkdown(ws, suggestedTitle);
-      const file = new File([md], proposalPackageFilename(proposalId), {
-        type: "text/markdown",
-      });
-      await db.presignUploadProposalFile(proposalId, file);
-    } catch (e) {
-      setPackageS3Error(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setPackageUploading(false);
-    }
-  }
-
   async function submitFinal() {
     if (!proposalId) return;
     const submitMode = loadedProposalStatus ?? "draft";
@@ -613,7 +714,9 @@ export function AiIntakeWorkspace({
       return;
     }
     if (!proposalReviewAcknowledged) {
-      setRightTab("package");
+      if (variant !== "upload") {
+        setRightTab("package");
+      }
       return;
     }
     setSubmitting(true);
@@ -622,6 +725,7 @@ export function AiIntakeWorkspace({
       const merged = buildFormDataFromAiWorkspace(
         { ...ws, phase: "submit" },
         suggestedTitle,
+        { entryMode: variant === "upload" ? "upload_review" : "ai_draft" },
       );
       const title = suggestedTitle.trim() || "Draft study";
       const md = buildProposalPackageMarkdown({ ...ws, phase: "submit" }, suggestedTitle);
@@ -647,7 +751,7 @@ export function AiIntakeWorkspace({
           e instanceof Error ? e.message : "Could not upload the proposal package to storage.";
         setPackageS3Error(msg);
         setSubmitting(false);
-        setRightTab("package");
+        focusSubmissionIssue();
         return;
       }
       try {
@@ -666,7 +770,7 @@ export function AiIntakeWorkspace({
           e instanceof Error ? e.message : "Could not save the proposal package as Word (.docx).";
         setPackageS3Error(msg);
         setSubmitting(false);
-        setRightTab("package");
+        focusSubmissionIssue();
         return;
       }
       if (submitMode === "revisions_requested") {
@@ -680,7 +784,7 @@ export function AiIntakeWorkspace({
     } catch (e) {
       setSubmitting(false);
       setPackageS3Error(e instanceof Error ? e.message : "Submit failed. Try again.");
-      setRightTab("package");
+      focusSubmissionIssue();
     }
   }
 
@@ -715,8 +819,14 @@ export function AiIntakeWorkspace({
   }
 
   return (
-    <div className="fixed inset-0 z-[45] flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-background">
-      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-border/60 bg-background px-4 md:px-8">
+    <div
+      className={cn(
+        "relative z-0 flex w-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm",
+        /* In-dashboard: bounded height so split panes scroll inside; not a separate full-screen layer */
+        "min-h-[22rem] [height:min(56rem,calc(100dvh-4rem))] md:[height:min(56rem,calc(100dvh-6rem))]"
+      )}
+    >
+      <header className="flex h-16 shrink-0 items-center gap-4 rounded-t-xl border-b border-border/60 bg-background px-4 md:px-8">
         <Button variant="ghost" size="icon" className="cursor-pointer shrink-0" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -739,20 +849,95 @@ export function AiIntakeWorkspace({
               : existingProposalId
                 ? "Your draft is restored — keep editing, then submit when ready."
                 : variant === "upload"
-                  ? "Files → AI protocol · consent · compliance · submit (same as AI draft)"
+                  ? "Upload materials · AI review (no redraft) · consent & compliance · submit"
                   : "Intake · workspace · consent · review · proposal package — saved as you work"}
             {saving ? " · Saving…" : ""}
           </p>
         </div>
-        <div className="hidden items-center gap-2 sm:flex">
+        <div className="flex w-full flex-col items-stretch gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
           <Input
             placeholder="Study title"
             value={suggestedTitle}
             onChange={(e) => setSuggestedTitle(e.target.value)}
-            className="h-9 w-48 rounded-md border-border/60 bg-background text-sm shadow-sm md:w-64"
+            className="h-9 w-full min-w-0 rounded-md border-border/60 bg-background text-sm shadow-sm sm:w-48 md:w-64"
           />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="cursor-pointer gap-1.5 shadow-sm"
+                disabled={saving || packageUploading}
+                onClick={() => void saveDraftAndFiles()}
+              >
+                {saving || packageUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                Save
+              </Button>
+              {proposalId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 cursor-pointer"
+                  title="Download submission record (.md)"
+                  onClick={() =>
+                    downloadProposalPackageMarkdown(
+                      packageMarkdown,
+                      proposalPackageFilename(proposalId),
+                    )
+                  }
+                >
+                  <FileDown className="h-4 w-4" />
+                </Button>
+              ) : null}
+              {variant === "upload" && proposalId && complianceComplete ? (
+                <>
+                  <label className="flex max-w-[14rem] cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[0.65rem] leading-snug text-foreground sm:max-w-[18rem]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-3.5 shrink-0 cursor-pointer rounded border-border accent-foreground"
+                      checked={proposalReviewAcknowledged}
+                      onChange={(e) => setProposalReviewAcknowledged(e.target.checked)}
+                    />
+                    <span>
+                      I confirm I have reviewed the AI review, consent draft, and compliance results for this
+                      submission.
+                    </span>
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="cursor-pointer gap-1.5 shadow-sm"
+                    disabled={submitting || !canSubmitProposal}
+                    onClick={() => void submitFinal()}
+                    title={
+                      !proposalReviewAcknowledged
+                        ? "Confirm the checkbox to submit"
+                        : undefined
+                    }
+                  >
+                    {submitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    {isRevisionResubmit ? "Resubmit" : "Submit to IRB"}
+                  </Button>
+                </>
+              ) : null}
+            </div>
         </div>
       </header>
+
+      {variant === "upload" && packageS3Error ? (
+        <div className="shrink-0 border-b border-amber-500/35 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-950 dark:text-amber-100 md:px-8">
+          {packageS3Error}
+        </div>
+      ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
         {variant === "upload" ? (
@@ -771,19 +956,19 @@ export function AiIntakeWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 lg:p-8 [-webkit-overflow-scrolling:touch]">
               <div className="mx-auto w-full max-w-[120rem] space-y-6">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Upload PDFs or plain text — up to {Math.round(maxFileBytes / (1024 * 1024))} MB per file for
-                  in-app analysis, up to {maxAttachments} files. We map materials to a protocol (no manual
-                  wizard), then you run the same consent, compliance, and submit flow as &quot;Draft with
-                  AI&quot;.
+                  Upload <strong className="text-foreground">PDF, Word (.docx), or Markdown/text</strong> — up
+                  to {Math.round(maxFileBytes / (1024 * 1024))} MB per file, {maxAttachments} files max. The AI
+                  reviews your materials and surfaces observations, consent drafts, and compliance notes{" "}
+                  <strong className="text-foreground">without replacing or reformatting your originals</strong>.
                 </p>
                 <div>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Notes (optional)
+                    Additional notes (optional)
                   </div>
                   <Textarea
                     value={ws.context_notes}
                     onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
-                    placeholder="Extra context: funding, prior IRB, recruitment limits…"
+                    placeholder="Funding, prior IRB numbers, recruitment limits, anything reviewers should weigh alongside your files…"
                     rows={4}
                     className="resize-y rounded-md border-border/60 bg-background text-sm"
                     disabled={reviewBusy}
@@ -793,11 +978,11 @@ export function AiIntakeWorkspace({
                   ref={fileInputRef}
                   type="file"
                   className="sr-only"
-                  accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
+                  accept=".pdf,.docx,.txt,.md,.csv,.json,.html,.htm,.markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   multiple
                   onChange={(e) => void ingestFiles(e.target.files)}
                 />
-                  <button
+                <button
                   type="button"
                   disabled={
                     ingestBusy || reviewBusy || ws.context_attachments.length >= maxAttachments
@@ -827,8 +1012,8 @@ export function AiIntakeWorkspace({
                   )}
                   <p className="mt-4 text-sm font-medium text-foreground">Drop files or click to upload</p>
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    PDF or text · max {Math.round(maxFileBytes / (1024 * 1024))} MB each · {maxAttachments}{" "}
-                    files
+                    PDF · Word · Markdown/text · max {Math.round(maxFileBytes / (1024 * 1024))} MB each · up to{" "}
+                    {maxAttachments} files
                   </p>
                 </button>
                 {ingestError ? (
@@ -862,6 +1047,38 @@ export function AiIntakeWorkspace({
                     ))}
                   </ul>
                 ) : null}
+                {ws.context_attachments.length > 0 ? (
+                  <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Source preview
+                      </span>
+                      <span className="text-[0.65rem] text-muted-foreground">Read-only · your uploads</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ws.context_attachments.map((a, idx) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSourcePreviewIndex(idx)}
+                          className={cn(
+                            "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                            sourcePreviewIndex === idx
+                              ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                              : "text-muted-foreground hover:bg-background/80 hover:text-foreground",
+                          )}
+                        >
+                          {a.name}
+                        </button>
+                      ))}
+                    </div>
+                    <ScrollArea className="h-48 rounded-lg border border-border/50 bg-background">
+                      <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[0.7rem] leading-relaxed text-foreground">
+                        {ws.context_attachments[sourcePreviewIndex]?.text ?? ""}
+                      </pre>
+                    </ScrollArea>
+                  </div>
+                ) : null}
                 <Button
                   type="button"
                   className="w-full cursor-pointer rounded-md shadow-sm"
@@ -876,8 +1093,9 @@ export function AiIntakeWorkspace({
                   Run AI review
                 </Button>
                 <p className="text-[0.7rem] text-muted-foreground">
-                  Builds a structured protocol from your files, generates consent, runs compliance, and adds
-                  revision suggestions. Use the tabs on the right to review or re-run steps.
+                  Produces section-by-section review notes, a consent draft, compliance flags, and revision
+                  ideas — without rewriting your files. Use the tabs on the right to explore each part or open
+                  the assistant.
                 </p>
                 <div className="flex flex-wrap gap-2 border-t border-border/60 pt-4">
                   <Button
@@ -997,12 +1215,22 @@ export function AiIntakeWorkspace({
           <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
             <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/40 bg-muted/30 p-1">
               {(
-                [
-                  ["context", "Workspace", Library],
-                  ["consent", "Consent", ShieldCheck],
-                  ["compliance", "Review", Scale],
-                  ["package", "Proposal", FileDown],
-                ] as const
+                variant === "upload"
+                  ? (
+                      [
+                        ["context", "AI review", Library],
+                        ["consent", "Consent", ShieldCheck],
+                        ["compliance", "Compliance", Scale],
+                      ] as const
+                    )
+                  : (
+                      [
+                        ["context", "Workspace", Library],
+                        ["consent", "Consent", ShieldCheck],
+                        ["compliance", "Compliance", Scale],
+                        ["package", "Proposal", FileDown],
+                      ] as const
+                    )
               ).map(([key, label, Icon]) => (
                 <button
                   key={key}
@@ -1031,12 +1259,32 @@ export function AiIntakeWorkspace({
             <div
               className={cn(
                 "mx-auto w-full max-w-[120rem]",
-                rightTab === "consent" || rightTab === "package"
+                rightTab === "consent" ||
+                (rightTab === "package" && variant !== "upload")
                   ? "flex min-h-[calc(100dvh-9rem)] flex-col gap-3 p-4 md:p-5"
                   : "space-y-8 p-6 lg:p-12",
               )}
             >
               {rightTab === "context" ? (
+                variant === "upload" ? (
+                  <div className="space-y-4">
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      Consolidated <strong className="text-foreground">AI review notes</strong> (observations,
+                      gaps, suggested clarifications). Your uploaded files are the source of truth and are not
+                      reformatted here.
+                    </p>
+                    {protocolHasReviewContent(ws.protocol) ? (
+                      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                        <ProposalMarkdownPreview markdown={buildProtocolReviewMarkdown(ws.protocol)} />
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+                        Run <strong className="text-foreground">AI review</strong> on the left after uploading
+                        files. Notes will appear here.
+                      </p>
+                    )}
+                  </div>
+                ) : (
                 <div className="space-y-6">
                   <div>
                     <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1051,14 +1299,13 @@ export function AiIntakeWorkspace({
                       className="min-h-[120px] resize-y rounded-md border-border/60 bg-background text-sm leading-relaxed shadow-sm"
                     />
                     <p className="mt-2 text-[0.75rem] text-muted-foreground leading-relaxed">
-                      {variant === "upload"
-                        ? "Add notes here for consent and compliance. Files are uploaded in the left panel."
-                        : "Notes and uploads are included on every AI call (intake, consent, compliance). There is no separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it asks you to confirm something, answer here or add detail in notes."}
+                      Notes and uploads are included on every AI call (intake, consent, compliance). There is no
+                      separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it
+                      asks you to confirm something, answer here or add detail in notes.
                     </p>
                   </div>
 
-                  {variant !== "upload" ? (
-                    <div>
+                  <div>
                       <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <Upload className="h-3.5 w-3.5" />
                         Upload materials
@@ -1136,8 +1383,8 @@ export function AiIntakeWorkspace({
                         </ul>
                       ) : null}
                     </div>
-                  ) : null}
                 </div>
+                )
               ) : null}
 
               {rightTab === "consent" ? (
@@ -1223,14 +1470,14 @@ export function AiIntakeWorkspace({
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {reviewBusy
-                        ? "Running full AI review (protocol → consent → compliance)…"
+                        ? "Running review (section notes → consent draft → compliance)…"
                         : "Analyzing against 45 CFR 46 heuristics…"}
                     </div>
                   ) : null}
                   {ws.compliance_flags.length === 0 && !complianceBusy && !reviewBusy ? (
                     <p className="text-sm text-muted-foreground">
                       {variant === "upload"
-                        ? "Run AI review on the left to build protocol, consent, compliance, and suggestions in one pass."
+                        ? "Run AI review on the left, or use Consent only / Compliance only. Your source files are not rewritten."
                         : "Run a compliance check to see flags."}
                     </p>
                   ) : null}
@@ -1277,7 +1524,11 @@ export function AiIntakeWorkspace({
                           ) : null}
                           {f.section_key !== "general" ? (
                             <p className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">
-                              {f.section_key === "consent" ? "Open consent" : "Open workspace"}
+                              {f.section_key === "consent"
+                                ? "Open consent"
+                                : variant === "upload"
+                                  ? "Open AI review"
+                                  : "Open workspace"}
                               <ChevronRight className="h-3 w-3" />
                             </p>
                           ) : null}
@@ -1288,7 +1539,7 @@ export function AiIntakeWorkspace({
                 </div>
               ) : null}
 
-              {rightTab === "package" ? (
+              {rightTab === "package" && variant !== "upload" ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-3">
                   {!proposalId ? (
                     <p className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
@@ -1307,7 +1558,7 @@ export function AiIntakeWorkspace({
                     <div
                       className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/25 px-3 py-2"
                       role="toolbar"
-                      aria-label="View and export"
+                      aria-label="Preview or view Markdown source"
                     >
                       <div className="inline-flex rounded-md border border-border/50 bg-background p-0.5">
                         <button
@@ -1335,50 +1586,6 @@ export function AiIntakeWorkspace({
                           Markdown
                         </button>
                       </div>
-                      {proposalId ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            nativeButton={false}
-                            render={
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 cursor-pointer gap-1.5 px-2.5 text-xs"
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" aria-hidden />
-                                Actions
-                              </Button>
-                            }
-                          />
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem
-                              className="cursor-pointer text-sm"
-                              onClick={() =>
-                                downloadProposalPackageMarkdown(
-                                  packageMarkdown,
-                                  proposalPackageFilename(proposalId),
-                                )
-                              }
-                            >
-                              <FileDown className="h-3.5 w-3.5" />
-                              Download Markdown (.md)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer text-sm"
-                              disabled={packageUploading}
-                              onClick={() => void uploadPackageToS3()}
-                            >
-                              {packageUploading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <FileText className="h-3.5 w-3.5" />
-                              )}
-                              Save to proposal files
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : null}
                     </div>
                     <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
                       {packageViewMode === "preview" ? (
@@ -1398,19 +1605,9 @@ export function AiIntakeWorkspace({
                         </p>
                       ) : !complianceComplete ? (
                         <p className="text-sm text-muted-foreground">
-                          {variant === "upload" ? (
-                            <>
-                              Run <strong className="text-foreground">AI review</strong> on the left or open
-                              the Review tab and run compliance. After you have a predicted category, return
-                              here to submit.
-                            </>
-                          ) : (
-                            <>
-                              Run a <strong className="text-foreground">compliance check</strong> from the chat
-                              bar or the Review tab. After you have a predicted category, return here to review
-                              the package and submit.
-                            </>
-                          )}
+                          Run a <strong className="text-foreground">compliance check</strong> from the chat bar
+                          or the Review tab. After you have a predicted category, return here to review the
+                          package and submit.
                         </p>
                       ) : (
                         <>
@@ -1473,6 +1670,123 @@ export function AiIntakeWorkspace({
           </ScrollArea>
         </div>
       </div>
+
+      {variant === "upload" ? (
+        <>
+          <AnimatePresence>
+            {uploadChatOpen ? (
+              <motion.div
+                key="upload-assistant-panel"
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                className="fixed bottom-20 right-4 z-50 flex max-h-[min(520px,calc(100dvh-6rem))] w-[min(calc(100vw-2rem),380px)] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl ring-1 ring-black/5 md:bottom-8 md:right-8"
+              >
+                <div className="flex shrink-0 items-center justify-between border-b border-border/60 bg-gradient-to-r from-teal-500/10 via-background to-violet-500/10 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">Proposal assistant</p>
+                    <p className="text-[0.65rem] text-muted-foreground">
+                      Compliance, consent, and revisions in context
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 cursor-pointer"
+                    onClick={() => setUploadChatOpen(false)}
+                    aria-label="Close assistant"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div
+                  ref={uploadChatScrollRef}
+                  className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3"
+                >
+                  {uploadChatMessages.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+                      Ask about compliance flags, the consent draft, or the AI review notes — grounded in your
+                      uploaded materials.
+                    </p>
+                  ) : null}
+                  {uploadChatMessages.map((m, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "max-w-[95%] rounded-xl px-3 py-2 text-sm leading-relaxed",
+                        m.role === "user"
+                          ? "ml-auto bg-foreground text-background"
+                          : "mr-auto border border-border/60 bg-card text-foreground shadow-sm",
+                      )}
+                    >
+                      {m.role === "assistant" ? (
+                        <ProposalMarkdownPreview markdown={m.content} />
+                      ) : (
+                        m.content
+                      )}
+                    </div>
+                  ))}
+                  {uploadChatBusy ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Thinking…
+                    </div>
+                  ) : null}
+                </div>
+                <div className="shrink-0 border-t border-border/60 bg-muted/10 p-3">
+                  <div className="flex gap-2">
+                    <Input
+                      value={uploadChatInput}
+                      onChange={(e) => setUploadChatInput(e.target.value)}
+                      placeholder="Message…"
+                      disabled={uploadChatBusy}
+                      className="h-10 flex-1 rounded-md border-border/60 bg-background text-sm shadow-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void sendUploadAssistantMessage();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="h-10 w-10 shrink-0 cursor-pointer rounded-md shadow-sm"
+                      disabled={uploadChatBusy || !uploadChatInput.trim()}
+                      onClick={() => void sendUploadAssistantMessage()}
+                      aria-label="Send"
+                    >
+                      {uploadChatBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[0.65rem] leading-relaxed text-muted-foreground">
+                    Informational only — not legal advice. Uses your uploads and current review state.
+                  </p>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          {!uploadChatOpen ? (
+            <motion.button
+              type="button"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              className="fixed bottom-20 right-4 z-50 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-background text-primary shadow-lg ring-2 ring-teal-500/25 md:bottom-8 md:right-8"
+              onClick={() => setUploadChatOpen(true)}
+              aria-label="Open proposal assistant"
+            >
+              <MessageCircle className="h-6 w-6" />
+            </motion.button>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
