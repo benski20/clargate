@@ -58,6 +58,7 @@ export async function POST(
     .select("id, status, institution_id, title")
     .eq("id", proposalId)
     .eq("institution_id", auth.session.appUser.institution_id)
+    .neq("status", "draft")
     .single();
 
   if (fetchErr || !proposal) {

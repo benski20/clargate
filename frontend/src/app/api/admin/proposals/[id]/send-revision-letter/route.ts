@@ -72,6 +72,7 @@ export async function POST(
     .select("id, title, status, pi_user_id, institution_id")
     .eq("id", proposalId)
     .eq("institution_id", user.institution_id)
+    .neq("status", "draft")
     .single();
 
   if (pErr || !proposal) {

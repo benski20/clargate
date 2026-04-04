@@ -62,6 +62,7 @@ Deno.serve(async (req) => {
       .select("id, title, status, pi_user_id, institution_id")
       .eq("id", proposal_id)
       .eq("institution_id", user.institution_id)
+      .neq("status", "draft")
       .single();
 
     if (!proposal) {

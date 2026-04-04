@@ -9,42 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { TreeView } from "@/components/ui/tree-view";
 import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
 import { cn } from "@/lib/utils";
+import {
+  INSTITUTION_GUIDANCE_CATEGORY_SHORT,
+  INSTITUTION_GUIDANCE_SECTIONS,
+} from "@/lib/institution-guidance-sections";
 import type { InstitutionAiGuidanceCategory, InstitutionAiGuidanceRow } from "@/lib/types";
 
-const SECTIONS: {
-  category: InstitutionAiGuidanceCategory;
-  title: string;
-  description: string;
-}[] = [
-  {
-    category: "example_proposal",
-    title: "Example proposals",
-    description:
-      "Templates or de-identified samples that show the tone and structure your IRB expects.",
-  },
-  {
-    category: "rules",
-    title: "Proposal rules",
-    description: "Non-negotiable requirements (sections, risk language, policy references).",
-  },
-  {
-    category: "guidelines",
-    title: "Guidelines",
-    description: "Best practices, checklists, and interpretation notes.",
-  },
-  {
-    category: "institutional",
-    title: "Institutional specifics",
-    description: "Local policies, ancillary boards, COI norms, and campus context.",
-  },
-];
-
-const TAB_LABELS: Record<InstitutionAiGuidanceCategory, string> = {
-  example_proposal: "Examples",
-  rules: "Rules",
-  guidelines: "Guidelines",
-  institutional: "Institution",
-};
+const SECTIONS = INSTITUTION_GUIDANCE_SECTIONS;
 
 function previewContent(row: InstitutionAiGuidanceRow): string {
   if (row.content_type === "text") {
@@ -173,7 +144,7 @@ export default function ConfigurePage() {
       label: "AI Context Library",
       children: SECTIONS.map((s) => ({
         id: s.category,
-        label: TAB_LABELS[s.category],
+        label: INSTITUTION_GUIDANCE_CATEGORY_SHORT[s.category],
       })),
     },
   ];

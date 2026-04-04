@@ -50,14 +50,14 @@ function dashboardQuickCards(role: UserRole | null): DashboardQuickCard[] {
         gradient: "gray",
       },
       {
-        badgeText: "At a glance",
-        badgeColor: "#8b5cf6",
-        title: "Summary metrics",
+        badgeText: "Institution",
+        badgeColor: "#059669",
+        title: "Learn about your institution",
         description:
-          "Jump to your totals, items under review, and drafts that still need action.",
-        ctaText: "Go to stats",
-        ctaHref: "/dashboard#dashboard-stats",
-        gradient: "purple",
+          "See rules, guidelines, examples, and local policies your IRB office configured for submissions.",
+        ctaText: "View guidance",
+        ctaHref: "/dashboard/institution",
+        gradient: "green",
       },
     ];
   }

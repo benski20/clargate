@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type {
   AuditLogEntry,
+  InstitutionAiGuidanceRow,
   Letter,
   Proposal,
   RedeemSignupResult,
@@ -328,6 +329,39 @@ export const db = {
     const { data, error } = await supabase.from("institutions").select("*").single();
     if (error) throw error;
     return data;
+  },
+
+  /** PI/admin: rows for your institution (RLS). Used for the “learn about your institution” page. */
+  async getInstitutionGuidance(): Promise<InstitutionAiGuidanceRow[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("institution_ai_guidance")
+      .select("*")
+      .order("category", { ascending: true })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as InstitutionAiGuidanceRow[];
+  },
+
+  async getInstitutionGuidanceFileDownload(guidanceId: string) {
+    const res = await fetch(`/api/institution-guidance/${guidanceId}/download`, {
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      download_url?: string;
+      file_name?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Download failed (${res.status})`);
+    }
+    if (!json.download_url) {
+      throw new Error("No download URL");
+    }
+    return {
+      download_url: json.download_url,
+      file_name: json.file_name ?? "document",
+    };
   },
 
   async getAuditLog(opts?: { entityType?: string; action?: string; pageSize?: number }): Promise<AuditLogEntry[]> {

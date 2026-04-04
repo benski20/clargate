@@ -15,6 +15,7 @@ import {
   ScrollText,
   Loader2,
   BookMarked,
+  Building2,
   Shield,
   PanelLeftClose,
   PanelLeftOpen,
@@ -45,6 +46,12 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "reviewer", "pi"] },
   { label: "My Proposals", href: "/dashboard/proposals", icon: FileText, roles: ["pi"] },
+  {
+    label: "Your institution",
+    href: "/dashboard/institution",
+    icon: Building2,
+    roles: ["pi"],
+  },
   { label: "Submissions", href: "/dashboard/admin", icon: ClipboardList, roles: ["admin"] },
   { label: "Inbox", href: "/dashboard/admin/inbox", icon: Inbox, roles: ["admin"] },
   { label: "Users", href: "/dashboard/admin/users", icon: Users, roles: ["admin"] },

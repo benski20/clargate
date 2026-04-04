@@ -40,7 +40,7 @@ export default function EditProposalPage() {
   return (
     <AiIntakeWorkspace
       existingProposalId={proposalId}
-      onBack={() => router.push(`/dashboard/proposals/${proposalId}`)}
+      onBack={() => router.replace(`/dashboard/proposals/${proposalId}`)}
       variant="chat"
     />
   );

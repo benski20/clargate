@@ -38,7 +38,7 @@ export async function requireProposalDocumentAccess(proposalId: string): Promise
 
   const { data: proposal, error: pErr } = await svc
     .from("proposals")
-    .select("id, pi_user_id, institution_id")
+    .select("id, pi_user_id, institution_id, status")
     .eq("id", proposalId)
     .eq("institution_id", appUser.institution_id)
     .single();
@@ -48,6 +48,9 @@ export async function requireProposalDocumentAccess(proposalId: string): Promise
   }
 
   if (role === "admin") {
+    if (proposal.status === "draft") {
+      return { ok: false, status: 404, message: "Proposal not found" };
+    }
     return { ok: true, appUser: { id: appUser.id, institution_id: appUser.institution_id, role } };
   }
   if (role === "pi" && proposal.pi_user_id === appUser.id) {

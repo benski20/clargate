@@ -49,6 +49,7 @@ export async function POST(
     .select("id, title, institution_id")
     .eq("id", proposalId)
     .eq("institution_id", user.institution_id)
+    .neq("status", "draft")
     .single();
 
   if (proposalErr || !proposal) {
