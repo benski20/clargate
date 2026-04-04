@@ -27,7 +27,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -109,7 +108,6 @@ function DashboardSidebarPanel({
   /** Narrow icon rail (desktop sidebar collapsed) */
   compact?: boolean;
 }) {
-  const router = useRouter();
   const initials =
     appUser.full_name
       ?.split(" ")
@@ -143,7 +141,6 @@ function DashboardSidebarPanel({
 
   const showStaffCollapsible = isInstitutionStaff && adminSectionItems.length > 0;
   const adminSectionTitle = appUser.role === "reviewer" ? "Institution" : "Administration";
-  const adminHasActiveChild = adminSectionItems.some((item) => linkIsActive(pathname, item.href));
 
   if (compact) {
     return (
@@ -221,44 +218,42 @@ function DashboardSidebarPanel({
             })}
 
             {showStaffCollapsible ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  nativeButton={false}
-                  render={
-                    <button
-                      type="button"
-                      className={cn(
-                        "flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-colors duration-200 outline-none",
-                        adminHasActiveChild
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
-                      aria-label={adminSectionTitle}
-                      aria-haspopup="menu"
-                    >
-                      <Shield className="h-4 w-4 shrink-0" />
-                    </button>
-                  }
+              <>
+                <div
+                  className="my-1.5 h-px w-7 shrink-0 bg-sidebar-border/80"
+                  role="separator"
+                  aria-hidden
                 />
-                <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-44">
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                    {adminSectionTitle}
-                  </DropdownMenuLabel>
-                  {adminSectionItems.map((item) => (
-                    <DropdownMenuItem
-                      key={item.href}
-                      className="cursor-pointer gap-2"
-                      onClick={() => {
-                        router.push(item.href);
-                        onNavigate();
-                      }}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {item.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                <span className="sr-only">{adminSectionTitle}</span>
+                {adminSectionItems.map((item) => {
+                  const isActive = linkIsActive(pathname, item.href);
+                  return (
+                    <Tooltip key={item.href}>
+                      <TooltipTrigger className="cursor-pointer rounded-md outline-none">
+                        <Link
+                          href={item.href}
+                          onClick={onNavigate}
+                          aria-label={`${adminSectionTitle}: ${item.label}`}
+                          className={cn(
+                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+                            isActive
+                              ? "bg-primary/5 text-primary"
+                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          )}
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" />
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8} className="flex max-w-[14rem] flex-col gap-0.5">
+                        <span className="text-[0.65rem] font-semibold uppercase tracking-wide opacity-80">
+                          {adminSectionTitle}
+                        </span>
+                        <span>{item.label}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </>
             ) : null}
           </nav>
 
