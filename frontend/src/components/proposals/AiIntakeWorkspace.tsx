@@ -109,6 +109,8 @@ export function AiIntakeWorkspace({
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const uploadChatScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Original upload binaries (session only); used to push materials to proposal file storage on Save. */
+  const attachmentOriginalFilesRef = useRef<Map<string, File>>(new Map());
 
   const packageMarkdown = useMemo(
     () => buildProposalPackageMarkdown(ws, suggestedTitle),
@@ -164,6 +166,38 @@ export function AiIntakeWorkspace({
     [proposalId, variant],
   );
 
+  /**
+   * Uploads any context attachments that have local files but no `proposal_documents` row yet,
+   * then returns workspace with `document_id` / `s3_key` filled in for persistence.
+   */
+  async function syncOriginalAttachmentsToStorage(
+    targetProposalId: string,
+    workspace: AiWorkspaceState,
+  ): Promise<{ workspace: AiWorkspaceState; uploaded: number }> {
+    const updates: { id: string; document_id: string; s3_key: string }[] = [];
+    for (const att of workspace.context_attachments) {
+      if (att.document_id) continue;
+      const orig = attachmentOriginalFilesRef.current.get(att.id);
+      if (!orig) continue;
+      const res = await db.presignUploadProposalFile(targetProposalId, orig);
+      updates.push({ id: att.id, document_id: res.document_id, s3_key: res.s3_key });
+    }
+    if (updates.length === 0) {
+      return { workspace, uploaded: 0 };
+    }
+    for (const u of updates) {
+      attachmentOriginalFilesRef.current.delete(u.id);
+    }
+    const next: AiWorkspaceState = {
+      ...workspace,
+      context_attachments: workspace.context_attachments.map((a) => {
+        const u = updates.find((x) => x.id === a.id);
+        return u ? { ...a, document_id: u.document_id, s3_key: u.s3_key } : a;
+      }),
+    };
+    return { workspace: next, uploaded: updates.length };
+  }
+
   /** Saves workspace to the database and uploads the Markdown record to proposal file storage. */
   async function saveDraftAndFiles() {
     setPackageS3Error(null);
@@ -176,6 +210,11 @@ export function AiIntakeWorkspace({
         type: "text/markdown",
       });
       await db.presignUploadProposalFile(id, file);
+      const { workspace: wsSynced, uploaded } = await syncOriginalAttachmentsToStorage(id, ws);
+      if (uploaded > 0) {
+        setWs(wsSynced);
+        await persist(wsSynced, suggestedTitle);
+      }
     } catch (e) {
       setPackageS3Error(e instanceof Error ? e.message : "Could not save to proposal files.");
     } finally {
@@ -488,12 +527,14 @@ export function AiIntakeWorkspace({
           continue;
         }
 
+        const newId = crypto.randomUUID();
         additions.push({
-          id: crypto.randomUUID(),
+          id: newId,
           name,
           mimeType: mime || "application/octet-stream",
           text,
         });
+        attachmentOriginalFilesRef.current.set(newId, file);
         remaining -= 1;
       }
 
@@ -510,6 +551,7 @@ export function AiIntakeWorkspace({
   }
 
   function removeAttachment(id: string) {
+    attachmentOriginalFilesRef.current.delete(id);
     setWs((w) => ({
       ...w,
       context_attachments: w.context_attachments.filter((a) => a.id !== id),
@@ -722,16 +764,20 @@ export function AiIntakeWorkspace({
     setSubmitting(true);
     setPackageS3Error(null);
     try {
+      const { workspace: wsSynced } = await syncOriginalAttachmentsToStorage(proposalId, ws);
+      if (wsSynced !== ws) {
+        setWs(wsSynced);
+      }
       const merged = buildFormDataFromAiWorkspace(
-        { ...ws, phase: "submit" },
+        { ...wsSynced, phase: "submit" },
         suggestedTitle,
         { entryMode: variant === "upload" ? "upload_review" : "ai_draft" },
       );
       const title = suggestedTitle.trim() || "Draft study";
-      const md = buildProposalPackageMarkdown({ ...ws, phase: "submit" }, suggestedTitle);
+      const md = buildProposalPackageMarkdown({ ...wsSynced, phase: "submit" }, suggestedTitle);
       await db.updateProposal(proposalId, {
         title,
-        review_type: ws.predicted_category ?? undefined,
+        review_type: wsSynced.predicted_category ?? undefined,
         form_data: {
           ...merged,
           submission_snapshot: {
@@ -1030,6 +1076,12 @@ export function AiIntakeWorkspace({
                           <p className="truncate font-medium text-foreground">{a.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {a.text.length.toLocaleString()} characters
+                            {a.document_id ? (
+                              <span className="text-emerald-700 dark:text-emerald-400">
+                                {" "}
+                                · Original file saved to proposal documents
+                              </span>
+                            ) : null}
                           </p>
                         </div>
                         <Button
@@ -1366,6 +1418,12 @@ export function AiIntakeWorkspace({
                                 <p className="truncate font-medium text-foreground">{a.name}</p>
                                 <p className="text-xs text-muted-foreground">
                                   {a.text.length.toLocaleString()} characters sent to the model
+                                  {a.document_id ? (
+                                    <span className="text-emerald-700 dark:text-emerald-400">
+                                      {" "}
+                                      · Original file saved to proposal documents
+                                    </span>
+                                  ) : null}
                                 </p>
                               </div>
                               <Button
