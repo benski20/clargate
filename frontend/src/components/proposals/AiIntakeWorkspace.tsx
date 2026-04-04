@@ -69,7 +69,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 export function AiIntakeWorkspace({
   onBack,
-  variant = "chat",
+  variant: variantProp = "chat",
   existingProposalId = null,
 }: {
   onBack: () => void;
@@ -79,8 +79,14 @@ export function AiIntakeWorkspace({
   existingProposalId?: string | null;
 }) {
   const router = useRouter();
+  /** When reopening a saved draft, `form_data.entry_mode` wins over the initial `variant` prop. */
+  const [resolvedVariant, setResolvedVariant] = useState<"chat" | "upload" | null>(null);
+  useEffect(() => {
+    if (!existingProposalId) setResolvedVariant(null);
+  }, [existingProposalId]);
+  const effectiveVariant = resolvedVariant ?? variantProp;
   const maxAttachments =
-    variant === "upload" ? MAX_UPLOAD_ATTACHMENTS_MATERIALS : MAX_UPLOAD_ATTACHMENTS_CHAT;
+    effectiveVariant === "upload" ? MAX_UPLOAD_ATTACHMENTS_MATERIALS : MAX_UPLOAD_ATTACHMENTS_CHAT;
   const maxFileBytes = MAX_INGEST_BYTES_PER_FILE;
   const [ws, setWs] = useState<AiWorkspaceState>(() => emptyAiWorkspace());
   const [suggestedTitle, setSuggestedTitle] = useState("");
@@ -146,7 +152,7 @@ export function AiIntakeWorkspace({
       setSaving(true);
       try {
         const merged = buildFormDataFromAiWorkspace(next, title, {
-          entryMode: variant === "upload" ? "upload_review" : "ai_draft",
+          entryMode: effectiveVariant === "upload" ? "upload_review" : "ai_draft",
         });
         const t = title.trim() || "Draft study";
         if (!proposalId) {
@@ -163,7 +169,7 @@ export function AiIntakeWorkspace({
         setSaving(false);
       }
     },
-    [proposalId, variant],
+    [proposalId, effectiveVariant],
   );
 
   /**
@@ -223,7 +229,7 @@ export function AiIntakeWorkspace({
   }
 
   function focusSubmissionIssue() {
-    setRightTab(variant === "upload" ? "compliance" : "package");
+    setRightTab(effectiveVariant === "upload" ? "compliance" : "package");
   }
 
   useEffect(() => {
@@ -251,6 +257,9 @@ export function AiIntakeWorkspace({
           return;
         }
         const fd = p.form_data as Record<string, unknown> | null;
+        const persistedEntry =
+          fd?.entry_mode === "upload_review" ? "upload" : ("chat" as const);
+        setResolvedVariant(persistedEntry);
         if (!fd?.ai_workspace) {
           setHydrationStatus("no_workspace");
           setLoadedProposalStatus(p.status);
@@ -288,28 +297,28 @@ export function AiIntakeWorkspace({
   }, [ws.messages, aiBusy]);
 
   useEffect(() => {
-    if (variant === "upload" && rightTab === "package") {
+    if (effectiveVariant === "upload" && rightTab === "package") {
       setRightTab("context");
     }
-  }, [variant, rightTab]);
+  }, [effectiveVariant, rightTab]);
 
   useEffect(() => {
-    if (variant !== "upload") return;
+    if (effectiveVariant !== "upload") return;
     setSourcePreviewIndex((i) => {
       const n = ws.context_attachments.length;
       if (n === 0) return 0;
       return Math.min(Math.max(0, i), n - 1);
     });
-  }, [variant, ws.context_attachments.length]);
+  }, [effectiveVariant, ws.context_attachments.length]);
 
   useEffect(() => {
     const el = uploadChatScrollRef.current;
-    if (!el || variant !== "upload") return;
+    if (!el || effectiveVariant !== "upload") return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [uploadChatMessages, uploadChatBusy, variant]);
+  }, [uploadChatMessages, uploadChatBusy, effectiveVariant]);
 
   useEffect(() => {
-    if (variant === "upload") return;
+    if (effectiveVariant === "upload") return;
     if (existingProposalId) return;
     if (bootRef.current) return;
     bootRef.current = true;
@@ -357,7 +366,7 @@ export function AiIntakeWorkspace({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once
-  }, [variant, existingProposalId]);
+  }, [effectiveVariant, existingProposalId]);
 
   async function sendChat() {
     const text = chatInput.trim();
@@ -403,7 +412,7 @@ export function AiIntakeWorkspace({
 
   async function sendUploadAssistantMessage() {
     const text = uploadChatInput.trim();
-    if (!text || uploadChatBusy || variant !== "upload") return;
+    if (!text || uploadChatBusy || effectiveVariant !== "upload") return;
     const historyForApi = [...uploadChatMessages];
     setUploadChatInput("");
     setUploadChatMessages([...historyForApi, { role: "user", content: text }]);
@@ -756,7 +765,7 @@ export function AiIntakeWorkspace({
       return;
     }
     if (!proposalReviewAcknowledged) {
-      if (variant !== "upload") {
+      if (effectiveVariant !== "upload") {
         setRightTab("package");
       }
       return;
@@ -771,7 +780,7 @@ export function AiIntakeWorkspace({
       const merged = buildFormDataFromAiWorkspace(
         { ...wsSynced, phase: "submit" },
         suggestedTitle,
-        { entryMode: variant === "upload" ? "upload_review" : "ai_draft" },
+        { entryMode: effectiveVariant === "upload" ? "upload_review" : "ai_draft" },
       );
       const title = suggestedTitle.trim() || "Draft study";
       const md = buildProposalPackageMarkdown({ ...wsSynced, phase: "submit" }, suggestedTitle);
@@ -883,8 +892,10 @@ export function AiIntakeWorkspace({
               {isRevisionResubmit
                 ? "Revise submission"
                 : existingProposalId
-                  ? "Continue proposal"
-                  : variant === "upload"
+                  ? effectiveVariant === "upload"
+                    ? "Upload & AI review"
+                    : "Continue proposal"
+                  : effectiveVariant === "upload"
                     ? "Upload & AI review"
                     : "AI protocol draft"}
             </h1>
@@ -893,8 +904,10 @@ export function AiIntakeWorkspace({
             {isRevisionResubmit
               ? "Edit your protocol package with AI assistance, then resubmit to the IRB."
               : existingProposalId
-                ? "Your draft is restored — keep editing, then submit when ready."
-                : variant === "upload"
+                ? effectiveVariant === "upload"
+                  ? "Upload materials · AI review (no redraft) · consent & compliance · submit"
+                  : "Your draft is restored — keep editing, then submit when ready."
+                : effectiveVariant === "upload"
                   ? "Upload materials · AI review (no redraft) · consent & compliance · submit"
                   : "Intake · workspace · consent · review · proposal package — saved as you work"}
             {saving ? " · Saving…" : ""}
@@ -940,7 +953,7 @@ export function AiIntakeWorkspace({
                   <FileDown className="h-4 w-4" />
                 </Button>
               ) : null}
-              {variant === "upload" && proposalId && complianceComplete ? (
+              {effectiveVariant === "upload" && proposalId && complianceComplete ? (
                 <>
                   <label className="flex max-w-[14rem] cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[0.65rem] leading-snug text-foreground sm:max-w-[18rem]">
                     <input
@@ -979,14 +992,14 @@ export function AiIntakeWorkspace({
         </div>
       </header>
 
-      {variant === "upload" && packageS3Error ? (
+      {effectiveVariant === "upload" && packageS3Error ? (
         <div className="shrink-0 border-b border-amber-500/35 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-950 dark:text-amber-100 md:px-8">
           {packageS3Error}
         </div>
       ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
-        {variant === "upload" ? (
+        {effectiveVariant === "upload" ? (
           <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 bg-background md:min-h-0 md:border-b-0 md:border-r">
             <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
               <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -1267,7 +1280,7 @@ export function AiIntakeWorkspace({
           <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
             <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/40 bg-muted/30 p-1">
               {(
-                variant === "upload"
+                effectiveVariant === "upload"
                   ? (
                       [
                         ["context", "AI review", Library],
@@ -1312,13 +1325,13 @@ export function AiIntakeWorkspace({
               className={cn(
                 "mx-auto w-full max-w-[120rem]",
                 rightTab === "consent" ||
-                (rightTab === "package" && variant !== "upload")
+                (rightTab === "package" && effectiveVariant !== "upload")
                   ? "flex min-h-[calc(100dvh-9rem)] flex-col gap-3 p-4 md:p-5"
                   : "space-y-8 p-6 lg:p-12",
               )}
             >
               {rightTab === "context" ? (
-                variant === "upload" ? (
+                effectiveVariant === "upload" ? (
                   <div className="space-y-4">
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       Consolidated <strong className="text-foreground">AI review notes</strong> (observations,
@@ -1534,12 +1547,12 @@ export function AiIntakeWorkspace({
                   ) : null}
                   {ws.compliance_flags.length === 0 && !complianceBusy && !reviewBusy ? (
                     <p className="text-sm text-muted-foreground">
-                      {variant === "upload"
+                      {effectiveVariant === "upload"
                         ? "Run AI review on the left, or use Consent only / Compliance only. Your source files are not rewritten."
                         : "Run a compliance check to see flags."}
                     </p>
                   ) : null}
-                  {variant === "upload" && revisionSuggestions.length > 0 ? (
+                  {effectiveVariant === "upload" && revisionSuggestions.length > 0 ? (
                     <div className="rounded-md border border-primary/25 bg-primary/5 p-4">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
                         Revision suggestions
@@ -1584,7 +1597,7 @@ export function AiIntakeWorkspace({
                             <p className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">
                               {f.section_key === "consent"
                                 ? "Open consent"
-                                : variant === "upload"
+                                : effectiveVariant === "upload"
                                   ? "Open AI review"
                                   : "Open workspace"}
                               <ChevronRight className="h-3 w-3" />
@@ -1597,7 +1610,7 @@ export function AiIntakeWorkspace({
                 </div>
               ) : null}
 
-              {rightTab === "package" && variant !== "upload" ? (
+              {rightTab === "package" && effectiveVariant !== "upload" ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-3">
                   {!proposalId ? (
                     <p className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
@@ -1729,7 +1742,7 @@ export function AiIntakeWorkspace({
         </div>
       </div>
 
-      {variant === "upload" ? (
+      {effectiveVariant === "upload" ? (
         <>
           <AnimatePresence>
             {uploadChatOpen ? (
