@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,6 +138,14 @@ export function AiIntakeWorkspace({
 
   const isRevisionResubmit = loadedProposalStatus === "revisions_requested";
 
+  const hasStudyTitle = suggestedTitle.trim().length > 0;
+  /** Block workspace until a non-empty study title is entered (after hydration). */
+  const blockWorkspace = hydrationStatus === "ready" && !hasStudyTitle;
+
+  useEffect(() => {
+    if (blockWorkspace) setUploadChatOpen(false);
+  }, [blockWorkspace]);
+
   useEffect(() => {
     setProposalReviewAcknowledged(false);
   }, [packageFingerprint]);
@@ -206,6 +215,7 @@ export function AiIntakeWorkspace({
 
   /** Saves workspace to the database and uploads the Markdown record to proposal file storage. */
   async function saveDraftAndFiles() {
+    if (!suggestedTitle.trim()) return;
     setPackageS3Error(null);
     const id = await persist(ws, suggestedTitle);
     if (!id) return;
@@ -234,6 +244,7 @@ export function AiIntakeWorkspace({
 
   useEffect(() => {
     if (existingProposalId && hydrationStatus !== "ready") return;
+    if (!suggestedTitle.trim()) return;
     const t = setTimeout(() => {
       void persist(ws, suggestedTitle);
     }, 900);
@@ -320,6 +331,7 @@ export function AiIntakeWorkspace({
   useEffect(() => {
     if (effectiveVariant === "upload") return;
     if (existingProposalId) return;
+    if (!suggestedTitle.trim()) return;
     if (bootRef.current) return;
     bootRef.current = true;
     (async () => {
@@ -365,10 +377,10 @@ export function AiIntakeWorkspace({
         setAiBusy(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once
-  }, [effectiveVariant, existingProposalId]);
+  }, [effectiveVariant, existingProposalId, suggestedTitle]);
 
   async function sendChat() {
+    if (!suggestedTitle.trim()) return;
     const text = chatInput.trim();
     if (!text || aiBusy) return;
     setChatInput("");
@@ -411,6 +423,7 @@ export function AiIntakeWorkspace({
   }
 
   async function sendUploadAssistantMessage() {
+    if (!suggestedTitle.trim()) return;
     const text = uploadChatInput.trim();
     if (!text || uploadChatBusy || effectiveVariant !== "upload") return;
     const historyForApi = [...uploadChatMessages];
@@ -452,6 +465,7 @@ export function AiIntakeWorkspace({
   }
 
   async function ingestFiles(fileList: FileList | null) {
+    if (!suggestedTitle.trim()) return;
     if (!fileList?.length || ingestBusy) return;
     setIngestError(null);
     setIngestBusy(true);
@@ -568,6 +582,7 @@ export function AiIntakeWorkspace({
   }
 
   async function runConsent() {
+    if (!suggestedTitle.trim()) return;
     setConsentBusy(true);
     setRightTab("consent");
     try {
@@ -603,6 +618,7 @@ export function AiIntakeWorkspace({
   }
 
   async function runCompliance() {
+    if (!suggestedTitle.trim()) return;
     setComplianceBusy(true);
     setRightTab("compliance");
     try {
@@ -648,6 +664,7 @@ export function AiIntakeWorkspace({
   }
 
   async function runFullAiReview() {
+    if (!suggestedTitle.trim()) return;
     if (ws.context_attachments.length === 0) {
       setIngestError("Add at least one PDF or text file.");
       return;
@@ -750,6 +767,7 @@ export function AiIntakeWorkspace({
   }
 
   function scrollToSection(key: ProtocolSectionKey | "consent") {
+    if (!suggestedTitle.trim()) return;
     if (key === "consent") {
       setRightTab("consent");
       return;
@@ -758,6 +776,7 @@ export function AiIntakeWorkspace({
   }
 
   async function submitFinal() {
+    if (!suggestedTitle.trim()) return;
     if (!proposalId) return;
     const submitMode = loadedProposalStatus ?? "draft";
     if (!complianceComplete) {
@@ -914,19 +933,37 @@ export function AiIntakeWorkspace({
           </p>
         </div>
         <div className="flex w-full flex-col items-stretch gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
-          <Input
-            placeholder="Study title"
-            value={suggestedTitle}
-            onChange={(e) => setSuggestedTitle(e.target.value)}
-            className="h-9 w-full min-w-0 rounded-md border-border/60 bg-background text-sm shadow-sm sm:w-48 md:w-64"
-          />
+          <InputGroup
+            className={cn(
+              "h-9 min-h-9 w-full min-w-0 rounded-md border-border/60 bg-background text-sm shadow-sm sm:w-52 md:w-[22rem]",
+              "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring"
+            )}
+          >
+            <InputGroupAddon
+              id="ai-intake-study-title-label"
+              align="inline-start"
+              className="shrink-0 pl-3 pr-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-foreground"
+            >
+              Study title
+            </InputGroupAddon>
+            <InputGroupInput
+              id="ai-intake-study-title"
+              aria-labelledby="ai-intake-study-title-label"
+              aria-required="true"
+              placeholder="Working title"
+              value={suggestedTitle}
+              onChange={(e) => setSuggestedTitle(e.target.value)}
+              className="min-w-0 pr-3 text-sm"
+            />
+          </InputGroup>
           <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="cursor-pointer gap-1.5 shadow-sm"
-                disabled={saving || packageUploading}
+                disabled={saving || packageUploading || !hasStudyTitle}
+                title={!hasStudyTitle ? "Enter a study title first" : undefined}
                 onClick={() => void saveDraftAndFiles()}
               >
                 {saving || packageUploading ? (
@@ -942,7 +979,10 @@ export function AiIntakeWorkspace({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 shrink-0 cursor-pointer"
-                  title="Download submission record (.md)"
+                  disabled={!hasStudyTitle}
+                  title={
+                    !hasStudyTitle ? "Enter a study title first" : "Download submission record (.md)"
+                  }
                   onClick={() =>
                     downloadProposalPackageMarkdown(
                       packageMarkdown,
@@ -955,11 +995,17 @@ export function AiIntakeWorkspace({
               ) : null}
               {effectiveVariant === "upload" && proposalId && complianceComplete ? (
                 <>
-                  <label className="flex max-w-[14rem] cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[0.65rem] leading-snug text-foreground sm:max-w-[18rem]">
+                  <label
+                    className={cn(
+                      "flex max-w-[14rem] cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[0.65rem] leading-snug text-foreground sm:max-w-[18rem]",
+                      !hasStudyTitle && "pointer-events-none opacity-50",
+                    )}
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5 size-3.5 shrink-0 cursor-pointer rounded border-border accent-foreground"
                       checked={proposalReviewAcknowledged}
+                      disabled={!hasStudyTitle}
                       onChange={(e) => setProposalReviewAcknowledged(e.target.checked)}
                     />
                     <span>
@@ -971,12 +1017,14 @@ export function AiIntakeWorkspace({
                     type="button"
                     size="sm"
                     className="cursor-pointer gap-1.5 shadow-sm"
-                    disabled={submitting || !canSubmitProposal}
+                    disabled={submitting || !canSubmitProposal || !hasStudyTitle}
                     onClick={() => void submitFinal()}
                     title={
-                      !proposalReviewAcknowledged
-                        ? "Confirm the checkbox to submit"
-                        : undefined
+                      !hasStudyTitle
+                        ? "Enter a study title first"
+                        : !proposalReviewAcknowledged
+                          ? "Confirm the checkbox to submit"
+                          : undefined
                     }
                   >
                     {submitting ? (
@@ -998,7 +1046,22 @@ export function AiIntakeWorkspace({
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
+      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
+        {blockWorkspace ? (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/65 px-6 py-10 text-center backdrop-blur-[1px]"
+            role="region"
+            aria-live="polite"
+            aria-label="Study title required"
+          >
+            <p className="max-w-sm text-sm font-medium text-foreground">
+              Enter a study title in the header to use this workspace.
+            </p>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Use the back arrow to leave without saving.
+            </p>
+          </div>
+        ) : null}
         {effectiveVariant === "upload" ? (
           <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 bg-background md:min-h-0 md:border-b-0 md:border-r">
             <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
@@ -1020,19 +1083,6 @@ export function AiIntakeWorkspace({
                   reviews your materials and surfaces observations, consent drafts, and compliance notes{" "}
                   <strong className="text-foreground">without replacing or reformatting your originals</strong>.
                 </p>
-                <div>
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Additional notes (optional)
-                  </div>
-                  <Textarea
-                    value={ws.context_notes}
-                    onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
-                    placeholder="Funding, prior IRB numbers, recruitment limits, anything reviewers should weigh alongside your files…"
-                    rows={4}
-                    className="resize-y rounded-md border-border/60 bg-background text-sm"
-                    disabled={reviewBusy}
-                  />
-                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1144,6 +1194,19 @@ export function AiIntakeWorkspace({
                     </ScrollArea>
                   </div>
                 ) : null}
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Additional notes (optional)
+                  </div>
+                  <Textarea
+                    value={ws.context_notes}
+                    onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
+                    placeholder="Funding, prior IRB numbers, recruitment limits, anything reviewers should weigh alongside your files…"
+                    rows={4}
+                    className="resize-y rounded-md border-border/60 bg-background text-sm"
+                    disabled={reviewBusy}
+                  />
+                </div>
                 <Button
                   type="button"
                   className="w-full cursor-pointer rounded-md shadow-sm"
@@ -1300,12 +1363,14 @@ export function AiIntakeWorkspace({
                 <button
                   key={key}
                   type="button"
+                  disabled={blockWorkspace}
                   onClick={() => setRightTab(key)}
                   className={cn(
                     "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     rightTab === key
                       ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
                       : "text-muted-foreground hover:text-foreground",
+                    blockWorkspace && "cursor-not-allowed opacity-50",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -1351,25 +1416,6 @@ export function AiIntakeWorkspace({
                   </div>
                 ) : (
                 <div className="space-y-6">
-                  <div>
-                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      <StickyNote className="h-3.5 w-3.5" />
-                      Notes for the AI
-                    </div>
-                    <Textarea
-                      value={ws.context_notes}
-                      onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
-                      placeholder="Grant boilerplate, prior IRB stipulations, lab SOPs, recruitment copy, anything Gemini should treat as ground truth alongside the chat…"
-                      rows={6}
-                      className="min-h-[120px] resize-y rounded-md border-border/60 bg-background text-sm leading-relaxed shadow-sm"
-                    />
-                    <p className="mt-2 text-[0.75rem] text-muted-foreground leading-relaxed">
-                      Notes and uploads are included on every AI call (intake, consent, compliance). There is no
-                      separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it
-                      asks you to confirm something, answer here or add detail in notes.
-                    </p>
-                  </div>
-
                   <div>
                       <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         <Upload className="h-3.5 w-3.5" />
@@ -1454,6 +1500,25 @@ export function AiIntakeWorkspace({
                         </ul>
                       ) : null}
                     </div>
+
+                  <div>
+                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <StickyNote className="h-3.5 w-3.5" />
+                      Notes for the AI
+                    </div>
+                    <Textarea
+                      value={ws.context_notes}
+                      onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
+                      placeholder="Grant boilerplate, prior IRB stipulations, lab SOPs, recruitment copy, anything Gemini should treat as ground truth alongside the chat…"
+                      rows={6}
+                      className="min-h-[120px] resize-y rounded-md border-border/60 bg-background text-sm leading-relaxed shadow-sm"
+                    />
+                    <p className="mt-2 text-[0.75rem] text-muted-foreground leading-relaxed">
+                      Notes and uploads are included on every AI call (intake, consent, compliance). There is no
+                      separate on-screen “protocol snapshot”—the model keeps structured fields internally; if it
+                      asks you to confirm something, answer here or add detail in notes.
+                    </p>
+                  </div>
                 </div>
                 )
               ) : null}
@@ -1707,12 +1772,14 @@ export function AiIntakeWorkspace({
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
                               className="cursor-pointer rounded-md shadow-sm"
-                              disabled={submitting || !canSubmitProposal}
+                              disabled={submitting || !canSubmitProposal || !hasStudyTitle}
                               onClick={() => void submitFinal()}
                               title={
-                                !proposalReviewAcknowledged
-                                  ? "Confirm you reviewed the proposal package"
-                                  : undefined
+                                !hasStudyTitle
+                                  ? "Enter a study title first"
+                                  : !proposalReviewAcknowledged
+                                    ? "Confirm you reviewed the proposal package"
+                                    : undefined
                               }
                             >
                               {submitting ? (
@@ -1742,7 +1809,7 @@ export function AiIntakeWorkspace({
         </div>
       </div>
 
-      {effectiveVariant === "upload" ? (
+      {effectiveVariant === "upload" && !blockWorkspace ? (
         <>
           <AnimatePresence>
             {uploadChatOpen ? (
