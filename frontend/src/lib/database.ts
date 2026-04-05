@@ -40,6 +40,11 @@ export const db = {
 
     if (opts?.status && opts.status !== "all") {
       query = query.eq("status", opts.status);
+      if (opts.status === "draft") {
+        query = query.is("hidden_from_pi_at", null);
+      }
+    } else {
+      query = query.or("status.neq.draft,hidden_from_pi_at.is.null");
     }
     if (opts?.search) {
       query = query.ilike("title", `%${opts.search}%`);
@@ -109,6 +114,23 @@ export const db = {
       .from("proposals")
       .update(updates)
       .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Soft-hide a draft from the PI's proposal list (row remains; `hidden_from_pi_at` is set).
+   * Only drafts can be hidden; RLS must allow the update.
+   */
+  async hideDraftFromPiList(id: string) {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("proposals")
+      .update({ hidden_from_pi_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("status", "draft")
       .select()
       .single();
     if (error) throw error;

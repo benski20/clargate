@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileText, Loader2, Plus } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -16,6 +16,7 @@ export default function MyProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<"unknown" | "yes" | "no">("unknown");
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +42,22 @@ export default function MyProposalsPage() {
       cancelled = true;
     };
   }, [router]);
+
+  async function hideDraftFromList(proposalId: string) {
+    const ok = window.confirm(
+      "Remove this draft from your list? The submission is not deleted—it stays on record for your institution, but it will no longer appear here.",
+    );
+    if (!ok) return;
+    setRemovingId(proposalId);
+    try {
+      await db.hideDraftFromPiList(proposalId);
+      setProposals((prev) => prev.filter((p) => p.id !== proposalId));
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not remove this draft from your list.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   if (allowed !== "yes") {
     return (
@@ -106,19 +123,44 @@ export default function MyProposalsPage() {
           ) : (
             <div className="space-y-2">
               {proposals.map((p) => (
-                <Link
+                <div
                   key={p.id}
-                  href={`/dashboard/proposals/${p.id}`}
-                  className="flex cursor-pointer items-center justify-between rounded-lg border border-transparent px-4 py-3 transition-colors duration-200 hover:border-border hover:bg-muted/50"
+                  className="flex items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 transition-colors duration-200 hover:border-border hover:bg-muted/50 sm:gap-2 sm:px-3 sm:py-2"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-foreground">{p.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Updated {new Date(p.updated_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <StatusBadge status={p.status} />
-                </Link>
+                  <Link
+                    href={`/dashboard/proposals/${p.id}`}
+                    className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 px-2 py-1.5 sm:px-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{p.title}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Updated {new Date(p.updated_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <StatusBadge status={p.status} />
+                  </Link>
+                  {p.status === "draft" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 cursor-pointer text-muted-foreground hover:text-destructive"
+                      disabled={removingId === p.id}
+                      title="Remove draft from this list"
+                      aria-label={`Remove draft “${p.title}” from your list`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void hideDraftFromList(p.id);
+                      }}
+                    >
+                      {removingId === p.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}

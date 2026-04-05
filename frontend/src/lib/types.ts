@@ -70,6 +70,8 @@ export interface Proposal {
   updated_at: string;
   created_at: string;
   document_count: number;
+  /** PI hid this draft from their list; row is not deleted. */
+  hidden_from_pi_at?: string | null;
 }
 
 export interface ProposalDocument {
