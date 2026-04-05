@@ -31,6 +31,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -64,8 +65,14 @@ export default function SignupPage() {
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+    if (!acceptedTerms) {
+      setError("You must read and accept the Terms of Use and Privacy Policy to create an account.");
+      return;
+    }
+
+    setLoading(true);
 
     const code = signupCode.trim().toUpperCase();
     if (!code) {
@@ -221,9 +228,49 @@ export default function SignupPage() {
               />
             </div>
 
+            <div className="flex gap-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+              <input
+                id="accept-terms"
+                name="accept-terms"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-input accent-primary"
+                required
+              />
+              <label
+                htmlFor="accept-terms"
+                className="cursor-pointer text-sm leading-snug text-muted-foreground"
+              >
+                I have read and agree to the{" "}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Terms of Use
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </label>
+            </div>
+
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="h-9 w-full cursor-pointer rounded-md shadow-sm" disabled={loading}>
+            <Button
+              type="submit"
+              className="h-9 w-full cursor-pointer rounded-md shadow-sm"
+              disabled={loading || !acceptedTerms}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create account
             </Button>

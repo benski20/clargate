@@ -48,8 +48,12 @@ export function Footer() {
           <span className="mb-2 font-mono text-[clamp(0.65rem,0.8vw,0.75rem)] tracking-[0.15em] text-[#FDFBF7] uppercase">
             Legal
           </span>
-          <span className="text-white/40">Privacy Policy</span>
-          <span className="text-white/40">Terms of Service</span>
+          <Link href="/privacy" className="transition-colors hover:text-[#FDFBF7]">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="transition-colors hover:text-[#FDFBF7]">
+            Terms of Use
+          </Link>
           <span className="text-white/40">BAA Details</span>
         </div>
       </div>
