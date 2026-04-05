@@ -10,6 +10,7 @@ import {
   dashboardCardClass,
   DashboardWelcome,
 } from "@/components/dashboard/dashboard-ui";
+import { PlatformGuideCard } from "@/components/dashboard/platform-guide-card";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import type { Proposal, UserRole } from "@/lib/types";
@@ -206,7 +207,7 @@ export default function DashboardPage() {
       <div id="dashboard-stats" className="grid gap-4 scroll-mt-24 sm:grid-cols-3">
         <Card className={dashboardCardClass}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Total
             </CardTitle>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
@@ -221,7 +222,7 @@ export default function DashboardPage() {
         </Card>
         <Card className={dashboardCardClass}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Under review
             </CardTitle>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
@@ -236,7 +237,7 @@ export default function DashboardPage() {
         </Card>
         <Card className={dashboardCardClass}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Needs action
             </CardTitle>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/5">
@@ -257,25 +258,30 @@ export default function DashboardPage() {
         </p>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
           {role === null
-            ? [0, 1, 2].map((i) => (
+            ? [0, 1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
                   className="h-[180px] animate-pulse rounded-2xl bg-muted/70 md:h-[200px]"
                   aria-hidden
                 />
               ))
-            : dashboardQuickCards(role).map((card) => (
-                <GradientCard
-                  key={`${card.ctaHref}-${card.title}`}
-                  badgeText={card.badgeText}
-                  badgeColor={card.badgeColor}
-                  title={card.title}
-                  description={card.description}
-                  ctaText={card.ctaText}
-                  ctaHref={card.ctaHref}
-                  gradient={card.gradient}
-                />
-              ))}
+            : (
+                <>
+                  {dashboardQuickCards(role).map((card) => (
+                    <GradientCard
+                      key={`${card.ctaHref}-${card.title}`}
+                      badgeText={card.badgeText}
+                      badgeColor={card.badgeColor}
+                      title={card.title}
+                      description={card.description}
+                      ctaText={card.ctaText}
+                      ctaHref={card.ctaHref}
+                      gradient={card.gradient}
+                    />
+                  ))}
+                  <PlatformGuideCard role={role} />
+                </>
+              )}
         </div>
       </div>
     </div>

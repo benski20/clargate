@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -35,6 +35,7 @@ import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import { cn } from "@/lib/utils";
 import { SidebarNavCollapsible } from "@/components/ui/sidebar-with-submenu";
+import { PlatformTourOverlay } from "@/components/dashboard/platform-tour-overlay";
 import type { User, UserRole } from "@/lib/types";
 
 interface NavItem {
@@ -473,7 +474,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="relative flex min-h-screen bg-background">
+      <Suspense fallback={null}>
+        <PlatformTourOverlay appUser={appUser} />
+      </Suspense>
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 overflow-hidden bg-sidebar transition-[width] duration-200 ease-out md:block",

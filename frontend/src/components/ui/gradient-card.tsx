@@ -20,6 +20,8 @@ const cardVariants = cva(
           "bg-gradient-to-br from-purple-50/80 to-indigo-100/24 dark:from-purple-950/20 dark:to-indigo-950/14",
         green:
           "bg-gradient-to-br from-emerald-50/80 to-teal-100/24 dark:from-emerald-950/20 dark:to-teal-950/14",
+        sky:
+          "bg-gradient-to-br from-sky-50/90 to-blue-100/30 dark:from-sky-950/25 dark:to-blue-950/18",
       },
     },
     defaultVariants: {
