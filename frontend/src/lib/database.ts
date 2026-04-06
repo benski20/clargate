@@ -252,6 +252,26 @@ export const db = {
     return data ?? [];
   },
 
+  /** Mark messages from others as read for the current user (opens thread / inbox sync). */
+  async markProposalMessagesRead(proposalId: string) {
+    const supabase = getClient();
+    const { error } = await supabase.rpc("mark_proposal_messages_read", {
+      p_proposal_id: proposalId,
+    });
+    if (error) throw error;
+  },
+
+  /** Sum of unread incoming messages across inbox threads (for nav badge). */
+  async getInboxUnreadTotalCount(): Promise<number> {
+    const supabase = getClient();
+    const { data, error } = await supabase.rpc("get_inbox_unread_total");
+    if (error) throw error;
+    const n = data as number | string | bigint | null;
+    if (n == null) return 0;
+    if (typeof n === "bigint") return Number(n);
+    return typeof n === "number" ? n : Number.parseInt(String(n), 10) || 0;
+  },
+
   async getMyAssignments() {
     const supabase = getClient();
     const appUser = await this.getCurrentAppUser();

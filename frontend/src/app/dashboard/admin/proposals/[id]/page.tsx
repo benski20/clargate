@@ -44,6 +44,7 @@ import {
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
+import { MessageRow } from "@/components/messages/MessageRow";
 import { db } from "@/lib/database";
 import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
@@ -263,6 +264,27 @@ function AdminProposalDetailInner() {
       cancelled = true;
     };
   }, [proposalId]);
+
+  useEffect(() => {
+    if (activeNode !== "messages" || !proposalId || !appUserId) return;
+    const hasUnread = messages.some((m) => !m.is_read && m.sender_user_id !== appUserId);
+    if (!hasUnread) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await db.markProposalMessagesRead(proposalId);
+        if (cancelled) return;
+        setMessages((prev) =>
+          prev.map((m) => (m.sender_user_id !== appUserId ? { ...m, is_read: true } : m)),
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNode, proposalId, appUserId, messages]);
 
   function setTab(next: TabValue) {
     const q = new URLSearchParams(searchParams.toString());
@@ -1239,15 +1261,7 @@ function AdminProposalDetailInner() {
                   ) : (
                     <div className="space-y-3 pr-2">
                       {messages.map((msg) => (
-                        <div key={msg.id} className="rounded-xl bg-muted/50 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium">{msg.sender_name || "Unknown"}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(msg.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm leading-relaxed">{msg.body}</p>
-                        </div>
+                        <MessageRow key={msg.id} msg={msg} viewerUserId={appUserId} />
                       ))}
                     </div>
                   )}

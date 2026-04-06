@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
+import { MessageRow } from "@/components/messages/MessageRow";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
@@ -125,6 +126,7 @@ function ProposalDetailInner() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [appUserId, setAppUserId] = useState<string | null>(null);
 
   const validFormSections = useMemo(
     () =>
@@ -188,19 +190,49 @@ function ProposalDetailInner() {
   ];
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       db.getProposal(proposalId),
       db.getMessages(proposalId),
       db.getProposalLetters(proposalId).catch(() => []),
+      db.getCurrentAppUser(),
     ])
-      .then(([p, m, letterRows]) => {
+      .then(([p, m, letterRows, appUser]) => {
+        if (cancelled) return;
         setProposal(p as ProposalDetail);
         setMessages(m as Message[]);
         setLetters(letterRows as Letter[]);
+        setAppUserId(appUser?.id ?? null);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [proposalId]);
+
+  useEffect(() => {
+    if (activeNode !== "messages" || !proposalId || !appUserId) return;
+    const hasUnread = messages.some((m) => !m.is_read && m.sender_user_id !== appUserId);
+    if (!hasUnread) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await db.markProposalMessagesRead(proposalId);
+        if (cancelled) return;
+        setMessages((prev) =>
+          prev.map((m) => (m.sender_user_id !== appUserId ? { ...m, is_read: true } : m)),
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNode, proposalId, appUserId, messages]);
 
   useEffect(() => {
     if (!justSubmitted && !justResubmitted) return;
@@ -523,17 +555,7 @@ function ProposalDetailInner() {
                   ) : (
                     <div className="space-y-3">
                       {messages.map((msg) => (
-                        <div key={msg.id} className="rounded-lg bg-muted/50 p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">
-                              {msg.sender_name || "Unknown"}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(msg.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm text-foreground">{msg.body}</p>
-                        </div>
+                        <MessageRow key={msg.id} msg={msg} viewerUserId={appUserId} />
                       ))}
                     </div>
                   )}

@@ -11,6 +11,8 @@ export type SidebarNavCollapsibleItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   isActive: boolean;
+  /** Optional badge count (e.g. unread messages for Inbox). */
+  badgeCount?: number | null;
 };
 
 /**
@@ -70,6 +72,11 @@ export function SidebarNavCollapsible({
               <Link
                 href={item.href}
                 onClick={onNavigate}
+                aria-label={
+                  item.badgeCount && item.badgeCount > 0
+                    ? `${item.label}, ${item.badgeCount} unread`
+                    : item.label
+                }
                 className={cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200",
                   item.isActive
@@ -78,7 +85,15 @@ export function SidebarNavCollapsible({
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {item.badgeCount != null && item.badgeCount > 0 ? (
+                  <span
+                    className="inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-semibold tabular-nums text-primary-foreground shadow-sm"
+                    aria-hidden
+                  >
+                    {item.badgeCount > 99 ? "99+" : item.badgeCount}
+                  </span>
+                ) : null}
               </Link>
             </li>
           ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -57,6 +57,13 @@ const ADMIN_SECTION_NAV_HREFS = new Set([
 /** Reviewer: submissions queue + inbox only (no users, audit, or configure). */
 const REVIEWER_STAFF_NAV_HREFS = new Set(["/dashboard/admin", "/dashboard/admin/inbox"]);
 
+const INBOX_NAV_HREFS = new Set(["/dashboard/inbox", "/dashboard/admin/inbox"]);
+
+function inboxNavBadgeCount(href: string, total: number | null): number | null {
+  if (total === null || total <= 0) return null;
+  return INBOX_NAV_HREFS.has(href) ? total : null;
+}
+
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "reviewer", "pi"] },
   { label: "My Proposals", href: "/dashboard/proposals", icon: FileText, roles: ["pi"] },
@@ -94,6 +101,7 @@ function DashboardSidebarPanel({
   onCollapseRequest,
   onExpandRequest,
   compact,
+  inboxUnreadTotal,
 }: {
   appUser: User;
   pathname: string;
@@ -108,6 +116,8 @@ function DashboardSidebarPanel({
   onExpandRequest?: () => void;
   /** Narrow icon rail (desktop sidebar collapsed) */
   compact?: boolean;
+  /** Total unread incoming messages (inbox); null while loading */
+  inboxUnreadTotal: number | null;
 }) {
   const initials =
     appUser.full_name
@@ -194,25 +204,39 @@ function DashboardSidebarPanel({
           <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-4" aria-label="Workspace">
             {flatNav.map((item) => {
               const isActive = linkIsActive(pathname, item.href);
+              const inboxBadge = inboxNavBadgeCount(item.href, inboxUnreadTotal);
+              const ariaLabel =
+                inboxBadge != null && inboxBadge > 0
+                  ? `${item.label}, ${inboxBadge} unread`
+                  : item.label;
               return (
                 <Tooltip key={item.href}>
                   <TooltipTrigger className="cursor-pointer rounded-md outline-none">
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      aria-label={item.label}
+                      aria-label={ariaLabel}
                       className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+                        "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
                         isActive
                           ? "bg-primary/5 text-primary"
                           : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
+                      {inboxBadge != null && inboxBadge > 0 ? (
+                        <span
+                          className="absolute -right-0.5 -top-0.5 z-10 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold leading-none text-primary-foreground shadow-sm"
+                          aria-hidden
+                        >
+                          {inboxBadge > 99 ? "99+" : inboxBadge}
+                        </span>
+                      ) : null}
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8}>
                     {item.label}
+                    {inboxBadge != null && inboxBadge > 0 ? ` · ${inboxBadge} unread` : ""}
                   </TooltipContent>
                 </Tooltip>
               );
@@ -228,28 +252,44 @@ function DashboardSidebarPanel({
                 <span className="sr-only">{adminSectionTitle}</span>
                 {adminSectionItems.map((item) => {
                   const isActive = linkIsActive(pathname, item.href);
+                  const inboxBadge = inboxNavBadgeCount(item.href, inboxUnreadTotal);
+                  const ariaLabel =
+                    inboxBadge != null && inboxBadge > 0
+                      ? `${adminSectionTitle}: ${item.label}, ${inboxBadge} unread`
+                      : `${adminSectionTitle}: ${item.label}`;
                   return (
                     <Tooltip key={item.href}>
                       <TooltipTrigger className="cursor-pointer rounded-md outline-none">
                         <Link
                           href={item.href}
                           onClick={onNavigate}
-                          aria-label={`${adminSectionTitle}: ${item.label}`}
+                          aria-label={ariaLabel}
                           className={cn(
-                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+                            "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
                             isActive
                               ? "bg-primary/5 text-primary"
                               : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                           )}
                         >
                           <item.icon className="h-4 w-4 shrink-0" />
+                          {inboxBadge != null && inboxBadge > 0 ? (
+                            <span
+                              className="absolute -right-0.5 -top-0.5 z-10 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-primary px-1 text-[0.6rem] font-semibold leading-none text-primary-foreground shadow-sm"
+                              aria-hidden
+                            >
+                              {inboxBadge > 99 ? "99+" : inboxBadge}
+                            </span>
+                          ) : null}
                         </Link>
                       </TooltipTrigger>
                       <TooltipContent side="right" sideOffset={8} className="flex max-w-[14rem] flex-col gap-0.5">
                         <span className="text-[0.65rem] font-semibold uppercase tracking-wide opacity-80">
                           {adminSectionTitle}
                         </span>
-                        <span>{item.label}</span>
+                        <span>
+                          {item.label}
+                          {inboxBadge != null && inboxBadge > 0 ? ` · ${inboxBadge} unread` : ""}
+                        </span>
                       </TooltipContent>
                     </Tooltip>
                   );
@@ -339,11 +379,17 @@ function DashboardSidebarPanel({
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
         {flatNav.map((item) => {
           const isActive = linkIsActive(pathname, item.href);
+          const inboxBadge = inboxNavBadgeCount(item.href, inboxUnreadTotal);
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={onNavigate}
+              aria-label={
+                inboxBadge != null && inboxBadge > 0
+                  ? `${item.label}, ${inboxBadge} unread`
+                  : item.label
+              }
               className={cn(
                 "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200",
                 isActive
@@ -352,7 +398,15 @@ function DashboardSidebarPanel({
               )}
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {inboxBadge != null && inboxBadge > 0 ? (
+                <span
+                  className="inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[0.65rem] font-semibold tabular-nums text-primary-foreground shadow-sm"
+                  aria-hidden
+                >
+                  {inboxBadge > 99 ? "99+" : inboxBadge}
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -367,6 +421,7 @@ function DashboardSidebarPanel({
               label: item.label,
               icon: item.icon,
               isActive: linkIsActive(pathname, item.href),
+              badgeCount: inboxNavBadgeCount(item.href, inboxUnreadTotal) ?? undefined,
             }))}
           />
         ) : null}
@@ -418,6 +473,35 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** Desktop sidebar: collapsed by default */
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [inboxUnreadTotal, setInboxUnreadTotal] = useState<number | null>(null);
+
+  const refreshInboxUnread = useCallback(() => {
+    void (async () => {
+      if (!appUser) return;
+      if (appUser.role !== "pi" && appUser.role !== "admin" && appUser.role !== "reviewer") {
+        setInboxUnreadTotal(0);
+        return;
+      }
+      try {
+        const n = await db.getInboxUnreadTotalCount();
+        setInboxUnreadTotal(n);
+      } catch {
+        setInboxUnreadTotal(0);
+      }
+    })();
+  }, [appUser]);
+
+  useEffect(() => {
+    refreshInboxUnread();
+  }, [pathname, refreshInboxUnread]);
+
+  useEffect(() => {
+    function onFocus() {
+      refreshInboxUnread();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshInboxUnread]);
 
   useEffect(() => {
     let cancelled = false;
@@ -501,6 +585,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             onCollapseRequest={sidebarExpanded ? () => setSidebarExpanded(false) : undefined}
             onExpandRequest={!sidebarExpanded ? () => setSidebarExpanded(true) : undefined}
             compact={!sidebarExpanded}
+            inboxUnreadTotal={inboxUnreadTotal}
           />
         </div>
       </aside>
@@ -530,6 +615,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   settingsOpen={settingsOpen}
                   onSettingsOpenChange={setSettingsOpen}
                   onLogout={handleLogout}
+                  inboxUnreadTotal={inboxUnreadTotal}
                 />
               </div>
             </SheetContent>

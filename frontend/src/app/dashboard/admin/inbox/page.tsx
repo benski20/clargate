@@ -99,7 +99,12 @@ export default function AdminInboxPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="truncate text-sm font-medium text-foreground sm:text-[0.9375rem]">
+                          <span
+                            className={cn(
+                              "truncate text-sm text-foreground sm:text-[0.9375rem]",
+                              item.unread_count > 0 ? "font-semibold" : "font-medium",
+                            )}
+                          >
                             {item.proposal_title}
                           </span>
                           {item.unread_count > 0 ? (
