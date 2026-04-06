@@ -19,11 +19,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
-import { MessageRow } from "@/components/messages/MessageRow";
+import { MessagesThread } from "@/components/messages/MessagesThread";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
@@ -547,19 +546,12 @@ function ProposalDetailInner() {
           ) : activeNode === "messages" ? (
             <Card className={dashboardCardClass}>
               <CardContent className="p-0">
-                <ScrollArea className="h-[400px] p-4">
-                  {messages.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">
-                      No messages yet. Start a conversation with the IRB office.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {messages.map((msg) => (
-                        <MessageRow key={msg.id} msg={msg} viewerUserId={appUserId} />
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                <MessagesThread
+                  messages={messages}
+                  viewerUserId={appUserId}
+                  emptyLabel="No messages yet. Start a conversation with the IRB office."
+                  scrollAreaClassName="h-[400px] p-4"
+                />
                 <Separator />
                 <div className="flex gap-2 p-4">
                   <Input

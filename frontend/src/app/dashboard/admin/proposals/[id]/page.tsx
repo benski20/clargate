@@ -23,7 +23,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -44,7 +43,7 @@ import {
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
-import { MessageRow } from "@/components/messages/MessageRow";
+import { MessagesThread } from "@/components/messages/MessagesThread";
 import { db } from "@/lib/database";
 import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
@@ -1255,17 +1254,12 @@ function AdminProposalDetailInner() {
           ) : activeNode === "messages" ? (
             <Card className={dashboardCardClass}>
               <CardContent className="p-0">
-                <ScrollArea className="h-[min(420px,50vh)] p-4">
-                  {messages.length === 0 ? (
-                    <p className="py-12 text-center text-sm text-muted-foreground">No messages yet.</p>
-                  ) : (
-                    <div className="space-y-3 pr-2">
-                      {messages.map((msg) => (
-                        <MessageRow key={msg.id} msg={msg} viewerUserId={appUserId} />
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+                <MessagesThread
+                  messages={messages}
+                  viewerUserId={appUserId}
+                  emptyLabel="No messages yet."
+                  scrollAreaClassName="h-[min(420px,50vh)] p-4"
+                />
                 <Separator />
                 <div className="flex gap-2 p-4">
                   <Input

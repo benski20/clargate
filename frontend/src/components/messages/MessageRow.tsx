@@ -11,27 +11,74 @@ export function MessageRow({
   viewerUserId: string | null;
 }) {
   const fromMe = Boolean(viewerUserId && msg.sender_user_id === viewerUserId);
+  const peerLabel = msg.sender_name?.trim() || "Unknown";
 
   return (
     <div
       className={cn(
-        "rounded-lg border p-3",
-        fromMe ? "border-transparent bg-muted/40" : "bg-muted/50",
-        !fromMe && !msg.is_read && "border-l-4 border-l-primary bg-primary/[0.04]",
+        "flex w-full min-w-0",
+        fromMe ? "justify-end pl-8" : "justify-start pr-8",
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <span className="text-sm font-medium">{msg.sender_name || "Unknown"}</span>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <div
+        className={cn(
+          "flex max-w-[min(100%,26rem)] min-w-0 flex-col gap-1",
+          fromMe ? "items-end text-right" : "items-start text-left",
+        )}
+      >
+        <div
+          className={cn(
+            "flex w-full max-w-full items-center gap-2 px-0.5",
+            fromMe ? "justify-end" : "justify-start",
+          )}
+        >
+          <span
+            className={cn(
+              "max-w-full truncate text-xs font-semibold",
+              fromMe ? "text-primary" : "text-foreground",
+            )}
+          >
+            {fromMe ? "You" : peerLabel}
+          </span>
           {!fromMe && !msg.is_read ? (
-            <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-primary">
+            <span className="inline-flex shrink-0 items-center rounded-full bg-primary/15 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-primary">
               New
             </span>
           ) : null}
+        </div>
+
+        <div
+          className={cn(
+            "w-full rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm",
+            fromMe
+              ? "rounded-br-md bg-primary text-primary-foreground"
+              : cn(
+                  "rounded-bl-md border border-border/70 bg-card text-foreground",
+                  !msg.is_read && "ring-2 ring-primary/20",
+                ),
+          )}
+        >
+          <p className="whitespace-pre-wrap break-words">{msg.body}</p>
+        </div>
+
+        <div
+          className={cn(
+            "flex w-full max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-0.5 text-[0.65rem] tabular-nums text-muted-foreground",
+            fromMe ? "justify-end" : "justify-start",
+          )}
+        >
+          <time dateTime={msg.created_at}>
+            {new Date(msg.created_at).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </time>
           {fromMe ? (
             <span
               className={cn(
-                "text-[0.65rem] font-medium uppercase tracking-wide",
+                "font-medium",
                 msg.is_read ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400",
               )}
               title={
@@ -40,15 +87,11 @@ export function MessageRow({
                   : "Not yet read by the other party"
               }
             >
-              {msg.is_read ? "Read" : "Unread"}
+              {msg.is_read ? "Read" : "Sent"}
             </span>
           ) : null}
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {new Date(msg.created_at).toLocaleString()}
-          </span>
         </div>
       </div>
-      <p className="mt-1 text-sm leading-relaxed text-foreground">{msg.body}</p>
     </div>
   );
 }

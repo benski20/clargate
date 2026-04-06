@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -114,7 +114,9 @@ export function AiIntakeWorkspace({
   const [uploadChatBusy, setUploadChatBusy] = useState(false);
   const bootRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatContentRef = useRef<HTMLDivElement>(null);
   const uploadChatScrollRef = useRef<HTMLDivElement>(null);
+  const uploadChatContentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** Original upload binaries (session only); used to push materials to proposal file storage on Save. */
   const attachmentOriginalFilesRef = useRef<Map<string, File>>(new Map());
@@ -301,10 +303,30 @@ export function AiIntakeWorkspace({
     };
   }, [existingProposalId, router]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = chatScrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    const scroll = () => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    };
+    scroll();
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(scroll);
+    });
+    const inner = chatContentRef.current;
+    const ro =
+      inner &&
+      new ResizeObserver(() => {
+        scroll();
+      });
+    if (inner && ro) ro.observe(inner);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro?.disconnect();
+    };
   }, [ws.messages, aiBusy]);
 
   useEffect(() => {
@@ -322,10 +344,30 @@ export function AiIntakeWorkspace({
     });
   }, [effectiveVariant, ws.context_attachments.length]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = uploadChatScrollRef.current;
     if (!el || effectiveVariant !== "upload") return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    const scroll = () => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    };
+    scroll();
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(scroll);
+    });
+    const inner = uploadChatContentRef.current;
+    const ro =
+      inner &&
+      new ResizeObserver(() => {
+        scroll();
+      });
+    if (inner && ro) ro.observe(inner);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro?.disconnect();
+    };
   }, [uploadChatMessages, uploadChatBusy, effectiveVariant]);
 
   useEffect(() => {
@@ -1267,7 +1309,7 @@ export function AiIntakeWorkspace({
               ref={chatScrollRef}
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 lg:p-8 [-webkit-overflow-scrolling:touch]"
             >
-              <div className="mx-auto w-full max-w-[120rem] space-y-4">
+              <div ref={chatContentRef} className="mx-auto w-full max-w-[120rem] space-y-4">
                 <AnimatePresence initial={false}>
                   {ws.messages.map((m, i) => (
                     <motion.div
@@ -1841,8 +1883,9 @@ export function AiIntakeWorkspace({
                 </div>
                 <div
                   ref={uploadChatScrollRef}
-                  className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3"
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3"
                 >
+                  <div ref={uploadChatContentRef} className="space-y-3">
                   {uploadChatMessages.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                       Ask about compliance flags, the consent draft, or the AI review notes — grounded in your
@@ -1872,6 +1915,7 @@ export function AiIntakeWorkspace({
                       Thinking…
                     </div>
                   ) : null}
+                  </div>
                 </div>
                 <div className="shrink-0 border-t border-border/60 bg-muted/10 p-3">
                   <div className="flex gap-2">
