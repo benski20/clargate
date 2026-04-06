@@ -4,6 +4,23 @@ import {
   type AiWorkspaceState,
 } from "@/lib/ai-proposal-types";
 
+/** e.g. "April 5, 2026 at 3:45 PM" (locale-aware). */
+function formatGeneratedTimestamp(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "long",
+    timeStyle: "short",
+  }).format(d);
+}
+
+/** Stable, file-safe stem e.g. `apr-5-2026` (not locale-dependent for sorting consistency). */
+function formatFilenameDateStem(d: Date = new Date()): string {
+  return d
+    .toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+    .toLowerCase()
+    .replace(/,\s*/g, "-")
+    .replace(/\s+/g, "-");
+}
+
 function section(title: string, body: string): string {
   const t = body.trim();
   if (!t) return `## ${title}\n\n_(Not provided.)_\n\n`;
@@ -16,7 +33,7 @@ export function buildProposalPackageMarkdown(ws: AiWorkspaceState, studyTitle: s
   const lines: string[] = [
     `# ${title}`,
     "",
-    `**Generated:** ${new Date().toISOString()}`,
+    `**Generated:** ${formatGeneratedTimestamp()}`,
     "",
   ];
 
@@ -67,14 +84,14 @@ export function buildProposalPackageMarkdown(ws: AiWorkspaceState, studyTitle: s
 
 export function proposalPackageFilename(proposalId: string): string {
   const short = proposalId.replace(/-/g, "").slice(0, 8);
-  const d = new Date().toISOString().slice(0, 10);
+  const d = formatFilenameDateStem();
   return `proposal-package-${short}-${d}.md`;
 }
 
 /** Same date stem as {@link proposalPackageFilename}, `.docx` for Word. */
 export function proposalPackageDocxFilename(proposalId: string): string {
   const short = proposalId.replace(/-/g, "").slice(0, 8);
-  const d = new Date().toISOString().slice(0, 10);
+  const d = formatFilenameDateStem();
   return `proposal-package-${short}-${d}.docx`;
 }
 

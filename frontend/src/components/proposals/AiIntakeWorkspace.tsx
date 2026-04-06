@@ -141,8 +141,9 @@ export function AiIntakeWorkspace({
   const isRevisionResubmit = loadedProposalStatus === "revisions_requested";
 
   const hasStudyTitle = suggestedTitle.trim().length > 0;
-  /** Block workspace until a non-empty study title is entered (after hydration). */
-  const blockWorkspace = hydrationStatus === "ready" && !hasStudyTitle;
+  /** Upload path only: block workspace until a study title is entered (AI draft/chat has no title gate). */
+  const blockWorkspace =
+    effectiveVariant === "upload" && hydrationStatus === "ready" && !hasStudyTitle;
 
   useEffect(() => {
     if (blockWorkspace) setUploadChatOpen(false);
@@ -217,7 +218,7 @@ export function AiIntakeWorkspace({
 
   /** Saves workspace to the database and uploads the Markdown record to proposal file storage. */
   async function saveDraftAndFiles() {
-    if (!suggestedTitle.trim()) return;
+    if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     setPackageS3Error(null);
     const id = await persist(ws, suggestedTitle);
     if (!id) return;
@@ -246,12 +247,12 @@ export function AiIntakeWorkspace({
 
   useEffect(() => {
     if (existingProposalId && hydrationStatus !== "ready") return;
-    if (!suggestedTitle.trim()) return;
+    if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     const t = setTimeout(() => {
       void persist(ws, suggestedTitle);
     }, 900);
     return () => clearTimeout(t);
-  }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus]);
+  }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus, effectiveVariant]);
 
   useEffect(() => {
     if (!existingProposalId) return;
@@ -373,7 +374,6 @@ export function AiIntakeWorkspace({
   useEffect(() => {
     if (effectiveVariant === "upload") return;
     if (existingProposalId) return;
-    if (!suggestedTitle.trim()) return;
     if (bootRef.current) return;
     bootRef.current = true;
     (async () => {
@@ -419,10 +419,9 @@ export function AiIntakeWorkspace({
         setAiBusy(false);
       }
     })();
-  }, [effectiveVariant, existingProposalId, suggestedTitle]);
+  }, [effectiveVariant, existingProposalId]);
 
   async function sendChat() {
-    if (!suggestedTitle.trim()) return;
     const text = chatInput.trim();
     if (!text || aiBusy) return;
     setChatInput("");
@@ -507,7 +506,7 @@ export function AiIntakeWorkspace({
   }
 
   async function ingestFiles(fileList: FileList | null) {
-    if (!suggestedTitle.trim()) return;
+    if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     if (!fileList?.length || ingestBusy) return;
     setIngestError(null);
     setIngestBusy(true);
@@ -624,7 +623,6 @@ export function AiIntakeWorkspace({
   }
 
   async function runConsent() {
-    if (!suggestedTitle.trim()) return;
     setConsentBusy(true);
     setRightTab("consent");
     try {
@@ -660,7 +658,6 @@ export function AiIntakeWorkspace({
   }
 
   async function runCompliance() {
-    if (!suggestedTitle.trim()) return;
     setComplianceBusy(true);
     setRightTab("compliance");
     try {
@@ -809,7 +806,6 @@ export function AiIntakeWorkspace({
   }
 
   function scrollToSection(key: ProtocolSectionKey | "consent") {
-    if (!suggestedTitle.trim()) return;
     if (key === "consent") {
       setRightTab("consent");
       return;
@@ -818,7 +814,7 @@ export function AiIntakeWorkspace({
   }
 
   async function submitFinal() {
-    if (!suggestedTitle.trim()) return;
+    if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     if (!proposalId) return;
     const submitMode = loadedProposalStatus ?? "draft";
     if (!complianceComplete) {
@@ -991,7 +987,7 @@ export function AiIntakeWorkspace({
             <InputGroupInput
               id="ai-intake-study-title"
               aria-labelledby="ai-intake-study-title-label"
-              aria-required="true"
+              aria-required={effectiveVariant === "upload"}
               placeholder="Working title"
               value={suggestedTitle}
               onChange={(e) => setSuggestedTitle(e.target.value)}
@@ -1004,8 +1000,10 @@ export function AiIntakeWorkspace({
                 variant="outline"
                 size="sm"
                 className="cursor-pointer gap-1.5 shadow-sm"
-                disabled={saving || packageUploading || !hasStudyTitle}
-                title={!hasStudyTitle ? "Enter a study title first" : undefined}
+                disabled={saving || packageUploading || (effectiveVariant === "upload" && !hasStudyTitle)}
+                title={
+                  effectiveVariant === "upload" && !hasStudyTitle ? "Enter a study title first" : undefined
+                }
                 onClick={() => void saveDraftAndFiles()}
               >
                 {saving || packageUploading ? (
@@ -1021,9 +1019,11 @@ export function AiIntakeWorkspace({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 shrink-0 cursor-pointer"
-                  disabled={!hasStudyTitle}
+                  disabled={effectiveVariant === "upload" && !hasStudyTitle}
                   title={
-                    !hasStudyTitle ? "Enter a study title first" : "Download submission record (.md)"
+                    effectiveVariant === "upload" && !hasStudyTitle
+                      ? "Enter a study title first"
+                      : "Download submission record (.md)"
                   }
                   onClick={() =>
                     downloadProposalPackageMarkdown(
@@ -1814,14 +1814,12 @@ export function AiIntakeWorkspace({
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
                               className="cursor-pointer rounded-md shadow-sm"
-                              disabled={submitting || !canSubmitProposal || !hasStudyTitle}
+                              disabled={submitting || !canSubmitProposal}
                               onClick={() => void submitFinal()}
                               title={
-                                !hasStudyTitle
-                                  ? "Enter a study title first"
-                                  : !proposalReviewAcknowledged
-                                    ? "Confirm you reviewed the proposal package"
-                                    : undefined
+                                !proposalReviewAcknowledged
+                                  ? "Confirm you reviewed the proposal package"
+                                  : undefined
                               }
                             >
                               {submitting ? (
