@@ -12,6 +12,19 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthBrand } from "@/components/auth/AuthBrand";
 import { authCardClassName } from "@/components/auth/auth-styles";
 import { createClient, getAppOrigin } from "@/lib/supabase";
+import { ensureAmplifyConfigured } from "@/lib/amplify";
+import { fetchAuthSession, fetchMFAPreference, signIn, signUp } from "aws-amplify/auth";
+import { cognitoUsernameForEmail } from "@/lib/cognito-username";
+
+function guessNameFromEmail(email: string) {
+  const local = email.split("@")[0] ?? "User";
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { givenName: "User", familyName: "User", fullName: "User" };
+  const givenName = parts[0][0]?.toUpperCase() + parts[0].slice(1);
+  const familyName = (parts[1] ?? parts[0])[0]?.toUpperCase() + (parts[1] ?? parts[0]).slice(1);
+  return { givenName, familyName, fullName: `${givenName} ${familyName}`.trim() };
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -22,19 +35,121 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  async function mintMfaCookie() {
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    if (!idToken) throw new Error("Missing Cognito session. Please sign in again.");
+    const res = await fetch("/api/mfa/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || "Could not finalize MFA session.");
+    }
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
+    const { error: sbError } = await supabase.auth.signInWithPassword({ email, password });
+    if (sbError) {
+      setError(sbError.message);
       setLoading(false);
       return;
     }
-    router.replace("/dashboard");
-    router.refresh();
+
+    try {
+      ensureAmplifyConfigured();
+      let out;
+      try {
+        out = await signIn({ username: email, password });
+      } catch (cognitoErr) {
+        const name = (cognitoErr as { name?: string })?.name;
+        if (name === "UserNotFoundException") {
+          const guessed = guessNameFromEmail(email);
+          await signUp({
+            username: await cognitoUsernameForEmail(email),
+            password,
+            options: {
+              userAttributes: {
+                email,
+                name: guessed.fullName,
+                given_name: guessed.givenName,
+                family_name: guessed.familyName,
+              },
+            },
+          });
+          out = await signIn({ username: email, password });
+        } else if (name === "NotAuthorizedException") {
+          // If the pool uses email alias but doesn't accept email in this sign-in flow,
+          // retry with the generated Cognito username.
+          out = await signIn({ username: await cognitoUsernameForEmail(email), password });
+        } else if (name === "UserNotConfirmedException") {
+          sessionStorage.setItem("cognito_verify_email", email);
+          sessionStorage.setItem("cognito_verify_username", await cognitoUsernameForEmail(email));
+          router.replace("/verify-email");
+          router.refresh();
+          setLoading(false);
+          return;
+        } else {
+          throw cognitoErr;
+        }
+      }
+
+      switch (out.nextStep.signInStep) {
+        case "CONFIRM_SIGN_IN_WITH_EMAIL_CODE":
+        case "CONFIRM_SIGN_IN_WITH_SMS_CODE": {
+          sessionStorage.setItem("cognito_confirm_signin_step", out.nextStep.signInStep);
+          router.replace("/confirm-signin");
+          router.refresh();
+          break;
+        }
+        case "DONE": {
+          const { enabled, preferred } = await fetchMFAPreference();
+          const totpEnabled =
+            enabled?.includes("TOTP" as never) ||
+            enabled?.includes("totp" as never) ||
+            (preferred as unknown) === "TOTP" ||
+            (preferred as unknown) === "totp";
+          if (!totpEnabled) {
+            sessionStorage.setItem("cognito_totp_flow", "postSignIn");
+            router.replace("/mfa/enroll");
+            router.refresh();
+            break;
+          }
+
+          await mintMfaCookie();
+          router.replace("/dashboard");
+          router.refresh();
+          break;
+        }
+        case "CONFIRM_SIGN_IN_WITH_TOTP_CODE": {
+          router.replace("/mfa");
+          router.refresh();
+          break;
+        }
+        case "CONTINUE_SIGN_IN_WITH_TOTP_SETUP": {
+          const setupUri = out.nextStep.totpSetupDetails.getSetupUri("Arbiter").toString();
+          sessionStorage.setItem("cognito_totp_setup_uri", setupUri);
+          sessionStorage.setItem("cognito_totp_flow", "signInSetup");
+          router.replace("/mfa/enroll");
+          router.refresh();
+          break;
+        }
+        default: {
+          throw new Error(`Unsupported sign-in step: ${out.nextStep.signInStep}`);
+        }
+      }
+    } catch (err) {
+      await supabase.auth.signOut({ scope: "local" });
+      setError(err instanceof Error ? err.message : "Could not complete sign-in.");
+      setLoading(false);
+      return;
+    }
   }
 
   async function handleSSOLogin(provider: "google" | "azure") {

@@ -11,6 +11,8 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthBrand } from "@/components/auth/AuthBrand";
 import { authCardClassName } from "@/components/auth/auth-styles";
 import { createClient, getAppOrigin } from "@/lib/supabase";
+import { ensureAmplifyConfigured } from "@/lib/amplify";
+import { resetPassword } from "aws-amplify/auth";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -32,6 +34,14 @@ export default function ForgotPasswordPage() {
       setError(error.message);
       setLoading(false);
       return;
+    }
+
+    // Best-effort: also trigger Cognito's password reset email (code-based).
+    try {
+      ensureAmplifyConfigured();
+      await resetPassword({ username: email });
+    } catch {
+      // ignore
     }
     setSent(true);
     setLoading(false);

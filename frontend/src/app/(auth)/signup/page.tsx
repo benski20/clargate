@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,16 @@ import { authCardClassName } from "@/components/auth/auth-styles";
 import { createClient, getAppOrigin } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import { clearPendingSignupCode, setPendingSignupCode } from "@/lib/pending-signup-code";
+import { ensureAmplifyConfigured } from "@/lib/amplify";
+import { signIn, signUp } from "aws-amplify/auth";
+import { cognitoUsernameForEmail } from "@/lib/cognito-username";
+
+function splitName(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { givenName: "User", familyName: "User" };
+  if (parts.length === 1) return { givenName: parts[0], familyName: parts[0] };
+  return { givenName: parts[0], familyName: parts.slice(1).join(" ") };
+}
 
 const CODE_ERROR: Record<string, string> = {
   invalid_code: "That code is not valid.",
@@ -33,6 +44,13 @@ export default function SignupPage() {
   const [success, setSuccess] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const supabase = createClient();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!success) return;
+    // Ensure "Back to sign in" actually shows /login (middleware redirects logged-in users).
+    void supabase.auth.signOut({ scope: "local" });
+  }, [success, supabase.auth]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("code");
@@ -101,6 +119,45 @@ export default function SignupPage() {
       setError(signErr.message);
       setLoading(false);
       return;
+    }
+
+    try {
+      ensureAmplifyConfigured();
+      const { givenName, familyName } = splitName(fullName);
+      const cognitoUsername = await cognitoUsernameForEmail(email);
+      sessionStorage.setItem("cognito_verify_email", email);
+      sessionStorage.setItem("cognito_verify_username", cognitoUsername);
+      sessionStorage.setItem("cognito_verify_password", password);
+
+      try {
+        await signUp({
+          username: cognitoUsername,
+          password,
+          options: {
+            userAttributes: {
+              email,
+              name: fullName,
+              given_name: givenName,
+              family_name: familyName,
+            },
+          },
+        });
+      } catch (cognitoSignUpErr) {
+        const e = cognitoSignUpErr as { name?: string; message?: string };
+        // If the user already exists in Cognito (e.g. previous attempt), continue to sign-in/MFA flow.
+        if (e?.name !== "UsernameExistsException") {
+          throw cognitoSignUpErr;
+        }
+      }
+
+      router.replace("/verify-email");
+      router.refresh();
+      setLoading(false);
+      return;
+    } catch (err) {
+      // If Supabase succeeded but Cognito failed, we still let the user proceed (email confirmation, etc.)
+      // MFA enforcement will block dashboard access until Cognito is working for the account.
+      console.warn("Cognito signUp failed:", err);
     }
 
     setPendingSignupCode(code);

@@ -34,6 +34,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import { cn } from "@/lib/utils";
+import { ensureAmplifyConfigured } from "@/lib/amplify";
+import { signOut as cognitoSignOut } from "aws-amplify/auth";
 import { SidebarNavCollapsible } from "@/components/ui/sidebar-with-submenu";
 import { PlatformTourOverlay } from "@/components/dashboard/platform-tour-overlay";
 import type { User, UserRole } from "@/lib/types";
@@ -529,6 +531,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   async function handleLogout() {
     // `scope: "local"` signs out this browser session only; default `global` revokes all sessions and is slower.
+    try {
+      await fetch("/api/mfa/clear", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    try {
+      ensureAmplifyConfigured();
+      await cognitoSignOut();
+    } catch {
+      // ignore
+    }
     await supabase.auth.signOut({ scope: "local" });
     router.replace("/login");
     router.refresh();
