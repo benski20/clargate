@@ -9,10 +9,13 @@ import {
   Bot,
   Check,
   ChevronRight,
+  FileCheck2,
   FileDown,
   FileText,
   Library,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Scale,
   Send,
   ShieldCheck,
@@ -30,6 +33,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
 import type { ProposalStatus } from "@/lib/types";
@@ -39,6 +43,8 @@ import {
   emptyAiWorkspace,
   normalizeAiWorkspace,
   protocolHasReviewContent,
+  PROTOCOL_SECTION_KEYS,
+  PROTOCOL_SECTION_LABELS,
   type AiChatMessage,
   type AiWorkspaceState,
   type ProtocolSectionKey,
@@ -46,8 +52,9 @@ import {
 import { buildFormDataFromAiWorkspace } from "@/lib/ai-proposal-merge";
 import {
   buildProposalPackageMarkdown,
-  downloadProposalPackageMarkdown,
   proposalPackageFilename,
+  downloadProposalPackagePdf,
+  proposalPackagePdfFilename,
 } from "@/lib/ai-proposal-package-markdown";
 import {
   MAX_INGEST_BYTES_PER_FILE,
@@ -112,12 +119,18 @@ export function AiIntakeWorkspace({
   const [uploadChatMessages, setUploadChatMessages] = useState<AiChatMessage[]>([]);
   const [uploadChatInput, setUploadChatInput] = useState("");
   const [uploadChatBusy, setUploadChatBusy] = useState(false);
+  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
+  const [uploadSubmitConfirmOpen, setUploadSubmitConfirmOpen] = useState(false);
+  const [uploadSubmitConfirmed, setUploadSubmitConfirmed] = useState(false);
   const bootRef = useRef(false);
+  const prevReviewBusyRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
   const uploadChatScrollRef = useRef<HTMLDivElement>(null);
   const uploadChatContentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   /** Original upload binaries (session only); used to push materials to proposal file storage on Save. */
   const attachmentOriginalFilesRef = useRef<Map<string, File>>(new Map());
 
@@ -157,7 +170,21 @@ export function AiIntakeWorkspace({
     (ws.phase === "compliance" || ws.phase === "submit") && Boolean(ws.predicted_category);
 
   const canSubmitProposal =
-    Boolean(proposalId) && complianceComplete && proposalReviewAcknowledged;
+    Boolean(proposalId) && complianceComplete;
+
+  useEffect(() => {
+    const prev = prevReviewBusyRef.current;
+    if (
+      effectiveVariant === "upload" &&
+      prev &&
+      !reviewBusy &&
+      protocolHasReviewContent(ws.protocol) &&
+      !leftPaneCollapsed
+    ) {
+      setLeftPaneCollapsed(true);
+    }
+    prevReviewBusyRef.current = reviewBusy;
+  }, [effectiveVariant, reviewBusy, ws.protocol, leftPaneCollapsed]);
 
   const persist = useCallback(
     async (next: AiWorkspaceState, title: string): Promise<string | null> => {
@@ -429,34 +456,96 @@ export function AiIntakeWorkspace({
     setWs((w) => ({ ...w, messages: history }));
     setAiBusy(true);
     try {
+      chatAbortRef.current?.abort();
+      const ac = new AbortController();
+      chatAbortRef.current = ac;
       const sup = supplementaryFromWorkspace(ws);
+      // Add a placeholder assistant message we can stream into.
+      setWs((w) => ({ ...w, messages: [...w.messages, { role: "assistant", content: "" }] }));
       const res = await fetch("/api/prototype/ai-intake/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        signal: ac.signal,
         body: JSON.stringify({
           messages: ws.messages,
           protocol: ws.protocol,
           supplementary_context: sup,
           user_message: text,
+          stream: true,
         }),
       });
-      const data = (await res.json()) as {
-        assistant_message?: string;
-        protocol?: AiWorkspaceState["protocol"];
-        suggested_title?: string;
-        error?: string;
+      if (!res.ok || !res.body) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Chat failed");
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      const updateAssistant = (delta: string) => {
+        if (!delta) return;
+        setWs((w) => {
+          const msgs = [...w.messages];
+          const i = msgs.length - 1;
+          if (i < 0 || msgs[i].role !== "assistant") return w;
+          msgs[i] = { ...msgs[i], content: msgs[i].content + delta };
+          return { ...w, messages: msgs };
+        });
       };
-      if (!res.ok) throw new Error(data.error || "Chat failed");
-      setWs((w) => ({
-        ...w,
-        messages: [...w.messages, { role: "assistant", content: data.assistant_message || "" }],
-        protocol: data.protocol ?? w.protocol,
-      }));
-      if (data.suggested_title) setSuggestedTitle(data.suggested_title);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        // SSE frames separated by blank line. We only parse `data: ...`.
+        let idx = 0;
+        while (true) {
+          const sep = buf.indexOf("\n\n", idx);
+          if (sep === -1) break;
+          const frame = buf.slice(idx, sep);
+          idx = sep + 2;
+          const line = frame
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const json = line.slice(5).trim();
+          const evt = JSON.parse(json) as
+            | { t: string }
+            | {
+                done: true;
+                assistant_message?: string;
+                protocol?: AiWorkspaceState["protocol"];
+                suggested_title?: string;
+                error?: string;
+              };
+          if ("t" in evt) {
+            updateAssistant(evt.t);
+          } else if ("done" in evt && evt.done) {
+            // Replace streamed placeholder with the finalized assistant message (tool call output).
+            const finalText = (evt.assistant_message ?? "").trim();
+            setWs((w) => {
+              const msgs = [...w.messages];
+              const i = msgs.length - 1;
+              if (i >= 0 && msgs[i].role === "assistant") {
+                msgs[i] = { ...msgs[i], content: finalText || msgs[i].content };
+              }
+              return { ...w, protocol: evt.protocol ?? w.protocol, messages: msgs };
+            });
+            if (evt.suggested_title) setSuggestedTitle(evt.suggested_title);
+          } else if ("error" in evt && evt.error) {
+            throw new Error(evt.error);
+          }
+        }
+        buf = buf.slice(idx);
+      }
     } catch {
       setWs((w) => ({
         ...w,
-        messages: [...w.messages, { role: "assistant", content: "Something went wrong. Please try again." }],
+        messages: w.messages.map((m, idx) =>
+          idx === w.messages.length - 1 && m.role === "assistant" && !m.content
+            ? { ...m, content: "Something went wrong. Please try again." }
+            : m,
+        ),
       }));
     } finally {
       setAiBusy(false);
@@ -472,9 +561,15 @@ export function AiIntakeWorkspace({
     setUploadChatMessages([...historyForApi, { role: "user", content: text }]);
     setUploadChatBusy(true);
     try {
+      uploadAbortRef.current?.abort();
+      const ac = new AbortController();
+      uploadAbortRef.current = ac;
+      // Placeholder assistant message for streaming.
+      setUploadChatMessages((prev) => [...prev, { role: "assistant", content: "" }]);
       const res = await fetch("/api/prototype/ai-intake/upload-assistant", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        signal: ac.signal,
         body: JSON.stringify({
           messages: historyForApi,
           user_message: text,
@@ -484,21 +579,59 @@ export function AiIntakeWorkspace({
           revision_suggestions: revisionSuggestions,
           consent_markdown: ws.consent_markdown,
           suggested_title: suggestedTitle,
+          stream: true,
         }),
       });
-      const data = (await res.json()) as { assistant_message?: string; error?: string };
-      if (!res.ok) throw new Error(data.error || "Assistant failed");
-      setUploadChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.assistant_message || "" },
-      ]);
+      if (!res.ok || !res.body) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Assistant failed");
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      const updateAssistant = (delta: string) => {
+        if (!delta) return;
+        setUploadChatMessages((prev) => {
+          const next = [...prev];
+          const i = next.length - 1;
+          if (i < 0 || next[i].role !== "assistant") return prev;
+          next[i] = { ...next[i], content: (next[i].content ?? "") + delta };
+          return next;
+        });
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx = 0;
+        while (true) {
+          const sep = buf.indexOf("\n\n", idx);
+          if (sep === -1) break;
+          const frame = buf.slice(idx, sep);
+          idx = sep + 2;
+          const line = frame
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          const json = line.slice(5).trim();
+          const evt = JSON.parse(json) as { t?: string; done?: true; error?: string };
+          if (evt.t) updateAssistant(evt.t);
+          if (evt.error) throw new Error(evt.error);
+        }
+        buf = buf.slice(idx);
+      }
     } catch {
       setUploadChatMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "I could not reach the assistant. Check your connection and API configuration.",
-        },
+        ...prev.map((m, idx) =>
+          idx === prev.length - 1 && m.role === "assistant" && !m.content
+            ? {
+                ...m,
+                content: "I could not reach the assistant. Check your connection and API configuration.",
+              }
+            : m,
+        ),
       ]);
     } finally {
       setUploadChatBusy(false);
@@ -821,10 +954,8 @@ export function AiIntakeWorkspace({
       setRightTab("compliance");
       return;
     }
-    if (!proposalReviewAcknowledged) {
-      if (effectiveVariant !== "upload") {
-        setRightTab("package");
-      }
+    if (effectiveVariant !== "upload" && !proposalReviewAcknowledged) {
+      setRightTab("package");
       return;
     }
     setSubmitting(true);
@@ -933,18 +1064,17 @@ export function AiIntakeWorkspace({
   return (
     <div
       className={cn(
-        "relative z-0 flex w-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm",
-        /* In-dashboard: bounded height so split panes scroll inside; not a separate full-screen layer */
-        "min-h-[22rem] [height:min(56rem,calc(100dvh-4rem))] md:[height:min(56rem,calc(100dvh-6rem))]"
+        // Full-bleed inside the dashboard content area (no "page inside a page").
+        "-mx-4 -my-6 md:-mx-8 md:-my-10 lg:-mx-10",
+        "relative z-0 flex w-full flex-col bg-background"
       )}
     >
-      <header className="flex h-16 shrink-0 items-center gap-4 rounded-t-xl border-b border-border/60 bg-background px-4 md:px-8">
+      <header className="flex min-h-16 shrink-0 items-start gap-3 bg-background px-4 pb-2 pt-4 md:px-8">
         <Button variant="ghost" size="icon" className="cursor-pointer shrink-0" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="flex items-center">
             <h1 className="truncate font-semibold text-lg tracking-tight md:text-xl">
               {isRevisionResubmit
                 ? "Revise submission"
@@ -957,23 +1087,23 @@ export function AiIntakeWorkspace({
                     : "AI protocol draft"}
             </h1>
           </div>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="sr-only">
             {isRevisionResubmit
               ? "Edit your protocol package with AI assistance, then resubmit to the IRB."
               : existingProposalId
                 ? effectiveVariant === "upload"
-                  ? "Upload materials · AI review (no redraft) · consent & compliance · submit"
+                  ? "Upload materials, run AI review, complete consent and compliance, then submit."
                   : "Your draft is restored — keep editing, then submit when ready."
                 : effectiveVariant === "upload"
-                  ? "Upload materials · AI review (no redraft) · consent & compliance · submit"
-                  : "Intake · workspace · consent · review · proposal package — saved as you work"}
-            {saving ? " · Saving…" : ""}
+                  ? "Upload materials, run AI review, complete consent and compliance, then submit."
+                  : "Intake, workspace, consent, review, proposal package — saved as you work"}
+            {saving ? " Saving in progress." : ""}
           </p>
         </div>
         <div className="flex w-full flex-col items-stretch gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
           <InputGroup
             className={cn(
-              "h-9 min-h-9 w-full min-w-0 rounded-md border-border/60 bg-background text-sm shadow-sm sm:w-52 md:w-[22rem]",
+              "h-8 min-h-8 w-full min-w-0 rounded-md border-border/60 bg-background text-sm shadow-sm sm:w-52 md:w-[22rem]",
               "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring"
             )}
           >
@@ -998,8 +1128,8 @@ export function AiIntakeWorkspace({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="cursor-pointer gap-1.5 shadow-sm"
+                size="default"
+                className="h-8 cursor-pointer gap-1.5 shadow-sm"
                 disabled={saving || packageUploading || (effectiveVariant === "upload" && !hasStudyTitle)}
                 title={
                   effectiveVariant === "upload" && !hasStudyTitle ? "Enter a study title first" : undefined
@@ -1009,7 +1139,7 @@ export function AiIntakeWorkspace({
                 {saving || packageUploading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Save className="h-3.5 w-3.5" />
+                  <Save className="h-150 w-3.5" />
                 )}
                 Save
               </Button>
@@ -1018,69 +1148,83 @@ export function AiIntakeWorkspace({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 shrink-0 cursor-pointer"
+                  className="h-8 w-8 shrink-0 cursor-pointer"
                   disabled={effectiveVariant === "upload" && !hasStudyTitle}
                   title={
                     effectiveVariant === "upload" && !hasStudyTitle
                       ? "Enter a study title first"
-                      : "Download submission record (.md)"
+                      : "Download submission record (.pdf)"
                   }
                   onClick={() =>
-                    downloadProposalPackageMarkdown(
+                    void downloadProposalPackagePdf(
                       packageMarkdown,
-                      proposalPackageFilename(proposalId),
+                      proposalPackagePdfFilename(proposalId),
                     )
                   }
                 >
                   <FileDown className="h-4 w-4" />
                 </Button>
               ) : null}
-              {effectiveVariant === "upload" && proposalId && complianceComplete ? (
-                <>
-                  <label
-                    className={cn(
-                      "flex max-w-[14rem] cursor-pointer items-start gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[0.65rem] leading-snug text-foreground sm:max-w-[18rem]",
-                      !hasStudyTitle && "pointer-events-none opacity-50",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-3.5 shrink-0 cursor-pointer rounded border-border accent-foreground"
-                      checked={proposalReviewAcknowledged}
-                      disabled={!hasStudyTitle}
-                      onChange={(e) => setProposalReviewAcknowledged(e.target.checked)}
-                    />
-                    <span>
-                      I confirm I have reviewed the AI review, consent draft, and compliance results for this
-                      submission.
-                    </span>
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="cursor-pointer gap-1.5 shadow-sm"
-                    disabled={submitting || !canSubmitProposal || !hasStudyTitle}
-                    onClick={() => void submitFinal()}
-                    title={
-                      !hasStudyTitle
-                        ? "Enter a study title first"
-                        : !proposalReviewAcknowledged
-                          ? "Confirm the checkbox to submit"
-                          : undefined
-                    }
-                  >
-                    {submitting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5" />
-                    )}
-                    {isRevisionResubmit ? "Resubmit" : "Submit to IRB"}
-                  </Button>
-                </>
-              ) : null}
             </div>
         </div>
       </header>
+
+      <Dialog open={uploadSubmitConfirmOpen} onOpenChange={(open) => {
+        setUploadSubmitConfirmOpen(open);
+        if (!open) setUploadSubmitConfirmed(false);
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirm submission</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 space-y-4 text-sm text-foreground">
+            <p className="text-muted-foreground">
+              You are about to submit this proposal package to the IRB.
+            </p>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4 shrink-0 cursor-pointer rounded border-border accent-foreground"
+                  checked={uploadSubmitConfirmed}
+                  onChange={(e) => setUploadSubmitConfirmed(e.target.checked)}
+                />
+                <span className="leading-relaxed">
+                  I confirm I have reviewed the AI review notes, consent draft, and compliance results, and I
+                  attest that the information being submitted reflects my work (with AI assistance where used)
+                  and is accurate to the best of my knowledge.
+                </span>
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              onClick={() => setUploadSubmitConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="cursor-pointer gap-2"
+              disabled={!uploadSubmitConfirmed || submitting || !canSubmitProposal || !hasStudyTitle}
+              onClick={() => {
+                setUploadSubmitConfirmOpen(false);
+                void submitFinal();
+              }}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileCheck2 className="h-4 w-4" />
+              )}
+              {isRevisionResubmit ? "Resubmit to IRB" : "Submit to IRB"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {effectiveVariant === "upload" && packageS3Error ? (
         <div className="shrink-0 border-b border-amber-500/35 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-950 dark:text-amber-100 md:px-8">
@@ -1088,7 +1232,12 @@ export function AiIntakeWorkspace({
         </div>
       ) : null}
 
-      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden md:grid-cols-2">
+      <div
+        className={cn(
+          "relative grid grid-cols-1 gap-0 md:grid-cols-2",
+          leftPaneCollapsed && "md:grid-cols-1",
+        )}
+      >
         {blockWorkspace ? (
           <div
             className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/65 px-6 py-10 text-center backdrop-blur-[1px]"
@@ -1104,20 +1253,34 @@ export function AiIntakeWorkspace({
             </p>
           </div>
         ) : null}
-        {effectiveVariant === "upload" ? (
-          <div className="flex h-full min-h-[36vh] flex-col border-b border-border/60 bg-background md:min-h-0 md:border-b-0 md:border-r">
+        {!leftPaneCollapsed && (
+          effectiveVariant === "upload" ? (
+          <div className="flex flex-col border-b border-border/60 bg-background md:border-b-0 md:border-r">
             <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
               <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Your materials
               </span>
-              {reviewBusy ? (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  AI review…
-                </span>
-              ) : null}
+              <div className="flex items-center gap-2">
+                {reviewBusy ? (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    AI review…
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 cursor-pointer"
+                  onClick={() => setLeftPaneCollapsed(true)}
+                  aria-label="Collapse materials panel"
+                  aria-expanded={!leftPaneCollapsed}
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 lg:p-8 [-webkit-overflow-scrolling:touch]">
+            <div className="p-6 lg:p-8">
               <div className="mx-auto w-full max-w-[120rem] space-y-6">
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Upload <strong className="text-foreground">PDF, Word (.docx), or Markdown/text</strong> — up
@@ -1204,38 +1367,6 @@ export function AiIntakeWorkspace({
                     ))}
                   </ul>
                 ) : null}
-                {ws.context_attachments.length > 0 ? (
-                  <div className="space-y-2 rounded-xl border border-border/60 bg-muted/20 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Source preview
-                      </span>
-                      <span className="text-[0.65rem] text-muted-foreground">Read-only · your uploads</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {ws.context_attachments.map((a, idx) => (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => setSourcePreviewIndex(idx)}
-                          className={cn(
-                            "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                            sourcePreviewIndex === idx
-                              ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
-                              : "text-muted-foreground hover:bg-background/80 hover:text-foreground",
-                          )}
-                        >
-                          {a.name}
-                        </button>
-                      ))}
-                    </div>
-                    <ScrollArea className="h-48 rounded-lg border border-border/50 bg-background">
-                      <pre className="whitespace-pre-wrap break-words p-3 font-mono text-[0.7rem] leading-relaxed text-foreground">
-                        {ws.context_attachments[sourcePreviewIndex]?.text ?? ""}
-                      </pre>
-                    </ScrollArea>
-                  </div>
-                ) : null}
                 <div>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Additional notes (optional)
@@ -1243,7 +1374,7 @@ export function AiIntakeWorkspace({
                   <Textarea
                     value={ws.context_notes}
                     onChange={(e) => setWs((w) => ({ ...w, context_notes: e.target.value }))}
-                    placeholder="Funding, prior IRB numbers, recruitment limits, anything reviewers should weigh alongside your files…"
+                    placeholder="Funding, prior IRB numbers, recruitment limits, anything that might contextualize your files…"
                     rows={4}
                     className="resize-y rounded-md border-border/60 bg-background text-sm"
                     disabled={reviewBusy}
@@ -1298,12 +1429,25 @@ export function AiIntakeWorkspace({
               <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Conversational intake
               </span>
-              {aiBusy ? (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Bot className="h-3.5 w-3.5 animate-pulse" aria-hidden />
-                  AI composing…
-                </span>
-              ) : null}
+              <div className="flex items-center gap-2">
+                {aiBusy ? (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Bot className="h-3.5 w-3.5 animate-pulse" aria-hidden />
+                    AI composing…
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 cursor-pointer"
+                  onClick={() => setLeftPaneCollapsed(true)}
+                  aria-label="Collapse intake panel"
+                  aria-expanded={!leftPaneCollapsed}
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div
               ref={chatScrollRef}
@@ -1378,76 +1522,128 @@ export function AiIntakeWorkspace({
               </div>
             </div>
           </div>
-        )}
+        ))}
 
         {/* Context + outputs */}
         <div className="flex h-full min-h-[36vh] flex-col bg-muted/10 md:min-h-0">
-          <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-3">
-            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/40 bg-muted/30 p-1">
-              {(
-                effectiveVariant === "upload"
-                  ? (
-                      [
-                        ["context", "AI review", Library],
-                        ["consent", "Consent", ShieldCheck],
-                        ["compliance", "Compliance", Scale],
-                      ] as const
-                    )
-                  : (
-                      [
-                        ["context", "Workspace", Library],
-                        ["consent", "Consent", ShieldCheck],
-                        ["compliance", "Compliance", Scale],
-                        ["package", "Proposal", FileDown],
-                      ] as const
-                    )
-              ).map(([key, label, Icon]) => (
-                <button
-                  key={key}
+          <div className="flex shrink-0 items-center justify-between gap-3 px-6 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              {leftPaneCollapsed ? (
+                <Button
                   type="button"
-                  disabled={blockWorkspace}
-                  onClick={() => setRightTab(key)}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                    rightTab === key
-                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
-                      : "text-muted-foreground hover:text-foreground",
-                    blockWorkspace && "cursor-not-allowed opacity-50",
-                  )}
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 cursor-pointer rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  onClick={() => setLeftPaneCollapsed(false)}
+                  aria-label="Show materials panel"
+                  aria-expanded={!leftPaneCollapsed}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
-                </button>
-              ))}
+                  <PanelLeftOpen className="h-3.5 w-3.5" />
+                  <span className="sr-only">Materials</span>
+                </Button>
+              ) : null}
+              <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-lg border border-border/40 bg-muted/30 p-1">
+                {(
+                  effectiveVariant === "upload"
+                    ? (
+                        [
+                          ["context", "AI review", Library],
+                          ["consent", "Consent", ShieldCheck],
+                          ["compliance", "Compliance", Scale],
+                        ] as const
+                      )
+                    : (
+                        [
+                          ["context", "Workspace", Library],
+                          ["consent", "Consent", ShieldCheck],
+                          ["compliance", "Compliance", Scale],
+                          ["package", "Proposal", FileDown],
+                        ] as const
+                      )
+                ).map(([key, label, Icon]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={blockWorkspace}
+                    onClick={() => setRightTab(key)}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      rightTab === key
+                        ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                        : "text-muted-foreground hover:text-foreground",
+                      blockWorkspace && "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            {ws.phase === "compliance" && ws.predicted_category ? (
-              <span className="hidden rounded-md bg-background px-2.5 py-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground shadow-sm ring-1 ring-border/50 sm:inline">
-                Predicted: {ws.predicted_category.replace("_", " ")}
-              </span>
-            ) : null}
+
+            <div className="flex shrink-0 items-center gap-2">
+              {effectiveVariant === "upload" && proposalId && complianceComplete ? (
+                <Button
+                  type="button"
+                  size="default"
+                  className="hidden h-8 cursor-pointer gap-2 shadow-sm sm:inline-flex"
+                  disabled={submitting || !canSubmitProposal || !hasStudyTitle}
+                  onClick={() => setUploadSubmitConfirmOpen(true)}
+                  title={!hasStudyTitle ? "Enter a study title first" : undefined}
+                >
+                  <Check className="h-4 w-4" />
+                  Submit to IRB
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <ScrollArea className="min-h-0 flex-1">
             <div
               className={cn(
-                "mx-auto w-full max-w-[120rem]",
+                // Let the right pane fully use its width (no centering "max-width" container).
+                "w-full",
                 rightTab === "consent" ||
                 (rightTab === "package" && effectiveVariant !== "upload")
-                  ? "flex min-h-[calc(100dvh-9rem)] flex-col gap-3 p-4 md:p-5"
-                  : "space-y-8 p-6 lg:p-12",
+                  ? "flex min-h-[calc(100dvh-9rem)] flex-col gap-3 p-4 md:p-6"
+                  : "space-y-8 p-4 md:p-6 lg:p-8",
               )}
             >
               {rightTab === "context" ? (
                 effectiveVariant === "upload" ? (
                   <div className="space-y-4">
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      Consolidated <strong className="text-foreground">AI review notes</strong> (observations,
-                      gaps, suggested clarifications). Your uploaded files are the source of truth and are not
-                      reformatted here.
-                    </p>
+
                     {protocolHasReviewContent(ws.protocol) ? (
-                      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-                        <ProposalMarkdownPreview markdown={buildProtocolReviewMarkdown(ws.protocol)} />
+                      <div className="space-y-2">
+                        {PROTOCOL_SECTION_KEYS.map((k) => {
+                          const raw = (ws.protocol[k] ?? "").trim();
+                          if (!raw) return null;
+                          const firstLine = raw.split("\n").find((l) => l.trim())?.trim() ?? "";
+                          const preview = firstLine.length > 140 ? `${firstLine.slice(0, 140)}…` : firstLine;
+                          return (
+                            <details
+                              key={k}
+                              className="group rounded-lg bg-background/70 px-4 py-3 open:bg-background"
+                            >
+                              <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {PROTOCOL_SECTION_LABELS[k]}
+                                  </p>
+                                  {preview ? (
+                                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                      {preview}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                              </summary>
+                              <div className="mt-3 pt-3">
+                                <ProposalMarkdownPreview markdown={raw} />
+                              </div>
+                            </details>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
@@ -1573,69 +1769,46 @@ export function AiIntakeWorkspace({
                       Generating consent at ~8th grade reading level…
                     </div>
                   ) : null}
-                  {ws.consent_missing.length > 0 ? (
-                    <div className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-                      <ul className="list-inside list-disc space-y-0.5 text-xs text-amber-900/90 dark:text-amber-100/90">
-                        {ws.consent_missing.map((item, i) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  <div
-                    className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60 bg-background shadow-sm"
-                    role="region"
-                    aria-label="Consent document"
-                  >
-                    <div
-                      className="flex shrink-0 items-center justify-between border-b border-border/60 bg-muted/25 px-3 py-2"
-                      role="toolbar"
-                      aria-label="Preview or Markdown source"
-                    >
-                      <div className="inline-flex rounded-md border border-border/50 bg-background p-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setConsentViewMode("preview")}
-                          className={cn(
-                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                            consentViewMode === "preview"
-                              ? "bg-muted text-foreground"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          Preview
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConsentViewMode("source")}
-                          className={cn(
-                            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                            consentViewMode === "source"
-                              ? "bg-muted text-foreground"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          Markdown
-                        </button>
+                  <div className="flex min-h-0 flex-1 flex-col px-10" role="region" aria-label="Consent document">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Consent draft
+                        </p>
+                        <p className="text-[0.7rem] text-muted-foreground">
+                          Rendered like a document. Editing is optional.
+                        </p>
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer rounded-md text-xs shadow-sm"
+                        onClick={() =>
+                          setConsentViewMode((m) => (m === "source" ? "preview" : "source"))
+                        }
+                      >
+                        {consentViewMode === "source" ? "Done" : "Edit"}
+                      </Button>
                     </div>
-                    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                      {consentViewMode === "preview" ? (
-                        (ws.consent_markdown ?? "").trim() ? (
-                          <ProposalMarkdownPreview markdown={ws.consent_markdown ?? ""} />
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            No consent text yet. Switch to <strong className="text-foreground">Markdown</strong>{" "}
-                            to edit, or generate from the workspace.
-                          </p>
-                        )
-                      ) : (
+
+                    <div className="mt-1 min-h-0 flex-1 px-0">
+                      {consentViewMode === "source" ? (
                         <Textarea
                           value={ws.consent_markdown ?? ""}
                           onChange={(e) => setWs((w) => ({ ...w, consent_markdown: e.target.value }))}
-                          className="box-border min-h-[calc(100dvh-15rem)] w-full resize-y rounded-md border-border/60 bg-background font-mono text-sm leading-relaxed"
+                          className="box-border min-h-[calc(100dvh-15rem)] w-full resize-y rounded-md border-border/60 bg-background font-mono text-sm leading-relaxed shadow-sm"
                           placeholder="Consent form will appear here…"
                         />
+                      ) : (ws.consent_markdown ?? "").trim() ? (
+                        <div className="rounded-lg bg-background">
+                          <ProposalMarkdownPreview markdown={ws.consent_markdown ?? ""} />
+                        </div>
+                      ) : (
+                        <p className="rounded-lg border border-dashed border-border/60 bg-muted/15 px-4 py-10 text-center text-sm text-muted-foreground">
+                          No consent text yet. Generate it from the workspace, or click{" "}
+                          <strong className="text-foreground">Edit</strong> to paste your own Markdown.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -1648,72 +1821,125 @@ export function AiIntakeWorkspace({
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {reviewBusy
-                        ? "Running review (section notes → consent draft → compliance)…"
+                        ? "Running review…"
                         : "Analyzing against 45 CFR 46 heuristics…"}
                     </div>
                   ) : null}
                   {ws.compliance_flags.length === 0 && !complianceBusy && !reviewBusy ? (
-                    <p className="text-sm text-muted-foreground">
-                      {effectiveVariant === "upload"
-                        ? "Run AI review on the left, or use Consent only / Compliance only. Your source files are not rewritten."
-                        : "Run a compliance check to see flags."}
+                    <p className="rounded-lg border border-dashed border-border/60 bg-muted/15 px-4 py-10 text-center text-sm text-muted-foreground">
+                      No compliance items yet. Run <strong className="text-foreground">AI review</strong> (or
+                      “Compliance only”) to generate checks.
                     </p>
-                  ) : null}
-                  {effectiveVariant === "upload" && revisionSuggestions.length > 0 ? (
-                    <div className="rounded-md border border-primary/25 bg-primary/5 p-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">
-                        Revision suggestions
-                      </p>
-                      <ul className="list-inside list-disc space-y-1.5 text-sm text-foreground">
-                        {revisionSuggestions.map((s, i) => (
-                          <li key={i}>{s}</li>
-                        ))}
-                      </ul>
+                  ) : (
+                    <div className="space-y-4">
+                      {effectiveVariant === "upload" && revisionSuggestions.length > 0 ? (
+                        <details className="group rounded-lg bg-primary/5 px-4 py-3 open:bg-background">
+                          <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground">Revision suggestions</p>
+                              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                High-level improvements to reduce reviewer back-and-forth.
+                              </p>
+                            </div>
+                            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                          </summary>
+                          <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-foreground">
+                            {revisionSuggestions.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        {[...ws.compliance_flags]
+                          .sort((a, b) => {
+                            const order = { error: 0, warning: 1, info: 2 } as const;
+                            const ao = order[a.severity];
+                            const bo = order[b.severity];
+                            if (ao !== bo) return ao - bo;
+                            if (a.section_key !== b.section_key) return String(a.section_key).localeCompare(String(b.section_key));
+                            return a.message.localeCompare(b.message);
+                          })
+                          .map((f) => {
+                            const preview = (f.actionable ?? f.cfr_reference ?? "").trim();
+                            const previewLine =
+                              preview.length > 140 ? `${preview.slice(0, 140)}…` : preview;
+                            const badge =
+                              f.severity === "error"
+                                ? "Error"
+                                : f.severity === "warning"
+                                  ? "Warning"
+                                  : "Info";
+                            return (
+                              <details
+                                key={f.id}
+                                className="group rounded-lg bg-background/70 px-4 py-3 open:bg-background"
+                              >
+                                <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={cn(
+                                          "rounded-md px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
+                                          f.severity === "error"
+                                            ? "bg-red-500/10 text-red-700 dark:text-red-300"
+                                            : f.severity === "warning"
+                                              ? "bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                                              : "bg-muted/40 text-muted-foreground",
+                                        )}
+                                      >
+                                        {badge}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {String(f.section_key).replace(/_/g, " ")}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-sm font-semibold text-foreground">{f.message}</p>
+                                    {previewLine ? (
+                                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                        {previewLine}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                                </summary>
+
+                                <div className="mt-3 pt-3">
+                                  {f.cfr_reference ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      <span className="font-semibold text-foreground">Reference:</span> {f.cfr_reference}
+                                    </p>
+                                  ) : null}
+                                  {f.actionable ? (
+                                    <p className={cn("mt-2 text-sm text-foreground", !f.cfr_reference && "mt-0")}>
+                                      <span className="font-semibold">Suggested fix:</span> {f.actionable}
+                                    </p>
+                                  ) : null}
+                                  {f.section_key !== "general" ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="mt-3 cursor-pointer"
+                                      onClick={() =>
+                                        scrollToSection(f.section_key as ProtocolSectionKey | "consent")
+                                      }
+                                    >
+                                      {f.section_key === "consent"
+                                        ? "Open consent"
+                                        : effectiveVariant === "upload"
+                                          ? "Open AI review"
+                                          : "Open workspace"}
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </details>
+                            );
+                          })}
+                      </div>
                     </div>
-                  ) : null}
-                  <ul className="space-y-2">
-                    {ws.compliance_flags.map((f) => (
-                      <li key={f.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (f.section_key === "general") return;
-                            scrollToSection(f.section_key as ProtocolSectionKey | "consent");
-                          }}
-                          className={cn(
-                            "w-full rounded-md border px-4 py-3 text-left text-sm transition-colors",
-                            f.severity === "error"
-                              ? "border-red-500/40 bg-red-500/5"
-                              : f.severity === "warning"
-                                ? "border-amber-500/40 bg-amber-500/5"
-                                : "border-border/80 bg-card",
-                            f.section_key !== "general" ? "cursor-pointer hover:bg-muted/50" : "",
-                          )}
-                        >
-                          <span className="font-medium capitalize text-foreground">{f.severity}</span>
-                          <span className="mx-2 text-muted-foreground">·</span>
-                          <span className="text-muted-foreground">{f.section_key}</span>
-                          <p className="mt-1 text-foreground">{f.message}</p>
-                          {f.cfr_reference ? (
-                            <p className="mt-1 text-xs text-muted-foreground">{f.cfr_reference}</p>
-                          ) : null}
-                          {f.actionable ? (
-                            <p className="mt-1 text-xs text-primary">{f.actionable}</p>
-                          ) : null}
-                          {f.section_key !== "general" ? (
-                            <p className="mt-2 flex items-center gap-1 text-xs font-medium text-primary">
-                              {f.section_key === "consent"
-                                ? "Open consent"
-                                : effectiveVariant === "upload"
-                                  ? "Open AI review"
-                                  : "Open workspace"}
-                              <ChevronRight className="h-3 w-3" />
-                            </p>
-                          ) : null}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  )}
                 </div>
               ) : null}
 
@@ -1958,7 +2184,13 @@ export function AiIntakeWorkspace({
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
-              className="fixed bottom-20 right-4 z-50 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-background text-primary shadow-lg ring-2 ring-teal-500/25 md:bottom-8 md:right-8"
+              className={cn(
+                "fixed bottom-20 right-4 z-50 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full",
+                "bg-primary text-primary-foreground shadow-xl",
+                "ring-2 ring-primary/35 hover:ring-primary/55",
+                "transition-[transform,box-shadow,ring-color] hover:shadow-2xl active:scale-[0.98]",
+                "md:bottom-8 md:right-8",
+              )}
               onClick={() => setUploadChatOpen(true)}
               aria-label="Open proposal assistant"
             >

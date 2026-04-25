@@ -155,3 +155,43 @@ export async function generateMultiTurnText({
   if (!text?.trim()) throw new Error("Empty model response");
   return text.trim();
 }
+
+/** Multi-turn plain text streaming (no tools) — yields incremental text chunks. */
+export async function* generateMultiTurnTextStream({
+  systemInstruction,
+  history,
+  userText,
+  temperature = 0.35,
+  maxOutputTokens = 4096,
+}: {
+  systemInstruction: string;
+  history: AiChatMessage[];
+  userText: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}): AsyncGenerator<string, void, void> {
+  const genAI = getGeminiClient();
+  const { systemInstruction: sys, prior } = mergeLeadingAssistantsIntoSystem(
+    systemInstruction,
+    history,
+  );
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: sys,
+  });
+  const contents: Content[] = prior.map((m) => ({
+    role: m.role === "user" ? "user" : "model",
+    parts: [{ text: m.content }],
+  }));
+  contents.push({ role: "user", parts: [{ text: userText }] });
+
+  const result = await model.generateContentStream({
+    contents,
+    generationConfig: { temperature, maxOutputTokens },
+  });
+
+  for await (const chunk of result.stream) {
+    const t = chunk.text();
+    if (t) yield t;
+  }
+}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AiChatMessage, ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
-import { generateMultiTurnText } from "@/lib/server/gemini";
+import { generateMultiTurnText, generateMultiTurnTextStream } from "@/lib/server/gemini";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
       revision_suggestions?: string[];
       consent_markdown?: string | null;
       suggested_title?: string;
+      stream?: boolean;
     };
     const user_message = String(body.user_message ?? "").trim();
     if (!user_message) {
@@ -78,6 +79,46 @@ ${rev.length ? rev.map((s, i) => `${i + 1}. ${s}`).join("\n") : "(none yet)"}
 **Consent draft excerpt (if any):**
 ${consentSnip ? consentSnip : "(not generated yet)"}
 ${extra}`;
+
+    const wantsStream =
+      Boolean(body.stream) || (req.headers.get("accept") ?? "").includes("text/event-stream");
+    if (wantsStream) {
+      const enc = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            for await (const t of generateMultiTurnTextStream({
+              systemInstruction,
+              history: prior,
+              userText: user_message,
+              temperature: 0.35,
+              maxOutputTokens: 4096,
+            })) {
+              controller.enqueue(enc.encode(`data: ${JSON.stringify({ t })}\n\n`));
+            }
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+            controller.close();
+          } catch (e) {
+            controller.enqueue(
+              enc.encode(
+                `data: ${JSON.stringify({
+                  error: e instanceof Error ? e.message : "Assistant request failed",
+                })}\n\n`,
+              ),
+            );
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
 
     const reply = await generateMultiTurnText({
       systemInstruction,

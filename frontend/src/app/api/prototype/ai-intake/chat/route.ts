@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SchemaType, type FunctionDeclaration, type Schema } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateMultiTurnTextStream, generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { AiChatMessage, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
@@ -27,6 +27,12 @@ On EVERY turn you MUST call the tool session_update with:
 - protocol: complete markdown prose for ALL 8 keys (use [TBD] sparingly when unknown). Keys: background_rationale, study_design, participants, recruitment, procedures, risks_benefits, confidentiality, consent_process.
 
 Integrate new facts; keep prior content unless the user corrects it. Tone: academic / IRB-appropriate.`;
+
+const INTAKE_SYSTEM_STREAM = `You are an skilled IRB protocol intake specialist. Conduct a warm, conversational interview (one focused question or short acknowledgment + question per turn). Adapt based on prior answers.
+
+The researcher does not see a separate "protocol snapshot" or structured document UI—only this chat and their Workspace (notes/uploads). Never ask them to "review the snapshot," "check the snapshot," or "review sections in the snapshot." If you need confirmation about procedures, consent, or any topic, ask plainly in this conversation (e.g. "Can you walk through how sessions will run?") or refer to what they wrote in Workspace notes/uploads.
+
+Keep the tone academic / IRB-appropriate. Reply in plain text or light Markdown.`;
 
 const protocolSchemaProps: Record<string, Schema> = Object.fromEntries(
   PROTOCOL_SECTION_KEYS.map((k) => [k, { type: SchemaType.STRING } as Schema]),
@@ -57,6 +63,7 @@ export async function POST(req: Request) {
       protocol: ProtocolDraft;
       user_message: string;
       supplementary_context?: SupplementaryContextPayload;
+      stream?: boolean;
     };
     const user_message = String(body.user_message ?? "").trim();
     if (!user_message) {
@@ -72,6 +79,73 @@ export async function POST(req: Request) {
     const supabase = await createServerSupabaseClient();
     const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
     const systemInstruction = `${INTAKE_SYSTEM}${institutionGuidance}\n\nStructured protocol draft you maintain internally (JSON; refine each turn; do not erase unless the user corrects something):\n${JSON.stringify(protocol, null, 2)}${extra}`;
+
+    const wantsStream =
+      Boolean(body.stream) || (req.headers.get("accept") ?? "").includes("text/event-stream");
+    if (wantsStream) {
+      const streamSystem = `${INTAKE_SYSTEM_STREAM}${institutionGuidance}${extra}`;
+      const toolPromise = generateWithForcedToolCall<{
+        assistant_reply: string;
+        suggested_title: string;
+        protocol: ProtocolDraft;
+      }>({
+        systemInstruction,
+        history: prior,
+        userText: user_message,
+        declaration: sessionUpdateDeclaration,
+        toolName: "session_update",
+      });
+
+      const enc = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          try {
+            // Stream the conversational reply quickly (no tools), while the structured tool call runs.
+            for await (const t of generateMultiTurnTextStream({
+              systemInstruction: streamSystem,
+              history: prior,
+              userText: user_message,
+              temperature: 0.4,
+              maxOutputTokens: 1024,
+            })) {
+              controller.enqueue(enc.encode(`data: ${JSON.stringify({ t })}\n\n`));
+            }
+
+            const toolInput = await toolPromise;
+            const { assistant_reply, suggested_title, protocol: nextProtocol } = toolInput;
+
+            controller.enqueue(
+              enc.encode(
+                `data: ${JSON.stringify({
+                  done: true,
+                  assistant_message: assistant_reply,
+                  suggested_title: suggested_title || "",
+                  protocol: nextProtocol,
+                })}\n\n`,
+              ),
+            );
+            controller.close();
+          } catch (e) {
+            controller.enqueue(
+              enc.encode(
+                `data: ${JSON.stringify({
+                  error: e instanceof Error ? e.message : "Gemini request failed",
+                })}\n\n`,
+              ),
+            );
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
 
     const toolInput = await generateWithForcedToolCall<{
       assistant_reply: string;

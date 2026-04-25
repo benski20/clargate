@@ -82,9 +82,7 @@ export default function NewProposalPage() {
             Upload &amp; complete form
           </h2>
           <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
-            Upload PDF, Word, or Markdown. The AI reviews your materials (it does not replace your files),
-            drafts consent, runs compliance checks, and surfaces suggested revisions — then you confirm and
-            submit. Optional corner assistant for follow-up questions.
+           
           </p>
           <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
             Continue <ArrowRight className="ml-1 h-4 w-4" />
