@@ -510,11 +510,30 @@ function AdminProposalDetailInner() {
       ? assignments.find((a) => a.reviewer_user_id === appUserId)
       : undefined;
 
+  const aiWorkspace =
+    proposal.form_data &&
+    typeof proposal.form_data === "object" &&
+    !Array.isArray(proposal.form_data) &&
+    "ai_workspace" in proposal.form_data
+      ? ((proposal.form_data as Record<string, unknown>).ai_workspace as Record<string, unknown> | null)
+      : null;
+  const complianceFlags = Array.isArray(aiWorkspace?.compliance_flags)
+    ? (aiWorkspace?.compliance_flags as Array<Record<string, unknown>>)
+    : [];
+
   const treeData = [
     {
       id: "summary",
       label: "AI Summary",
     },
+    ...(complianceFlags.length > 0
+      ? [
+          {
+            id: "ai_flags",
+            label: "AI Flagged Items",
+          },
+        ]
+      : []),
     {
       id: "details-group",
       label: "Details",
@@ -559,16 +578,6 @@ function AdminProposalDetailInner() {
 
   const canRequestRevisions =
     proposal.status === "initial_review" || proposal.status === "under_committee_review";
-  const aiWorkspace =
-    proposal.form_data &&
-    typeof proposal.form_data === "object" &&
-    !Array.isArray(proposal.form_data) &&
-    "ai_workspace" in proposal.form_data
-      ? ((proposal.form_data as Record<string, unknown>).ai_workspace as Record<string, unknown> | null)
-      : null;
-  const complianceFlags = Array.isArray(aiWorkspace?.compliance_flags)
-    ? (aiWorkspace?.compliance_flags as Array<Record<string, unknown>>)
-    : [];
 
   const submissionSnapshot = getSubmissionSnapshot(
     proposal.form_data as Record<string, unknown> | null,
@@ -993,33 +1002,15 @@ function AdminProposalDetailInner() {
               </CardHeader>
               <CardContent className="pt-6">
                 {complianceFlags.length > 0 ? (
-                  <details className="group mb-5 rounded-lg border border-amber-500/35 bg-amber-500/5 open:bg-amber-500/[0.07]">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 text-left outline-none marker:content-none [&::-webkit-details-marker]:hidden">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                          AI flagged items
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {complianceFlags.length} flag(s) — click to expand
-                        </p>
-                      </div>
-                      <ChevronDown className="size-4 shrink-0 text-amber-900/70 transition-transform duration-200 group-open:rotate-180 dark:text-amber-100/70" aria-hidden />
-                    </summary>
-                    <div className="border-t border-amber-500/25 px-4 pb-4 pt-2">
-                      <ul className="space-y-2">
-                        {complianceFlags.slice(0, 8).map((f, i) => (
-                          <li key={String(f.id ?? i)} className="rounded-md border border-border/60 bg-background/80 p-3">
-                            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {String(f.severity ?? "info")} · {String(f.section_key ?? "general")}
-                            </div>
-                            <p className="mt-1 text-sm text-foreground">
-                              {markdownToPlainText(String(f.message ?? ""))}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </details>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mb-5 cursor-pointer"
+                    onClick={() => setActiveNode("ai_flags")}
+                  >
+                    View AI flagged items ({complianceFlags.length})
+                  </Button>
                 ) : null}
                 {summary ? (
                   <div className="space-y-4">
@@ -1076,6 +1067,50 @@ function AdminProposalDetailInner() {
                       Generate a summary to see risk level, population, methodology, and pathway suggestions for this
                       protocol.
                     </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : activeNode === "ai_flags" ? (
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+              <CardHeader className="space-y-1 pb-2">
+                <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                  AI flagged items
+                </CardTitle>
+                <CardDescription className="text-sm leading-relaxed">
+                  Items the AI flagged during compliance review. These are informational and should be validated by the reviewer.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                {complianceFlags.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No AI flagged items.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {complianceFlags.map((f, i) => (
+                      <div
+                        key={String((f as any)?.id ?? i)}
+                        className="rounded-xl border border-border/10 bg-muted/5 px-4 py-3"
+                      >
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {String((f as any)?.severity ?? "info")} · {String((f as any)?.section_key ?? "general")}
+                        </div>
+                        <p className="mt-1 text-sm leading-relaxed text-foreground">
+                          {markdownToPlainText(String((f as any)?.message ?? ""))}
+                        </p>
+                        {(f as any)?.cfr_reference ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">Reference:</span>{" "}
+                            {String((f as any)?.cfr_reference)}
+                          </p>
+                        ) : null}
+                        {(f as any)?.actionable ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">Suggested fix:</span>{" "}
+                            {String((f as any)?.actionable)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
