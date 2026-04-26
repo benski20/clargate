@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass } from "@/components/dashboard/dashboard-ui";
 import { db } from "@/lib/database";
 import type { Proposal } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export default function MyProposalsPage() {
   const router = useRouter();
@@ -97,7 +98,7 @@ export default function MyProposalsPage() {
         </Button>
       </div>
 
-      <Card className={dashboardCardClass}>
+      <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
         <CardHeader>
           <CardTitle className="font-semibold text-lg">All proposals</CardTitle>
         </CardHeader>

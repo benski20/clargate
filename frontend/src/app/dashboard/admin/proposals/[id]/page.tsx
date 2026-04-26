@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -686,7 +687,7 @@ function AdminProposalDetailInner() {
         ) : null}
 
         {submissionSnapshot || (proposal.documents && proposal.documents.length > 0) ? (
-          <Card className={dashboardCardClass}>
+          <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                 Submission package &amp; files
@@ -773,7 +774,7 @@ function AdminProposalDetailInner() {
         ) : null}
 
         {!isStaffReviewer ? (
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardHeader className="space-y-1 pb-2">
             <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
               Workflow
@@ -970,7 +971,7 @@ function AdminProposalDetailInner() {
         {/* Main content area */}
         <div className="min-w-0 flex-1">
           {activeNode === "summary" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
                 <div className="space-y-1">
                   <CardTitle className="font-sans text-base font-semibold tracking-tight">AI-generated summary</CardTitle>
@@ -1082,7 +1083,7 @@ function AdminProposalDetailInner() {
           ) : activeNode === "reviewers" ? (
             <div className="space-y-4">
               {assignments.length > 0 ? (
-                <Card className={dashboardCardClass}>
+                <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
                 <CardHeader>
                   <CardTitle className="font-sans text-base font-semibold">Current assignments</CardTitle>
                   <CardDescription>Reviewers who have been invited for this protocol.</CardDescription>
@@ -1107,7 +1108,7 @@ function AdminProposalDetailInner() {
             ) : null}
 
             {!isStaffReviewer ? (
-              <Card className={dashboardCardClass}>
+              <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
                 <CardHeader>
                   <CardTitle className="font-sans text-base font-semibold">Assign reviewer</CardTitle>
                   <CardDescription>Reviewers receive an email with the proposal title.</CardDescription>
@@ -1174,7 +1175,7 @@ function AdminProposalDetailInner() {
               )}
             </div>
           ) : activeNode === "letter" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
                 <div className="space-y-1">
                   <CardTitle className="font-sans text-base font-semibold tracking-tight">Revision letter</CardTitle>
@@ -1252,7 +1253,7 @@ function AdminProposalDetailInner() {
               </CardContent>
             </Card>
           ) : activeNode === "messages" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardContent className="p-0">
                 <MessagesThread
                   messages={messages}
@@ -1292,13 +1293,13 @@ function AdminProposalDetailInner() {
                 This section is only for assigned reviewers.
               </p>
             ) : !myReviewerAssignment ? (
-              <Card className={dashboardCardClass}>
+              <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
                   You do not have a review assignment for this proposal.
                 </CardContent>
               </Card>
             ) : myReviewerAssignment.status === "submitted" ? (
-              <Card className={dashboardCardClass}>
+              <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
                 <CardContent className="flex flex-col items-center py-12">
                   <div className="rounded-lg bg-primary/5 p-3 text-primary">
                     <Send className="h-6 w-6 text-foreground" />
@@ -1320,7 +1321,7 @@ function AdminProposalDetailInner() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className={dashboardCardClass}>
+              <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
                 <CardHeader>
                   <CardTitle className="font-sans text-base font-semibold">Your review</CardTitle>
                   <CardDescription>
@@ -1427,7 +1428,10 @@ function AdminProposalDetailInner() {
               validFormSections
                 .filter(([section]) => section === activeNode)
                 .map(([section, data]) => (
-                  <Card className={dashboardCardClass} key={section}>
+                  <Card
+                    className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}
+                    key={section}
+                  >
                     <CardHeader className="border-b border-border/40 pb-4">
                       <CardTitle className="text-lg capitalize tracking-tight">
                         {section.replace(/_/g, " ")}

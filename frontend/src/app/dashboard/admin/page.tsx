@@ -118,7 +118,7 @@ export default function AdminDashboardPage() {
         </Select>
       </div>
 
-      <Card className={dashboardCardClass}>
+      <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>

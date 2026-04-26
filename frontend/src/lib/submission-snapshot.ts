@@ -5,6 +5,8 @@ export type SubmissionSnapshot = {
   submitted_at: string;
   /** S3-backed `proposal_documents` row — same stem as `file_name` but `.docx`. */
   docx_file_name?: string;
+  /** S3-backed `proposal_documents` row — same stem as `file_name` but `.pdf`. */
+  pdf_file_name?: string;
 };
 
 export function getSubmissionSnapshot(
@@ -24,5 +26,7 @@ export function getSubmissionSnapshot(
       : new Date().toISOString();
   const docx_file_name =
     typeof o.docx_file_name === "string" && o.docx_file_name.trim() ? o.docx_file_name.trim() : undefined;
-  return { markdown, file_name, submitted_at, docx_file_name };
+  const pdf_file_name =
+    typeof o.pdf_file_name === "string" && o.pdf_file_name.trim() ? o.pdf_file_name.trim() : undefined;
+  return { markdown, file_name, submitted_at, docx_file_name, pdf_file_name };
 }

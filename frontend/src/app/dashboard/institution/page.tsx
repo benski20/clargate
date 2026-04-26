@@ -10,6 +10,7 @@ import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/
 import { db } from "@/lib/database";
 import { INSTITUTION_GUIDANCE_SECTIONS } from "@/lib/institution-guidance-sections";
 import type { InstitutionAiGuidanceRow, UserRole } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export default function PiInstitutionPage() {
   const router = useRouter();
@@ -110,7 +111,7 @@ export default function PiInstitutionPage() {
       ) : null}
 
       {items.length === 0 && !loadError ? (
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <BookOpen className="h-5 w-5 text-muted-foreground" />
@@ -149,8 +150,8 @@ export default function PiInstitutionPage() {
               <ul className="space-y-4">
                 {rows.map((row) => (
                   <li key={row.id}>
-                    <Card className={dashboardCardClass}>
-                      <CardHeader className="border-b border-border/40 pb-3">
+                    <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+                      <CardHeader className="pb-3">
                         <CardTitle className="text-base font-medium leading-snug">
                           {row.title?.trim() ||
                             (row.content_type === "file" ? row.file_name : "Guidance note")}
@@ -186,7 +187,7 @@ export default function PiInstitutionPage() {
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                               Extracted text (for search &amp; AI)
                             </p>
-                            <div className="max-h-[min(24rem,50vh)] overflow-y-auto rounded-lg border border-border/50 bg-muted/20 p-4">
+                            <div className="max-h-[min(24rem,50vh)] overflow-y-auto rounded-lg bg-muted/15 p-4">
                               <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
                                 {(row.extracted_text ?? "").trim() ||
                                   "No text could be extracted from this file."}

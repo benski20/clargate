@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -227,7 +228,7 @@ export default function AdminUsersPage() {
         }
       />
 
-      <Card className={dashboardCardClass}>
+      <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
         <CardContent className="p-6">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
@@ -288,7 +289,7 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      <Card className={dashboardCardClass}>
+      <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
         <CardContent className="p-0">
           <Table>
             <TableHeader>

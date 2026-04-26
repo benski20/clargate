@@ -75,15 +75,17 @@ export default function NewProposalPage() {
           onClick={() => setEntryMode("upload")}
           className="group flex cursor-pointer flex-col rounded-xl border border-border/60 bg-card p-6 text-left shadow-sm transition-all hover:border-border hover:shadow-md"
         >
-          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
+          <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
             <FileUp className="h-5 w-5 text-primary" />
-          </div>
-          <h2 className="font-semibold text-lg tracking-tight">
+          </span>
+          <span className="font-semibold text-lg tracking-tight">
             Upload &amp; complete form
-          </h2>
-          <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
-           
-          </p>
+          </span>
+          <span className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
+            Upload PDF, Word, or Markdown. The AI reviews your materials (it does not replace your files),
+            drafts consent, runs compliance checks, and surfaces suggested revisions — then you confirm and
+            submit. Optional corner assistant for follow-up questions.
+          </span>
           <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
             Continue <ArrowRight className="ml-1 h-4 w-4" />
           </span>
@@ -94,14 +96,14 @@ export default function NewProposalPage() {
           onClick={() => setEntryMode("ai")}
           className="group flex cursor-pointer flex-col rounded-xl border border-border/60 bg-card p-6 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
         >
-          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
+          <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5">
             <MessageSquareText className="h-5 w-5 text-primary" />
-          </div>
-          <h2 className="font-semibold text-lg tracking-tight">Draft with AI</h2>
-          <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
+          </span>
+          <span className="font-semibold text-lg tracking-tight">Draft with AI</span>
+          <span className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
             Conversational intake, live IRB-style protocol, consent draft, compliance check, then submit —
             split-pane workspace.
-          </p>
+          </span>
           <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
             Open workspace <ArrowRight className="ml-1 h-4 w-4" />
           </span>

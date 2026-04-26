@@ -47,10 +47,77 @@ function markdownToPlainText(input: string): string {
     .trim();
 }
 
+function extractAiCallouts(text: string): { body: string; gaps?: string; suggested?: string } | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+
+  const gapsRe = /(?:^|\s)(?:Gaps\/Ambiguities|Gaps|Ambiguities)\s*:\s*/i;
+  const suggestedRe = /(?:^|\s)Suggested\s+Revisions?\s*:\s*/i;
+
+  if (!gapsRe.test(t) && !suggestedRe.test(t)) return null;
+
+  // Split preserving order without relying on exact capitalization.
+  let body = t;
+  let gaps: string | undefined;
+  let suggested: string | undefined;
+
+  const suggestedMatch = body.match(suggestedRe);
+  if (suggestedMatch?.index != null) {
+    const idx = suggestedMatch.index;
+    const before = body.slice(0, idx).trim();
+    const after = body.slice(idx).replace(suggestedRe, "").trim();
+    body = before;
+    suggested = after || undefined;
+  }
+
+  const gapsMatch = body.match(gapsRe);
+  if (gapsMatch?.index != null) {
+    const idx = gapsMatch.index;
+    const before = body.slice(0, idx).trim();
+    const after = body.slice(idx).replace(gapsRe, "").trim();
+    body = before;
+    gaps = after || undefined;
+  }
+
+  // In case the order was gaps then suggested, re-extract suggested from gaps block.
+  if (gaps && suggestedRe.test(gaps) && !suggested) {
+    const parts = gaps.split(suggestedRe);
+    gaps = parts[0].trim() || undefined;
+    suggested = (parts.slice(1).join(" ").trim()) || undefined;
+  }
+
+  return { body, gaps, suggested };
+}
+
 function renderJsonValue(value: unknown): ReactNode {
   if (value === null || value === undefined) return null;
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string") return markdownToPlainText(value);
+  if (typeof value === "string") {
+    const plain = markdownToPlainText(value);
+    const callouts = extractAiCallouts(plain);
+    if (!callouts) return plain;
+    return (
+      <div className="space-y-2">
+        {callouts.body ? <p className="text-muted-foreground">{callouts.body}</p> : null}
+        {callouts.gaps ? (
+          <div className="rounded-md bg-muted/25 px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Gaps / ambiguities
+            </div>
+            <div className="mt-1 text-sm text-foreground">{callouts.gaps}</div>
+          </div>
+        ) : null}
+        {callouts.suggested ? (
+          <div className="rounded-md bg-muted/25 px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Suggested revisions
+            </div>
+            <div className="mt-1 text-sm text-foreground">{callouts.suggested}</div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   if (typeof value === "number") return value;
   if (Array.isArray(value)) {
     if (value.length === 0) return "—";
@@ -281,6 +348,11 @@ function ProposalDetailInner() {
       ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
       : undefined;
 
+  const pdfDocument =
+    submissionSnapshot?.pdf_file_name && proposal.documents?.length
+      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.pdf_file_name)
+      : undefined;
+
   function downloadSubmissionSnapshot() {
     if (!submissionSnapshot) return;
     const blob = new Blob([submissionSnapshot.markdown], { type: "text/markdown;charset=utf-8" });
@@ -414,7 +486,7 @@ function ProposalDetailInner() {
         {/* Main content area */}
         <div className="min-w-0 flex-1">
           {activeNode === "documents" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardContent className="pt-6">
                 {proposal.documents.length === 0 && !submissionSnapshot ? (
                   <p className="text-center text-sm text-muted-foreground py-8">
@@ -435,16 +507,29 @@ function ProposalDetailInner() {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="cursor-pointer"
-                            onClick={downloadSubmissionSnapshot}
-                          >
-                            <Download className="mr-1.5 h-4 w-4" />
-                            Markdown
-                          </Button>
+                          {pdfDocument ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="cursor-pointer"
+                              onClick={() => void downloadProposalDocument(pdfDocument.id)}
+                            >
+                              <Download className="mr-1.5 h-4 w-4" />
+                              PDF
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="cursor-pointer"
+                              onClick={downloadSubmissionSnapshot}
+                            >
+                              <Download className="mr-1.5 h-4 w-4" />
+                              Markdown
+                            </Button>
+                          )}
                           {docxDocument ? (
                             <Button
                               type="button"
@@ -501,7 +586,7 @@ function ProposalDetailInner() {
               </CardContent>
             </Card>
           ) : activeNode === "letters" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardHeader className="pb-2">
                 <CardTitle className="font-sans text-base font-semibold">IRB feedback</CardTitle>
                 <CardDescription>
@@ -544,7 +629,7 @@ function ProposalDetailInner() {
               </CardContent>
             </Card>
           ) : activeNode === "messages" ? (
-            <Card className={dashboardCardClass}>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardContent className="p-0">
                 <MessagesThread
                   messages={messages}
@@ -586,8 +671,11 @@ function ProposalDetailInner() {
               validFormSections
                 .filter(([section]) => section === activeNode)
                 .map(([section, data]) => (
-                  <Card className={dashboardCardClass} key={section}>
-                    <CardHeader className="border-b border-border/40 pb-4">
+                  <Card
+                    className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}
+                    key={section}
+                  >
+                    <CardHeader className="pb-4">
                       <CardTitle className="text-lg capitalize tracking-tight">
                         {section.replace(/_/g, " ")}
                       </CardTitle>

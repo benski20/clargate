@@ -159,7 +159,7 @@ function wrapLine(text: string, maxWidth: number, measure: (s: string) => number
   return lines;
 }
 
-export async function downloadProposalPackagePdf(markdown: string, filename: string): Promise<void> {
+export async function buildProposalPackagePdfBytes(markdown: string): Promise<Uint8Array> {
   const text = normalizeMarkdownForPdf(markdown);
   const pdf = await PDFDocument.create();
 
@@ -209,6 +209,13 @@ export async function downloadProposalPackagePdf(markdown: string, filename: str
   }
 
   const bytes = await pdf.save();
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
+export async function downloadProposalPackagePdf(markdown: string, filename: string): Promise<void> {
+  const bytes = await buildProposalPackagePdfBytes(markdown);
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   const blob = new Blob([copy.buffer], { type: "application/pdf" });

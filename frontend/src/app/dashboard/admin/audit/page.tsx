@@ -8,13 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -32,7 +25,9 @@ import {
   dashboardCardClass,
   dashboardInputClass,
   DashboardPageHeader,
+  DashboardSearchInput,
 } from "@/components/dashboard/dashboard-ui";
+import { cn } from "@/lib/utils";
 import { db } from "@/lib/database";
 import {
   auditActionLabel,
@@ -65,7 +60,6 @@ export default function AuditLogPage() {
   const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [entityFilter, setEntityFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("");
 
   useEffect(() => {
@@ -83,11 +77,15 @@ export default function AuditLogPage() {
   useEffect(() => {
     if (access !== "allowed") return;
     db
-      .getAuditLog({ entityType: entityFilter, action: actionFilter, pageSize: 150 })
+      .getAuditLog({
+        entityType: "all",
+        action: actionFilter,
+        pageSize: 150,
+      })
       .then(setEntries)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [access, entityFilter, actionFilter]);
+  }, [access, actionFilter]);
 
   if (access === "loading" || access === "denied") {
     return (
@@ -154,29 +152,19 @@ export default function AuditLogPage() {
           }
         />
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Select value={entityFilter} onValueChange={(v) => setEntityFilter(v ?? "all")}>
-            <SelectTrigger className={`w-full sm:w-48 ${dashboardInputClass}`}>
-              <SelectValue placeholder="Entity type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All entities</SelectItem>
-              <SelectItem value="proposal">Proposal</SelectItem>
-              <SelectItem value="review">Review</SelectItem>
-              <SelectItem value="user">User</SelectItem>
-              <SelectItem value="letter">Letter</SelectItem>
-              <SelectItem value="proposal_document">Document</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Filter by action (e.g. submitted, upload)…"
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className={`max-w-md ${dashboardInputClass}`}
-          />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <DashboardSearchInput
+              placeholder="Search audit actions (e.g. submitted, upload, assigned)…"
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+              className="w-full"
+              aria-label="Search audit actions"
+            />
+          </div>
         </div>
 
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardContent className="p-0">
             <Table>
               <TableHeader>

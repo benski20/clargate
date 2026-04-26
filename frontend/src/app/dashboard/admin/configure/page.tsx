@@ -215,8 +215,11 @@ export default function ConfigurePage() {
               const mode = addMode[section.category];
 
               return (
-                <Card className={dashboardCardClass} key={section.category}>
-                  <CardHeader className="border-b border-border/40 pb-4">
+                <Card
+                  className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}
+                  key={section.category}
+                >
+                  <CardHeader className="border-b border-border/10 pb-4">
                     <div className="flex flex-col gap-1.5">
                       <CardTitle className="text-lg tracking-tight">
                         {section.title}
@@ -234,7 +237,7 @@ export default function ConfigurePage() {
                           {rows.map((row) => (
                             <li
                               key={row.id}
-                              className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-muted/10 px-4 py-4"
+                              className="flex items-start justify-between gap-4 rounded-xl border border-border/10 bg-muted/5 px-4 py-4"
                             >
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium leading-snug text-foreground">
@@ -267,14 +270,14 @@ export default function ConfigurePage() {
                         </ul>
                       </div>
                     ) : (
-                      <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                      <div className="rounded-xl border border-dashed border-border/15 bg-muted/5 px-6 py-12 text-center">
                         <p className="text-sm text-muted-foreground">
                           Nothing in this category yet. Add text or a file below.
                         </p>
                       </div>
                     )}
 
-                    <div className="rounded-xl border border-border/60 bg-muted/5 p-5">
+                    <div className="rounded-xl border border-border/10 bg-muted/5 p-5">
                       <p className="mb-5 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-foreground">
                         Add new entry
                       </p>
@@ -299,7 +302,7 @@ export default function ConfigurePage() {
                         <div>
                           <p className="mb-2 text-xs font-medium text-foreground">Content source</p>
                           <div
-                            className="inline-flex rounded-lg border border-border/70 bg-muted/40 p-1"
+                            className="inline-flex rounded-lg border border-border/10 bg-muted/10 p-1"
                             role="group"
                             aria-label="How to add content"
                           >
@@ -310,7 +313,7 @@ export default function ConfigurePage() {
                               className={cn(
                                 "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                                 mode === "text"
-                                  ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                                  ? "bg-background/70 text-foreground ring-1 ring-border/20"
                                   : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
                               )}
                             >
@@ -324,7 +327,7 @@ export default function ConfigurePage() {
                               className={cn(
                                 "inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                                 mode === "file"
-                                  ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
+                                  ? "bg-background/70 text-foreground ring-1 ring-border/20"
                                   : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
                               )}
                             >
@@ -345,7 +348,7 @@ export default function ConfigurePage() {
                                   [section.category]: { ...d[section.category], body: e.target.value },
                                 }))
                               }
-                              className="min-h-[120px] resize-y rounded-lg border-border/80 bg-background px-3 py-2.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground/70"
+                              className="min-h-[120px] resize-y rounded-lg border-border/20 bg-background/70 px-3 py-2.5 text-sm leading-relaxed shadow-none placeholder:text-muted-foreground/70"
                               disabled={busy}
                             />
                             <Button
@@ -365,7 +368,7 @@ export default function ConfigurePage() {
                         ) : (
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-3">
-                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-background px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/15 bg-background/70 px-4 py-2.5 text-sm font-medium shadow-none transition-colors hover:bg-muted/20 disabled:opacity-50">
                                 <Upload className="h-4 w-4 opacity-80" strokeWidth={2} />
                                 Choose file
                                 <input

@@ -61,7 +61,7 @@ export default function AdminInboxPage() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
         </div>
       ) : items.length === 0 ? (
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardContent className="flex flex-col items-center py-12">
             <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-border/50 bg-muted/30">
               <Inbox className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
@@ -75,7 +75,12 @@ export default function AdminInboxPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className={cn(dashboardCardClass, "overflow-hidden p-0")}>
+        <Card
+          className={cn(
+            dashboardCardClass,
+            "border-0 bg-transparent shadow-none hover:shadow-none overflow-hidden p-0",
+          )}
+        >
           <ul className="divide-y divide-border/50">
             {items.map((item) => {
               const preview =

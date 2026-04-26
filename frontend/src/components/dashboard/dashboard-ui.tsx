@@ -6,7 +6,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 
 /** Soft elevated surface — sleek enterprise */
 export const dashboardCardClass =
-  "rounded-xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:shadow-md";
+  "rounded-xl border border-border/15 bg-card/20 shadow-none transition-colors duration-200 hover:border-border/25 hover:bg-card/30";
 
 /** Filters / toolbars that sit above cards */
 export const dashboardToolbarClass =

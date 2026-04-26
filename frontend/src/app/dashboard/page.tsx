@@ -14,6 +14,7 @@ import { PlatformGuideCard } from "@/components/dashboard/platform-guide-card";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
 import type { Proposal, UserRole } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type QuickGradient = "orange" | "gray" | "purple" | "green";
 
@@ -205,7 +206,7 @@ export default function DashboardPage() {
       </div>
 
       <div id="dashboard-stats" className="grid gap-4 scroll-mt-24 sm:grid-cols-3">
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Total
@@ -220,7 +221,7 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Under review
@@ -235,7 +236,7 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className={dashboardCardClass}>
+        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="font-sans text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Needs action
