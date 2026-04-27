@@ -13,7 +13,7 @@ import { AuthBrand } from "@/components/auth/AuthBrand";
 import { authCardClassName } from "@/components/auth/auth-styles";
 import { createClient } from "@/lib/supabase";
 import { ensureAmplifyConfigured } from "@/lib/amplify";
-import { fetchAuthSession, fetchMFAPreference, signIn, signUp } from "aws-amplify/auth";
+import { fetchAuthSession, fetchMFAPreference, signIn, signOut as cognitoSignOut, signUp } from "aws-amplify/auth";
 import { cognitoUsernameForEmail } from "@/lib/cognito-username";
 
 function guessNameFromEmail(email: string) {
@@ -49,10 +49,24 @@ export default function LoginPage() {
     }
   }
 
+  async function clearAuthClients() {
+    try {
+      ensureAmplifyConfigured();
+      await cognitoSignOut();
+    } catch {
+      // ignore when no Cognito session
+    }
+    await supabase.auth.signOut({ scope: "local" });
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    // Supabase JS refuses signInWithPassword while a local session exists ("already a signed in user").
+    // That happens often when Supabase is signed in but MFA/Cognito is incomplete (user is on /login).
+    await clearAuthClients();
 
     const { error: sbError } = await supabase.auth.signInWithPassword({ email, password });
     if (sbError) {
