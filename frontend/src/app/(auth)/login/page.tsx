@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthBrand } from "@/components/auth/AuthBrand";
 import { authCardClassName } from "@/components/auth/auth-styles";
-import { createClient, getAppOrigin } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase";
 import { ensureAmplifyConfigured } from "@/lib/amplify";
 import { fetchAuthSession, fetchMFAPreference, signIn, signUp } from "aws-amplify/auth";
 import { cognitoUsernameForEmail } from "@/lib/cognito-username";
@@ -30,7 +30,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [oauthProvider, setOauthProvider] = useState<"google" | "azure" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
@@ -152,19 +151,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleSSOLogin(provider: "google" | "azure") {
-    setOauthProvider(provider);
-    setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${getAppOrigin()}/callback` },
-    });
-    if (error) {
-      setError(error.message);
-      setOauthProvider(null);
-    }
-  }
-
   return (
     <AuthShell>
       <Card className={authCardClassName}>
@@ -214,38 +200,6 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
-
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-              <span className="bg-card px-3">Or continue with</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              type="button"
-              className="h-9 cursor-pointer rounded-md shadow-sm"
-              disabled={!!oauthProvider || loading}
-              onClick={() => handleSSOLogin("google")}
-            >
-              {oauthProvider === "google" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Google
-            </Button>
-            <Button
-              variant="outline"
-              type="button"
-              className="h-9 cursor-pointer rounded-md shadow-sm"
-              disabled={!!oauthProvider || loading}
-              onClick={() => handleSSOLogin("azure")}
-            >
-              {oauthProvider === "azure" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Microsoft
-            </Button>
-          </div>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{" "}
