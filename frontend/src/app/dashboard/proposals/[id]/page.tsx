@@ -19,10 +19,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/dashboard-ui";
 import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
+import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
@@ -193,6 +195,8 @@ function ProposalDetailInner() {
   const [loading, setLoading] = useState(true);
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [appUserId, setAppUserId] = useState<string | null>(null);
+  const [piFeedbackOpen, setPiFeedbackOpen] = useState(false);
+  const [piFeedbackActiveIndex, setPiFeedbackActiveIndex] = useState(0);
 
   const validFormSections = useMemo(
     () =>
@@ -352,17 +356,31 @@ function ProposalDetailInner() {
     submissionSnapshot?.pdf_file_name && proposal.documents?.length
       ? proposal.documents.find((d) => d.file_name === submissionSnapshot.pdf_file_name)
       : undefined;
-
-  function downloadSubmissionSnapshot() {
-    if (!submissionSnapshot) return;
-    const blob = new Blob([submissionSnapshot.markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = submissionSnapshot.file_name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const aiWorkspace = (proposal.form_data as Record<string, unknown> | null)?.ai_workspace as
+    | Record<string, unknown>
+    | undefined;
+  const contextAttachmentDocIds = new Set(
+    Array.isArray(aiWorkspace?.context_attachments)
+      ? aiWorkspace.context_attachments
+          .map((item) =>
+            item && typeof item === "object" && typeof (item as Record<string, unknown>).document_id === "string"
+              ? (item as Record<string, unknown>).document_id
+              : null,
+          )
+          .filter((id): id is string => Boolean(id))
+      : [],
+  );
+  const extraMaterialDocIds = new Set(
+    Array.isArray(aiWorkspace?.extra_materials)
+      ? aiWorkspace.extra_materials
+          .map((item) =>
+            item && typeof item === "object" && typeof (item as Record<string, unknown>).document_id === "string"
+              ? (item as Record<string, unknown>).document_id
+              : null,
+          )
+          .filter((id): id is string => Boolean(id))
+      : [],
+  );
 
   async function downloadProposalDocument(documentId: string) {
     try {
@@ -384,7 +402,7 @@ function ProposalDetailInner() {
           <div>
             <p className="font-medium text-emerald-950 dark:text-emerald-100">Proposal submitted</p>
             <p className="mt-1 text-muted-foreground">
-              Your Markdown package is listed under the Documents tab. The IRB team will review your
+              Your finalized submission document is listed under the Documents tab. The IRB team will review your
               materials; use Messages to ask questions or share updates.
             </p>
           </div>
@@ -398,9 +416,9 @@ function ProposalDetailInner() {
         >
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
           <div>
-            <p className="font-medium text-emerald-950 dark:text-emerald-100">Revised package resubmitted</p>
+            <p className="font-medium text-emerald-950 dark:text-emerald-100">Revised submission resubmitted</p>
             <p className="mt-1 text-muted-foreground">
-              Updated Markdown and Word (if generated) appear under Documents. The IRB team will continue
+              Updated submission files appear under Documents. The IRB team will continue
               review; use Messages for follow-up.
             </p>
           </div>
@@ -417,7 +435,7 @@ function ProposalDetailInner() {
             <p className="mt-1 text-muted-foreground">
               Your IRB office sent formal feedback. Review it in the IRB feedback tab, then use{" "}
               <strong className="text-foreground">Edit &amp; resubmit</strong> to open the AI workspace,
-              revise your protocol package (Markdown and generated Word), and resubmit.
+              revise your protocol submission and resubmit.
             </p>
           </div>
           <Button
@@ -499,9 +517,11 @@ function ProposalDetailInner() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="text-sm font-medium">{submissionSnapshot.file_name}</p>
+                            <p className="text-sm font-medium">
+                              {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              Submitted package (database) ·{" "}
+                              Finalized submission document ·{" "}
                               {new Date(submissionSnapshot.submitted_at).toLocaleString()}
                             </p>
                           </div>
@@ -519,16 +539,7 @@ function ProposalDetailInner() {
                               PDF
                             </Button>
                           ) : (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="cursor-pointer"
-                              onClick={downloadSubmissionSnapshot}
-                            >
-                              <Download className="mr-1.5 h-4 w-4" />
-                              Markdown
-                            </Button>
+                            <span className="text-xs text-muted-foreground">PDF not available</span>
                           )}
                           {docxDocument ? (
                             <Button
@@ -547,13 +558,22 @@ function ProposalDetailInner() {
                     ) : null}
                     {proposal.documents
                       .filter((doc) => {
+                        if (doc.file_name.toLowerCase().endsWith(".md")) return false;
+                        if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
+                          return false;
+                        }
+                        if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) {
+                          return false;
+                        }
                         if (docxDocument && doc.id === docxDocument.id) return false;
+                        if (pdfDocument && doc.id === pdfDocument.id) return false;
                         if (
                           submissionSnapshot &&
                           doc.file_name === submissionSnapshot.file_name
                         ) {
                           return false;
                         }
+                        if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
                         return true;
                       })
                       .map((doc) => (
@@ -601,30 +621,31 @@ function ProposalDetailInner() {
                     appear here and you will receive an email if your institution has mail enabled.
                   </p>
                 ) : (
-                  sentRevisionLetters.map((letter) => (
-                    <div
-                      key={letter.id}
-                      className="rounded-lg border border-border/60 bg-muted/10 p-4"
-                    >
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
-                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Revision letter
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Sent{" "}
-                          {letter.sent_at
-                            ? new Date(letter.sent_at).toLocaleString(undefined, {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })
-                            : "—"}
-                        </span>
+                  <div className="rounded-lg border border-border/60 bg-muted/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {sentRevisionLetters.length} feedback letter
+                          {sentRevisionLetters.length === 1 ? "" : "s"} on file
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Open the feedback modal for a wide, easier-to-read view.
+                        </p>
                       </div>
-                      <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
-                        {letter.content}
-                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setPiFeedbackActiveIndex(0);
+                          setPiFeedbackOpen(true);
+                        }}
+                      >
+                        Open IRB feedback
+                      </Button>
                     </div>
-                  ))
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -689,6 +710,76 @@ function ProposalDetailInner() {
           )}
         </div>
       </div>
+
+      <Dialog open={piFeedbackOpen} onOpenChange={setPiFeedbackOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <DialogTitle className="font-sans">IRB feedback</DialogTitle>
+              <DialogDescription>
+                Formal revision letters from your IRB office. Select a letter on the left to read it.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[360px_1fr]">
+              <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="space-y-1">
+                    {sentRevisionLetters.map((letter, idx) => (
+                      <button
+                        key={letter.id}
+                        type="button"
+                        onClick={() => setPiFeedbackActiveIndex(idx)}
+                        className={cn(
+                          "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                          piFeedbackActiveIndex === idx
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                            : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                        )}
+                      >
+                        <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">Revision letter</span>
+                        <span className="mt-1 block text-xs">
+                          {letter.sent_at
+                            ? new Date(letter.sent_at).toLocaleString(undefined, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })
+                            : "Draft"}
+                        </span>
+                      </button>
+                    ))}
+                    {sentRevisionLetters.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No formal letters have been sent yet.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 bg-background p-4 sm:p-6">
+                <div className="h-full overflow-auto pr-1">
+                  {sentRevisionLetters.length > 0 ? (
+                    (() => {
+                      const letter = sentRevisionLetters[Math.min(piFeedbackActiveIndex, sentRevisionLetters.length - 1)];
+                      return (
+                        <div className="mx-auto w-full max-w-3xl">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Revision letter
+                          </p>
+                          <div className="mt-3 border-t border-border/40 pt-4">
+                            <ProposalMarkdownPreview markdown={letter.content} className="text-sm leading-relaxed" />
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="mx-auto w-full max-w-3xl">
+                      <p className="text-sm text-muted-foreground">No formal letters have been sent yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

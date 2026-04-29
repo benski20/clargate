@@ -254,7 +254,7 @@ export default function ConfigurePage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="shrink-0 cursor-pointer text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground/70 hover:bg-muted/50"
                                 disabled={deletingId === row.id}
                                 onClick={() => void remove(row.id)}
                                 aria-label="Remove"

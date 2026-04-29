@@ -23,83 +23,96 @@ function formatFilenameDateStem(d: Date = new Date()): string {
 }
 
 function section(title: string, body: string): string {
-  const t = body.trim();
-  if (!t) return `## ${title}\n\n_(Not provided.)_\n\n`;
+  const t = sanitizeProtocolSection(body).trim();
+  if (!t) return "";
   return `## ${title}\n\n${t}\n\n`;
 }
 
+function sanitizeProtocolSection(body: string): string {
+  if (!body) return "";
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let dropMode = false;
+  const stopHeadings = [/^\s*gaps?\s*\/\s*ambiguities\s*:/i, /^\s*suggested\s+revisions?\s*:/i];
+
+  for (const line of lines) {
+    const isStopHeading = stopHeadings.some((re) => re.test(line));
+    if (isStopHeading) {
+      dropMode = true;
+      continue;
+    }
+    if (dropMode) {
+      // Once callout blocks start, keep dropping until a blank line plus real prose later.
+      // In practice these callouts are appended at the end of a section.
+      if (!line.trim()) continue;
+      if (/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) continue;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
+function slugifyTitle(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 72) || "study"
+  );
+}
+
 /** Human-readable full package for review, download, and S3 upload. */
-export function buildProposalPackageMarkdown(ws: AiWorkspaceState, studyTitle: string): string {
-  const title = studyTitle.trim() || "Draft study";
+export function buildProposalPackageMarkdown(
+  ws: AiWorkspaceState,
+  studyTitle: string,
+  _opts?: { includeConsent?: boolean; includeCompliance?: boolean },
+): string {
+  const title = studyTitle.trim() || "Study Protocol";
   const lines: string[] = [
     `# ${title}`,
     "",
-    `**Generated:** ${formatGeneratedTimestamp()}`,
+    `Prepared for IRB submission on ${formatGeneratedTimestamp()}.`,
     "",
   ];
 
-  if (ws.predicted_category) {
-    lines.push(`**Predicted review category (informational):** ${ws.predicted_category.replace(/_/g, " ")}`, "");
-  }
+  lines.push("## Final protocol", "");
 
-  lines.push("---", "", "# Protocol (structured draft)", "");
-
+  let includedSections = 0;
   for (const key of PROTOCOL_SECTION_KEYS) {
-    lines.push(section(PROTOCOL_SECTION_LABELS[key], ws.protocol[key] ?? ""));
-  }
-
-  if (ws.context_notes.trim()) {
-    lines.push("---", "", "# Workspace notes (researcher context)", "", ws.context_notes.trim(), "");
-  }
-
-  if (ws.context_attachments.length > 0) {
-    lines.push("---", "", "# Context files (names; text used in AI)", "");
-    for (const a of ws.context_attachments) {
-      lines.push(`- **${a.name}** (${a.text.length.toLocaleString()} characters for model context)`, "");
+    const block = section(PROTOCOL_SECTION_LABELS[key], ws.protocol[key] ?? "");
+    if (block) {
+      lines.push(block);
+      includedSections += 1;
     }
   }
-
-  if (ws.consent_markdown?.trim()) {
-    lines.push("---", "", "# Consent draft", "", ws.consent_markdown.trim(), "");
-    if (ws.consent_missing.length > 0) {
-      lines.push("", "### Elements to strengthen", "");
-      for (const m of ws.consent_missing) {
-        lines.push(`- ${m}`);
-      }
-      lines.push("");
-    }
+  if (includedSections === 0) {
+    lines.push("Protocol content will appear here once sections are completed.", "");
   }
-
-  if (ws.compliance_flags.length > 0) {
-    lines.push("---", "", "# Compliance review notes", "");
-    for (const f of ws.compliance_flags) {
-      lines.push(`- **${f.severity}** (${f.section_key}): ${f.message}`);
-      if (f.cfr_reference) lines.push(`  - Ref: ${f.cfr_reference}`);
-      lines.push("");
-    }
-  }
-
-  lines.push("---", "", "_End of package_");
   return lines.join("\n");
 }
 
-export function proposalPackageFilename(proposalId: string): string {
+export function proposalPackageFilename(proposalId: string, studyTitle: string): string {
   const short = proposalId.replace(/-/g, "").slice(0, 8);
   const d = formatFilenameDateStem();
-  return `proposal-package-${short}-${d}.md`;
+  const slug = slugifyTitle(studyTitle);
+  return `irb-submission-${slug}-${d}-${short}.md`;
 }
 
-export function proposalPackagePdfFilename(proposalId: string): string {
+export function proposalPackagePdfFilename(proposalId: string, studyTitle: string): string {
   const short = proposalId.replace(/-/g, "").slice(0, 8);
   const d = formatFilenameDateStem();
-  return `proposal-package-${short}-${d}.pdf`;
+  const slug = slugifyTitle(studyTitle);
+  return `irb-submission-${slug}-${d}-${short}.pdf`;
 }
 
 /** Same date stem as {@link proposalPackageFilename}, `.docx` for Word. */
-export function proposalPackageDocxFilename(proposalId: string): string {
+export function proposalPackageDocxFilename(proposalId: string, studyTitle: string): string {
   const short = proposalId.replace(/-/g, "").slice(0, 8);
   const d = formatFilenameDateStem();
-  return `proposal-package-${short}-${d}.docx`;
+  const slug = slugifyTitle(studyTitle);
+  return `irb-submission-${slug}-${d}-${short}.docx`;
 }
 
 export function downloadProposalPackageMarkdown(markdown: string, filename: string): void {

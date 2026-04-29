@@ -145,7 +145,7 @@ export default function MyProposalsPage() {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 shrink-0 cursor-pointer text-muted-foreground hover:text-destructive"
+                      className="h-9 w-9 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground/70"
                       disabled={removingId === p.id}
                       title="Remove draft from this list"
                       aria-label={`Remove draft “${p.title}” from your list`}

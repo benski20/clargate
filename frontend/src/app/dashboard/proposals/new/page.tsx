@@ -79,12 +79,11 @@ export default function NewProposalPage() {
             <FileUp className="h-5 w-5 text-primary" />
           </span>
           <span className="font-semibold text-lg tracking-tight">
-            Upload &amp; complete form
+            Upload &amp; complete
           </span>
           <span className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
-            Upload PDF, Word, or Markdown. The AI reviews your materials (it does not replace your files),
-            drafts consent, runs compliance checks, and surfaces suggested revisions — then you confirm and
-            submit. Optional corner assistant for follow-up questions.
+            Upload PDF, Word, or Markdown. The AI reviews your materials,
+            drafts consent, runs compliance checks, and surfaces suggested revisions. 
           </span>
           <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
             Continue <ArrowRight className="ml-1 h-4 w-4" />
@@ -101,8 +100,7 @@ export default function NewProposalPage() {
           </span>
           <span className="font-semibold text-lg tracking-tight">Draft with AI</span>
           <span className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed">
-            Conversational intake, live IRB-style protocol, consent draft, compliance check, then submit —
-            split-pane workspace.
+            Conversational intake, AI drafting,live IRB-style protocol, consent draft, compliance check, then submit.
           </span>
           <span className="mt-4 inline-flex items-center text-sm font-medium text-primary group-hover:underline">
             Open workspace <ArrowRight className="ml-1 h-4 w-4" />

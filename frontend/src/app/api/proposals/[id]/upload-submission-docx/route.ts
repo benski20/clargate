@@ -57,7 +57,7 @@ export async function POST(
 
     const { data: proposal, error: pErr } = await svc
       .from("proposals")
-      .select("id, institution_id, pi_user_id, form_data")
+      .select("id, title, institution_id, pi_user_id, form_data")
       .eq("id", proposalId)
       .eq("institution_id", appUser.institution_id)
       .single();
@@ -73,7 +73,7 @@ export async function POST(
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as { markdown?: string };
+    const body = (await request.json().catch(() => ({}))) as { markdown?: string; file_name?: string };
     const markdown = typeof body.markdown === "string" ? body.markdown : "";
     if (!markdown.trim()) {
       return NextResponse.json({ error: "markdown required" }, { status: 400 });
@@ -86,7 +86,10 @@ export async function POST(
     const blob = await convertMarkdownToDocx(markdown);
     const buf = Buffer.from(await blob.arrayBuffer());
 
-    const fileName = proposalPackageDocxFilename(proposalId);
+    const fileName =
+      typeof body.file_name === "string" && body.file_name.trim()
+        ? body.file_name.trim()
+        : proposalPackageDocxFilename(proposalId, String(proposal.title ?? ""));
     const s3Key = generateS3Key(proposalId, fileName);
     const fileType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 

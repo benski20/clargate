@@ -146,7 +146,7 @@ export default function AdminDashboardPage() {
                 </TableRow>
               ) : (
                 proposals.map((p) => (
-                  <TableRow key={p.id} className="cursor-pointer hover:bg-accent">
+                  <TableRow key={p.id} className="cursor-pointer hover:bg-muted/40">
                     <TableCell>
                       <Link
                         href={proposalHref(p.id)}

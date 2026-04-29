@@ -1,6 +1,6 @@
-/** Stored on submit in `proposals.form_data.submission_snapshot` (markdown + S3 package files). */
+/** Stored on submit in `proposals.form_data.submission_snapshot` (final submission document metadata). */
 export type SubmissionSnapshot = {
-  markdown: string;
+  markdown?: string;
   file_name: string;
   submitted_at: string;
   /** S3-backed `proposal_documents` row — same stem as `file_name` but `.docx`. */
@@ -17,9 +17,8 @@ export function getSubmissionSnapshot(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   const markdown = o.markdown;
-  if (typeof markdown !== "string" || !markdown.trim()) return null;
   const file_name =
-    typeof o.file_name === "string" && o.file_name.trim() ? o.file_name : "proposal-package.md";
+    typeof o.file_name === "string" && o.file_name.trim() ? o.file_name : "irb-submission.docx";
   const submitted_at =
     typeof o.submitted_at === "string" && o.submitted_at.trim()
       ? o.submitted_at
@@ -28,5 +27,11 @@ export function getSubmissionSnapshot(
     typeof o.docx_file_name === "string" && o.docx_file_name.trim() ? o.docx_file_name.trim() : undefined;
   const pdf_file_name =
     typeof o.pdf_file_name === "string" && o.pdf_file_name.trim() ? o.pdf_file_name.trim() : undefined;
-  return { markdown, file_name, submitted_at, docx_file_name, pdf_file_name };
+  return {
+    markdown: typeof markdown === "string" && markdown.trim() ? markdown : undefined,
+    file_name,
+    submitted_at,
+    docx_file_name,
+    pdf_file_name,
+  };
 }

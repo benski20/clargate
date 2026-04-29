@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
-import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
+import { PROTOCOL_SECTION_KEYS, normalizeComplianceFlags } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -94,7 +94,7 @@ Protocol:\n${JSON.stringify(protocol, null, 2)}\n\nConsent:\n${consent_markdown 
 
     return NextResponse.json({
       predicted_category: cat,
-      flags: Array.isArray(flags) ? flags : [],
+      flags: normalizeComplianceFlags(flags),
     });
   } catch (e) {
     console.error(e);

@@ -10,7 +10,6 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
-  Settings,
   Menu,
   ScrollText,
   Loader2,
@@ -23,13 +22,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase";
 import { db } from "@/lib/database";
@@ -97,8 +89,6 @@ function DashboardSidebarPanel({
   pathname,
   filteredNav,
   onNavigate,
-  settingsOpen,
-  onSettingsOpenChange,
   onLogout,
   onCollapseRequest,
   onExpandRequest,
@@ -109,8 +99,6 @@ function DashboardSidebarPanel({
   pathname: string;
   filteredNav: NavItem[];
   onNavigate: () => void;
-  settingsOpen: boolean;
-  onSettingsOpenChange: (open: boolean) => void;
   onLogout: () => void;
   /** Desktop rail only: collapse the sidebar */
   onCollapseRequest?: () => void;
@@ -302,38 +290,16 @@ function DashboardSidebarPanel({
 
           <div className="mt-auto border-t border-sidebar-border p-2">
             <div className="flex justify-center">
-              <DropdownMenu open={settingsOpen} onOpenChange={onSettingsOpenChange}>
-                <DropdownMenuTrigger
-                  nativeButton={false}
-                  render={
-                    <button
-                      type="button"
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      aria-label="Settings and account"
-                      aria-haspopup="menu"
-                    >
-                      <Settings className="h-4 w-4 shrink-0" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="end" side="right" sideOffset={8} className="w-56">
-                  <DropdownMenuItem className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => {
-                      onSettingsOpenChange(false);
-                      void onLogout();
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground/70"
+                onClick={onLogout}
+                aria-label="Sign out"
+              >
+                <LogOut className="h-4 w-4 shrink-0" />
+              </Button>
             </div>
           </div>
         </div>
@@ -430,37 +396,15 @@ function DashboardSidebarPanel({
       </nav>
 
       <div className="mt-auto border-t border-sidebar-border p-3">
-        <DropdownMenu open={settingsOpen} onOpenChange={onSettingsOpenChange}>
-          <DropdownMenuTrigger
-            nativeButton={false}
-            render={
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-                Settings
-              </button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem className="cursor-pointer">
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                onSettingsOpenChange(false);
-                void onLogout();
-              }}
-              className="cursor-pointer"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full justify-start gap-2 cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground/70"
+          onClick={onLogout}
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Sign out
+        </Button>
       </div>
     </div>
   );
@@ -472,7 +416,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const supabase = createClient();
   const [appUser, setAppUser] = useState<User | null | undefined>(undefined);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   /** Desktop sidebar: collapsed by default */
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [inboxUnreadTotal, setInboxUnreadTotal] = useState<number | null>(null);
@@ -592,8 +535,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             pathname={pathname}
             filteredNav={filteredNav}
             onNavigate={() => setMobileOpen(false)}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
             onLogout={handleLogout}
             onCollapseRequest={sidebarExpanded ? () => setSidebarExpanded(false) : undefined}
             onExpandRequest={!sidebarExpanded ? () => setSidebarExpanded(true) : undefined}
@@ -625,8 +566,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   pathname={pathname}
                   filteredNav={filteredNav}
                   onNavigate={() => setMobileOpen(false)}
-                  settingsOpen={settingsOpen}
-                  onSettingsOpenChange={setSettingsOpen}
                   onLogout={handleLogout}
                   inboxUnreadTotal={inboxUnreadTotal}
                 />
