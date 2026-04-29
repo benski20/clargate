@@ -342,6 +342,12 @@ function ProposalDetailInner() {
   const submissionSnapshot = getSubmissionSnapshot(
     proposal.form_data as Record<string, unknown> | null,
   );
+  function latestDocumentByFileName(fileName: string | undefined): ProposalDetail["documents"][number] | undefined {
+    if (!fileName) return undefined;
+    const matches = (proposal?.documents ?? []).filter((d) => d.file_name === fileName);
+    if (matches.length === 0) return undefined;
+    return matches.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())[0];
+  }
 
   const sentRevisionLetters = letters
     .filter((l) => l.type === "revision" && l.sent_at)
@@ -349,12 +355,12 @@ function ProposalDetailInner() {
 
   const docxDocument =
     submissionSnapshot?.docx_file_name && proposal.documents?.length
-      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
+      ? latestDocumentByFileName(submissionSnapshot.docx_file_name)
       : undefined;
 
   const pdfDocument =
     submissionSnapshot?.pdf_file_name && proposal.documents?.length
-      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.pdf_file_name)
+      ? latestDocumentByFileName(submissionSnapshot.pdf_file_name)
       : undefined;
   const aiWorkspace = (proposal.form_data as Record<string, unknown> | null)?.ai_workspace as
     | Record<string, unknown>
@@ -394,6 +400,30 @@ function ProposalDetailInner() {
           .filter((entry): entry is readonly [string, string] => Boolean(entry))
       : [],
   );
+  const latestDocumentsByName = new Map<string, ProposalDetail["documents"][number]>();
+  for (const doc of proposal.documents ?? []) {
+    const prev = latestDocumentsByName.get(doc.file_name);
+    if (!prev || new Date(doc.uploaded_at).getTime() > new Date(prev.uploaded_at).getTime()) {
+      latestDocumentsByName.set(doc.file_name, doc);
+    }
+  }
+  const visibleSupportingDocuments = Array.from(latestDocumentsByName.values())
+    .filter((doc) => {
+      // Main view should reflect only files included with the latest submission.
+      if (!extraMaterialDocIds.has(doc.id)) return false;
+      const lowerName = doc.file_name.toLowerCase();
+      if (lowerName.endsWith(".md")) return false;
+      if (/^proposal-package-.*\.(pdf|docx)$/.test(lowerName)) return false;
+      if (/^irb-submission-.*\.(pdf|docx)$/.test(lowerName)) return false;
+      if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) return false;
+      if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) return false;
+      if (docxDocument && doc.id === docxDocument.id) return false;
+      if (pdfDocument && doc.id === pdfDocument.id) return false;
+      if (submissionSnapshot && doc.file_name === submissionSnapshot.file_name) return false;
+      if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
 
   async function downloadProposalDocument(documentId: string) {
     try {
@@ -569,31 +599,7 @@ function ProposalDetailInner() {
                         </div>
                       </div>
                     ) : null}
-                    {proposal.documents
-                      .filter((doc) => {
-                        const lowerName = doc.file_name.toLowerCase();
-                        if (lowerName.endsWith(".md")) return false;
-                        // Hide generated submission artifacts from the generic files list.
-                        if (/^proposal-package-.*\.(pdf|docx)$/.test(lowerName)) return false;
-                        if (/^irb-submission-.*\.(pdf|docx)$/.test(lowerName)) return false;
-                        if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
-                          return false;
-                        }
-                        if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) {
-                          return false;
-                        }
-                        if (docxDocument && doc.id === docxDocument.id) return false;
-                        if (pdfDocument && doc.id === pdfDocument.id) return false;
-                        if (
-                          submissionSnapshot &&
-                          doc.file_name === submissionSnapshot.file_name
-                        ) {
-                          return false;
-                        }
-                        if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
-                        return true;
-                      })
-                      .map((doc) => (
+                    {visibleSupportingDocuments.map((doc) => (
                       <div
                         key={doc.id}
                         className="flex items-center justify-between rounded-lg border border-border p-3"
@@ -608,6 +614,7 @@ function ProposalDetailInner() {
                               </p>
                             ) : null}
                             <p className="text-xs text-muted-foreground">
+                              Included in latest submission · originally uploaded{" "}
                               {new Date(doc.uploaded_at).toLocaleDateString()}
                             </p>
                           </div>
