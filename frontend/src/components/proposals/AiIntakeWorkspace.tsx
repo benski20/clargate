@@ -864,6 +864,7 @@ export function AiIntakeWorkspace({
     setWs((w) => ({
       ...w,
       context_attachments: w.context_attachments.filter((a) => a.id !== id),
+      extra_materials: w.extra_materials.filter((m) => m.source_context_attachment_id !== id),
     }));
   }
 
@@ -912,6 +913,35 @@ export function AiIntakeWorkspace({
       ],
     }));
   }
+
+  // Upload mode default: every stage-1 context file is included as an extra material
+  // unless already present, so it is saved/submitted without extra manual steps.
+  useEffect(() => {
+    if (effectiveVariant !== "upload") return;
+    setWs((w) => {
+      if (w.context_attachments.length === 0) return w;
+      const existing = new Set(
+        w.extra_materials
+          .map((m) => m.source_context_attachment_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      );
+      const toAdd: ExtraMaterial[] = [];
+      for (const att of w.context_attachments) {
+        if (existing.has(att.id)) continue;
+        toAdd.push({
+          id: crypto.randomUUID(),
+          name: att.name,
+          mimeType: att.mimeType,
+          description: "",
+          source_context_attachment_id: att.id,
+          document_id: att.document_id,
+          s3_key: att.s3_key,
+        });
+      }
+      if (toAdd.length === 0) return w;
+      return { ...w, extra_materials: [...w.extra_materials, ...toAdd] };
+    });
+  }, [effectiveVariant, ws.context_attachments]);
 
   async function runConsent() {
     setConsentBusy(true);
@@ -1203,68 +1233,71 @@ export function AiIntakeWorkspace({
         { entryMode: effectiveVariant === "upload" ? "upload_review" : "ai_draft" },
       );
       const title = suggestedTitle.trim() || "Draft study";
-      const md =
-        effectiveVariant === "upload"
-          ? (packageDraftDirty
-              ? packageDraftMarkdown
-              : buildProposalPackageMarkdown({ ...wsSynced, phase: "submit" }, suggestedTitle, {
-                  includeConsent: true,
-                  includeCompliance: true,
-                }))
-          : (packageDraftMarkdown ||
-              buildProposalPackageMarkdown({ ...wsSynced, phase: "submit" }, suggestedTitle, {
-                includeConsent: false,
-                includeCompliance: false,
-              }));
-      const pdfName = proposalPackagePdfFilename(proposalId, title);
-      const docxName = proposalPackageDocxFilename(proposalId, title);
-      await db.updateProposal(proposalId, {
-        title,
-        review_type: wsSynced.predicted_category ?? undefined,
-        form_data: {
-          ...merged,
-          submission_snapshot: {
-            markdown: md, // retained for server-side conversions/internal recovery; not surfaced in UI
-            file_name: docxName,
-            docx_file_name: docxName,
-            pdf_file_name: pdfName,
-            submitted_at: new Date().toISOString(),
-          },
-        },
-      });
-      // Upload PDF package (client-generated) alongside Word.
-      try {
-        const pdfBytes = await buildProposalPackagePdfBytes(md);
-        const copy = new Uint8Array(pdfBytes.byteLength);
-        copy.set(pdfBytes);
-        const pdfFile = new File([copy.buffer], pdfName, { type: "application/pdf" });
-        await db.presignUploadProposalFile(proposalId, pdfFile);
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Could not upload the proposal package as PDF (.pdf).";
-        setPackageS3Error(msg);
-        setSubmitting(false);
-        focusSubmissionIssue();
-        return;
-      }
-      try {
-        const docxRes = await fetch(`/api/proposals/${proposalId}/upload-submission-docx`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ markdown: md, file_name: docxName }),
+      if (effectiveVariant === "upload") {
+        // Upload + AI review mode relies on previously uploaded files/materials as submission artifacts.
+        // Do not generate/store a separate proposal package snapshot.
+        await db.updateProposal(proposalId, {
+          title,
+          review_type: wsSynced.predicted_category ?? undefined,
+          form_data: merged,
         });
-        const docxJson = (await docxRes.json().catch(() => ({}))) as { error?: string };
-        if (!docxRes.ok) {
-          throw new Error(docxJson.error || `Word package upload failed (${docxRes.status})`);
+      } else {
+        const md =
+          packageDraftMarkdown ||
+          buildProposalPackageMarkdown({ ...wsSynced, phase: "submit" }, suggestedTitle, {
+            includeConsent: false,
+            includeCompliance: false,
+          });
+        const pdfName = proposalPackagePdfFilename(proposalId, title);
+        const docxName = proposalPackageDocxFilename(proposalId, title);
+        await db.updateProposal(proposalId, {
+          title,
+          review_type: wsSynced.predicted_category ?? undefined,
+          form_data: {
+            ...merged,
+            submission_snapshot: {
+              markdown: md, // retained for server-side conversions/internal recovery; not surfaced in UI
+              file_name: docxName,
+              docx_file_name: docxName,
+              pdf_file_name: pdfName,
+              submitted_at: new Date().toISOString(),
+            },
+          },
+        });
+        // Upload PDF package (client-generated) alongside Word.
+        try {
+          const pdfBytes = await buildProposalPackagePdfBytes(md);
+          const copy = new Uint8Array(pdfBytes.byteLength);
+          copy.set(pdfBytes);
+          const pdfFile = new File([copy.buffer], pdfName, { type: "application/pdf" });
+          await db.presignUploadProposalFile(proposalId, pdfFile);
+        } catch (e) {
+          const msg =
+            e instanceof Error ? e.message : "Could not upload the proposal package as PDF (.pdf).";
+          setPackageS3Error(msg);
+          setSubmitting(false);
+          focusSubmissionIssue();
+          return;
         }
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Could not save the proposal package as Word (.docx).";
-        setPackageS3Error(msg);
-        setSubmitting(false);
-        focusSubmissionIssue();
-        return;
+        try {
+          const docxRes = await fetch(`/api/proposals/${proposalId}/upload-submission-docx`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ markdown: md, file_name: docxName }),
+          });
+          const docxJson = (await docxRes.json().catch(() => ({}))) as { error?: string };
+          if (!docxRes.ok) {
+            throw new Error(docxJson.error || `Word package upload failed (${docxRes.status})`);
+          }
+        } catch (e) {
+          const msg =
+            e instanceof Error ? e.message : "Could not save the proposal package as Word (.docx).";
+          setPackageS3Error(msg);
+          setSubmitting(false);
+          focusSubmissionIssue();
+          return;
+        }
       }
       if (submitMode === "revisions_requested") {
         await db.resubmitProposal(proposalId);
@@ -2221,59 +2254,19 @@ export function AiIntakeWorkspace({
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     When compliance is complete and you have reviewed AI outputs, use{" "}
                     <strong className="font-medium text-foreground">Submit to IRB</strong> in the left sidebar
-                    (same control as elsewhere on this flow). Your draft still saves automatically as you work. The
-                    final submission includes this protocol document, your optional consent form (when included), and
-                    any extra materials you attached.
+                    (same control as elsewhere on this flow). Your draft still saves automatically as you work.
+                    For this mode, submission uses your uploaded materials/files (plus any optional consent form and
+                    extra materials attached), without generating a separate proposal package.
                   </p>
-                  <div className="mt-8 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Proposal package
-                        </p>
-                        <p className="text-[0.7rem] text-muted-foreground">
-                          Review before submitting. You can optionally edit directly on the document.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 cursor-pointer text-xs"
-                        onClick={() => setPackageViewMode((m) => (m === "source" ? "preview" : "source"))}
-                      >
-                        {packageViewMode === "source" ? "Done" : "Edit"}
-                      </Button>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-background/60 p-2 md:p-3">
-                      {packageViewMode === "preview" ? (
-                        <ProposalMarkdownPreview markdown={packageDraftMarkdown || packageMarkdown} />
-                      ) : (
-                        <ProposalCanvasEditor
-                          markdown={packageDraftMarkdown || packageMarkdown}
-                          onMarkdownChange={(md) => {
-                            setPackageDraftDirty(true);
-                            setPackageDraftMarkdown(md);
-                          }}
-                        />
-                      )}
-                    </div>
-                    {packageDraftDirty ? (
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 cursor-pointer text-xs"
-                          onClick={() => {
-                            setPackageDraftDirty(false);
-                            setPackageDraftMarkdown(packageMarkdown);
-                          }}
-                        >
-                          Reset to generated
-                        </Button>
-                      </div>
-                    ) : null}
+                  <div className="mt-6 rounded-xl border border-border/60 bg-muted/10 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Submission contents
+                    </p>
+                    <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                      <li>All files uploaded in the Materials step</li>
+                      <li>Optional consent form (if included)</li>
+                      <li>Any extra materials attached in Step 5</li>
+                    </ul>
                   </div>
                 </div>
               ) : null}
