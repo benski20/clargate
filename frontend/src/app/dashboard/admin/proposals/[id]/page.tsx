@@ -615,13 +615,19 @@ function AdminProposalDetailInner() {
   const submissionSnapshot = getSubmissionSnapshot(
     proposal.form_data as Record<string, unknown> | null,
   );
+  function latestDocumentByFileName(fileName: string | undefined): ProposalDetail["documents"][number] | undefined {
+    if (!fileName) return undefined;
+    const matches = (proposal?.documents ?? []).filter((d) => d.file_name === fileName);
+    if (matches.length === 0) return undefined;
+    return matches.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())[0];
+  }
   const docxDocument =
     submissionSnapshot?.docx_file_name && proposal.documents?.length
-      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
+      ? latestDocumentByFileName(submissionSnapshot.docx_file_name)
       : undefined;
   const pdfDocument =
     submissionSnapshot?.pdf_file_name && proposal.documents?.length
-      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.pdf_file_name)
+      ? latestDocumentByFileName(submissionSnapshot.pdf_file_name)
       : undefined;
   const contextAttachmentDocIds = new Set(
     Array.isArray(aiWorkspace?.context_attachments)
@@ -668,6 +674,8 @@ function AdminProposalDetailInner() {
   }
   const visibleSupportingDocuments = Array.from(latestDocumentsByName.values())
     .filter((doc) => {
+      // Main view should reflect only files included with the latest submission.
+      if (!extraMaterialDocIds.has(doc.id)) return false;
       const lowerName = doc.file_name.toLowerCase();
       if (lowerName.endsWith(".md")) return false;
       // Hide generated submission artifacts from the generic files list.
@@ -691,24 +699,41 @@ function AdminProposalDetailInner() {
     })
     .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
 
-  const submissionHistoryByStem = new Map<
-    string,
-    { stem: string; at: string; files: ProposalDetail["documents"] }
-  >();
-  for (const doc of proposal.documents ?? []) {
-    if (!generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase())) continue;
-    const stem = doc.file_name.replace(/\.(pdf|docx)$/i, "");
-    const prev = submissionHistoryByStem.get(stem);
+  const submissionArtifacts = (proposal.documents ?? [])
+    .filter((doc) => generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase()))
+    .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
+  const SUBMISSION_CLUSTER_MS = 3 * 60 * 1000;
+  const submissionHistory: Array<{ id: string; at: string; files: ProposalDetail["documents"] }> = [];
+  for (const doc of submissionArtifacts) {
+    const docAt = new Date(doc.uploaded_at).getTime();
+    const prev = submissionHistory[submissionHistory.length - 1];
     if (!prev) {
-      submissionHistoryByStem.set(stem, { stem, at: doc.uploaded_at, files: [doc] });
+      submissionHistory.push({ id: `submission-${doc.id}`, at: doc.uploaded_at, files: [doc] });
       continue;
     }
-    prev.files.push(doc);
-    if (new Date(doc.uploaded_at).getTime() > new Date(prev.at).getTime()) prev.at = doc.uploaded_at;
+    const prevAt = new Date(prev.at).getTime();
+    if (prevAt - docAt <= SUBMISSION_CLUSTER_MS) {
+      prev.files.push(doc);
+      continue;
+    }
+    submissionHistory.push({ id: `submission-${doc.id}`, at: doc.uploaded_at, files: [doc] });
   }
-  const submissionHistory = Array.from(submissionHistoryByStem.values()).sort(
-    (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+  for (const entry of submissionHistory) {
+    const byName = new Map<string, ProposalDetail["documents"][number]>();
+    for (const file of entry.files) {
+      const existing = byName.get(file.file_name);
+      if (!existing || new Date(file.uploaded_at).getTime() > new Date(existing.uploaded_at).getTime()) {
+        byName.set(file.file_name, file);
+      }
+    }
+    entry.files = Array.from(byName.values()).sort((a, b) => a.file_name.localeCompare(b.file_name));
+  }
+  const currentSubmissionDocIds = new Set(
+    [docxDocument?.id, pdfDocument?.id].filter((v): v is string => Boolean(v)),
   );
+  const currentExtraFiles = (proposal.documents ?? [])
+    .filter((doc) => extraMaterialDocIds.has(doc.id))
+    .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
 
   async function openStoredDocumentDownload(documentId: string) {
     setError(null);
@@ -867,8 +892,9 @@ function AdminProposalDetailInner() {
                             {extraMaterialDescriptionByDocId.get(doc.id)}
                           </p>
                         ) : null}
+                        <p className="text-xs text-muted-foreground">Included in latest submission</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(doc.uploaded_at).toLocaleString()}
+                          Originally uploaded {new Date(doc.uploaded_at).toLocaleString()}
                         </p>
                       </div>
                       <Button
@@ -1184,25 +1210,24 @@ function AdminProposalDetailInner() {
                           {submissionHistory.length > 0 ? (
                             <ol className="relative ml-2 border-l border-border/60 pl-5">
                               {submissionHistory.map((entry, entryIndex) => {
-                                const isCurrent =
-                                  !!submissionSnapshot &&
-                                  (entry.files.some((f) => f.file_name === submissionSnapshot.docx_file_name) ||
-                                    entry.files.some((f) => f.file_name === submissionSnapshot.pdf_file_name));
+                                const isCurrent = entry.files.some((f) => currentSubmissionDocIds.has(f.id));
                                 const entryAtMs = new Date(entry.at).getTime();
                                 const olderEntryAtMs =
                                   entryIndex < submissionHistory.length - 1
                                     ? new Date(submissionHistory[entryIndex + 1].at).getTime()
                                     : Number.NEGATIVE_INFINITY;
-                                const extraFilesInWindow = (proposal.documents ?? [])
-                                  .filter((doc) => {
-                                    if (!extraMaterialDocIds.has(doc.id)) return false;
-                                    if (generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase())) return false;
-                                    const t = new Date(doc.uploaded_at).getTime();
-                                    return t <= entryAtMs && t > olderEntryAtMs;
-                                  })
-                                  .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
+                                const extraFilesInWindow = isCurrent
+                                  ? currentExtraFiles
+                                  : (proposal.documents ?? [])
+                                      .filter((doc) => {
+                                        if (!extraMaterialDocIds.has(doc.id)) return false;
+                                        if (generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase())) return false;
+                                        const t = new Date(doc.uploaded_at).getTime();
+                                        return t <= entryAtMs && t > olderEntryAtMs;
+                                      })
+                                      .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
                                 return (
-                                  <li key={entry.stem} className="mb-5 last:mb-0">
+                                  <li key={entry.id} className="mb-5 last:mb-0">
                                     <span className="-left-[1.42rem] absolute mt-1.5 h-2.5 w-2.5 rounded-full bg-muted-foreground/60" />
                                     <div className="rounded-lg border border-border/60 px-3 py-2">
                                       <div className="flex flex-wrap items-center gap-2">
@@ -1216,9 +1241,7 @@ function AdminProposalDetailInner() {
                                         ) : null}
                                       </div>
                                       <ul className="mt-2 space-y-2">
-                                        {entry.files
-                                          .sort((a, b) => a.file_name.localeCompare(b.file_name))
-                                          .map((f) => (
+                                        {entry.files.map((f) => (
                                             <li
                                               key={f.id}
                                               className="rounded-md border border-border/50 bg-muted/10 px-2.5 py-2"
