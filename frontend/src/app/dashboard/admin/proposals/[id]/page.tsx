@@ -198,6 +198,8 @@ function AdminProposalDetailInner() {
   const [banner, setBanner] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionNote, setRevisionNote] = useState("");
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveConfirmText, setApproveConfirmText] = useState("");
   const [fullSummaryOpen, setFullSummaryOpen] = useState(false);
   const [fullSummaryActiveKey, setFullSummaryActiveKey] = useState<string | null>(null);
   const [aiFlagsOpen, setAiFlagsOpen] = useState(false);
@@ -205,7 +207,7 @@ function AdminProposalDetailInner() {
   const [revisionLetterOpen, setRevisionLetterOpen] = useState(false);
   const [reviewerHubOpen, setReviewerHubOpen] = useState(false);
   const [reviewerHubPanel, setReviewerHubPanel] = useState<
-    "workflow" | "assign" | "assignments" | "reviews"
+    "workflow" | "assign" | "assignments" | "reviews" | "history"
   >("workflow");
   const [activeNode, setActiveNode] = useState<string | null>(null);
   /** When set, reviewers see AI summary / details / messages but not workflow or admin-only tabs. */
@@ -578,7 +580,7 @@ function AdminProposalDetailInner() {
       : [
           {
             id: "reviewers",
-            label: "Reviewers",
+            label: "Reviewer & Workflow Hub",
           },
           {
             id: "letter",
@@ -642,6 +644,70 @@ function AdminProposalDetailInner() {
           )
           .filter((id): id is string => Boolean(id))
       : [],
+  );
+  const extraMaterialDescriptionByDocId = new Map<string, string>(
+    Array.isArray(aiWorkspace?.extra_materials)
+      ? aiWorkspace.extra_materials
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const o = item as Record<string, unknown>;
+            if (typeof o.document_id !== "string" || !o.document_id) return null;
+            const description = typeof o.description === "string" ? o.description.trim() : "";
+            return [o.document_id, description] as const;
+          })
+          .filter((entry): entry is readonly [string, string] => Boolean(entry))
+      : [],
+  );
+  const generatedSubmissionArtifactRe = /^(proposal-package-|irb-submission-).*\.(pdf|docx)$/i;
+  const latestDocumentsByName = new Map<string, ProposalDetail["documents"][number]>();
+  for (const doc of proposal.documents ?? []) {
+    const prev = latestDocumentsByName.get(doc.file_name);
+    if (!prev || new Date(doc.uploaded_at).getTime() > new Date(prev.uploaded_at).getTime()) {
+      latestDocumentsByName.set(doc.file_name, doc);
+    }
+  }
+  const visibleSupportingDocuments = Array.from(latestDocumentsByName.values())
+    .filter((doc) => {
+      const lowerName = doc.file_name.toLowerCase();
+      if (lowerName.endsWith(".md")) return false;
+      // Hide generated submission artifacts from the generic files list.
+      if (generatedSubmissionArtifactRe.test(lowerName)) return false;
+      if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
+        return false;
+      }
+      if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) {
+        return false;
+      }
+      if (docxDocument && doc.id === docxDocument.id) return false;
+      if (pdfDocument && doc.id === pdfDocument.id) return false;
+      if (
+        submissionSnapshot &&
+        doc.file_name === submissionSnapshot.file_name
+      ) {
+        return false;
+      }
+      if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
+
+  const submissionHistoryByStem = new Map<
+    string,
+    { stem: string; at: string; files: ProposalDetail["documents"] }
+  >();
+  for (const doc of proposal.documents ?? []) {
+    if (!generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase())) continue;
+    const stem = doc.file_name.replace(/\.(pdf|docx)$/i, "");
+    const prev = submissionHistoryByStem.get(stem);
+    if (!prev) {
+      submissionHistoryByStem.set(stem, { stem, at: doc.uploaded_at, files: [doc] });
+      continue;
+    }
+    prev.files.push(doc);
+    if (new Date(doc.uploaded_at).getTime() > new Date(prev.at).getTime()) prev.at = doc.uploaded_at;
+  }
+  const submissionHistory = Array.from(submissionHistoryByStem.values()).sort(
+    (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
 
   async function openStoredDocumentDownload(documentId: string) {
@@ -739,7 +805,7 @@ function AdminProposalDetailInner() {
         ) : null}
 
         {submissionSnapshot || (proposal.documents && proposal.documents.length > 0) ? (
-          <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+          <Card className="border-0 bg-transparent shadow-none hover:border-0 hover:shadow-none">
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                 Submission documents &amp; files
@@ -751,7 +817,7 @@ function AdminProposalDetailInner() {
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               {submissionSnapshot ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/10 px-3 py-2.5">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">Finalized submission document</p>
@@ -787,35 +853,20 @@ function AdminProposalDetailInner() {
                   ) : null}
                 </div>
               ) : null}
-              {proposal.documents && proposal.documents.length > 0 ? (
+              {visibleSupportingDocuments.length > 0 ? (
                 <ul className="space-y-1.5">
-                  {proposal.documents
-                    .filter((doc) => {
-                      if (doc.file_name.toLowerCase().endsWith(".md")) return false;
-                      if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
-                        return false;
-                      }
-                      if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) {
-                        return false;
-                      }
-                      if (docxDocument && doc.id === docxDocument.id) return false;
-                      if (pdfDocument && doc.id === pdfDocument.id) return false;
-                      if (
-                        submissionSnapshot &&
-                        doc.file_name === submissionSnapshot.file_name
-                      ) {
-                        return false;
-                      }
-                      if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
-                      return true;
-                    })
-                    .map((doc) => (
+                  {visibleSupportingDocuments.map((doc) => (
                     <li
                       key={doc.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 px-3 py-2"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/10 px-3 py-2"
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{doc.file_name}</p>
+                        {extraMaterialDescriptionByDocId.get(doc.id) ? (
+                          <p className="text-xs text-muted-foreground">
+                            {extraMaterialDescriptionByDocId.get(doc.id)}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-muted-foreground">
                           {new Date(doc.uploaded_at).toLocaleString()}
                         </p>
@@ -907,6 +958,20 @@ function AdminProposalDetailInner() {
                         Submitted reviews ({reviews.length})
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewerHubPanel("history")}
+                      className={cn(
+                        "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        reviewerHubPanel === "history"
+                          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                        Submission history ({submissionHistory.length})
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -937,13 +1002,27 @@ function AdminProposalDetailInner() {
                                 </Button>
                               ) : null}
                               {proposal.status === "initial_review" ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer"
+                                    onClick={() => setApproveDialogOpen(true)}
+                                    disabled={statusUpdating}
+                                  >
+                                    Approve
+                                  </Button>
+                                </>
+                              ) : null}
+                              {proposal.status === "under_committee_review" ? (
                                 <Button
                                   size="sm"
+                                  variant="outline"
                                   className="cursor-pointer"
-                                  onClick={() => void updateStatus("under_committee_review")}
+                                  onClick={() => setApproveDialogOpen(true)}
                                   disabled={statusUpdating}
                                 >
-                                  Send to committee
+                                  Approve
                                 </Button>
                               ) : null}
                               {proposal.status === "resubmitted" ? (
@@ -1093,6 +1172,112 @@ function AdminProposalDetailInner() {
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground">No submitted reviews yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {reviewerHubPanel === "history" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Submission history</p>
+                        <div className="border-t border-border/40 pt-4">
+                          {submissionHistory.length > 0 ? (
+                            <ol className="relative ml-2 border-l border-border/60 pl-5">
+                              {submissionHistory.map((entry, entryIndex) => {
+                                const isCurrent =
+                                  !!submissionSnapshot &&
+                                  (entry.files.some((f) => f.file_name === submissionSnapshot.docx_file_name) ||
+                                    entry.files.some((f) => f.file_name === submissionSnapshot.pdf_file_name));
+                                const entryAtMs = new Date(entry.at).getTime();
+                                const olderEntryAtMs =
+                                  entryIndex < submissionHistory.length - 1
+                                    ? new Date(submissionHistory[entryIndex + 1].at).getTime()
+                                    : Number.NEGATIVE_INFINITY;
+                                const extraFilesInWindow = (proposal.documents ?? [])
+                                  .filter((doc) => {
+                                    if (!extraMaterialDocIds.has(doc.id)) return false;
+                                    if (generatedSubmissionArtifactRe.test(doc.file_name.toLowerCase())) return false;
+                                    const t = new Date(doc.uploaded_at).getTime();
+                                    return t <= entryAtMs && t > olderEntryAtMs;
+                                  })
+                                  .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime());
+                                return (
+                                  <li key={entry.stem} className="mb-5 last:mb-0">
+                                    <span className="-left-[1.42rem] absolute mt-1.5 h-2.5 w-2.5 rounded-full bg-muted-foreground/60" />
+                                    <div className="rounded-lg border border-border/60 px-3 py-2">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-medium text-foreground">
+                                          {new Date(entry.at).toLocaleString()}
+                                        </p>
+                                        {isCurrent ? (
+                                          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-emerald-700">
+                                            Current
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <ul className="mt-2 space-y-2">
+                                        {entry.files
+                                          .sort((a, b) => a.file_name.localeCompare(b.file_name))
+                                          .map((f) => (
+                                            <li
+                                              key={f.id}
+                                              className="rounded-md border border-border/50 bg-muted/10 px-2.5 py-2"
+                                            >
+                                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                  <p className="truncate text-xs font-medium text-foreground">
+                                                    {f.file_name}
+                                                  </p>
+                                                  <p className="text-[0.68rem] text-muted-foreground">
+                                                    Uploaded {new Date(f.uploaded_at).toLocaleString()}
+                                                  </p>
+                                                </div>
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-7 cursor-pointer px-2"
+                                                  onClick={() => void openStoredDocumentDownload(f.id)}
+                                                >
+                                                  <Download className="h-3.5 w-3.5" />
+                                                </Button>
+                                              </div>
+                                            </li>
+                                          ))}
+                                      </ul>
+                                      <details className="mt-2">
+                                        <summary className="cursor-pointer text-[0.72rem] font-medium text-muted-foreground">
+                                          Explore more
+                                        </summary>
+                                        <div className="mt-1.5 space-y-2 rounded-md border border-border/50 bg-muted/10 px-2.5 py-2 text-[0.7rem] text-muted-foreground">
+                                          <div>
+                                            <p className="font-medium text-foreground">
+                                              Extra files submitted with this entry ({extraFilesInWindow.length})
+                                            </p>
+                                            {extraFilesInWindow.length > 0 ? (
+                                              <ul className="mt-1 list-inside list-disc space-y-0.5">
+                                                {extraFilesInWindow.map((extra) => (
+                                                  <li key={extra.id}>
+                                                    {extra.file_name}
+                                                    {extraMaterialDescriptionByDocId.get(extra.id)
+                                                      ? ` — ${extraMaterialDescriptionByDocId.get(extra.id)}`
+                                                      : ""}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            ) : (
+                                              <p className="mt-1">No extra files detected for this submission window.</p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </details>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No prior submission artifacts found.</p>
                           )}
                         </div>
                       </div>
@@ -1393,6 +1578,61 @@ function AdminProposalDetailInner() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={approveDialogOpen}
+        onOpenChange={(open) => {
+          setApproveDialogOpen(open);
+          if (!open) setApproveConfirmText("");
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-sans">Approve submission</DialogTitle>
+            <DialogDescription>
+              This action signs off on the current submission and sets status to <strong>Approved</strong>.
+              Type <strong>APPROVE</strong> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label htmlFor="approve-confirm" className="text-sm font-medium text-foreground">
+              Confirmation
+            </Label>
+            <Input
+              id="approve-confirm"
+              value={approveConfirmText}
+              onChange={(e) => setApproveConfirmText(e.target.value)}
+              placeholder="Type APPROVE"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                className="cursor-pointer"
+                onClick={() => {
+                  setApproveDialogOpen(false);
+                  setApproveConfirmText("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="cursor-pointer"
+                disabled={statusUpdating || approveConfirmText.trim().toUpperCase() !== "APPROVE"}
+                onClick={() => {
+                  setApproveDialogOpen(false);
+                  setApproveConfirmText("");
+                  void updateStatus("approved");
+                }}
+              >
+                {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Confirm & sign off
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1464,7 +1704,7 @@ function AdminProposalDetailInner() {
         {/* Main content area */}
         <div className="min-w-0 flex-1">
           {activeNode === "summary" ? (
-            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+            <Card className="border-0 bg-transparent shadow-none hover:border-0 hover:shadow-none">
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
                 <div className="space-y-1">
                   <CardTitle className="font-sans text-base font-semibold tracking-tight">AI-generated summary</CardTitle>
@@ -1508,7 +1748,7 @@ function AdminProposalDetailInner() {
                         return (
                           <div
                             key={key}
-                            className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5"
+                            className="rounded-lg bg-muted/10 px-3 py-2.5"
                           >
                             <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                               {key.replace(/_/g, " ")}
@@ -1521,7 +1761,7 @@ function AdminProposalDetailInner() {
                       })}
                     </div>
                     {Object.entries(summary).some(([key]) => !SUMMARY_COMPACT_KEYS.has(key)) ? (
-                      <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-4">
+                      <div className="rounded-lg bg-muted/10 px-4 py-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-foreground">Full AI summary</p>
@@ -1548,7 +1788,7 @@ function AdminProposalDetailInner() {
                     ) : null}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 px-6 py-12 text-center">
+                  <div className="rounded-xl bg-muted/10 px-6 py-12 text-center">
                     <p className="text-sm text-muted-foreground">
                       Generate a summary to see risk level, population, methodology, and pathway suggestions for this
                       protocol.
@@ -1602,8 +1842,8 @@ function AdminProposalDetailInner() {
               </CardContent>
             </Card>
           ) : activeNode === "reviewers" ? (
-            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
+            <Card className="border-0 bg-transparent shadow-none hover:border-0 hover:shadow-none">
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 pb-4">
                 <div className="space-y-1">
                   <CardTitle className="font-sans text-base font-semibold tracking-tight">
                     Reviewer &amp; workflow hub
@@ -1623,19 +1863,19 @@ function AdminProposalDetailInner() {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                  <div className="rounded-lg bg-muted/10 px-3 py-2.5">
                     <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                       Assigned reviewers
                     </div>
                     <div className="mt-1 text-sm font-semibold text-foreground">{assignments.length}</div>
                   </div>
-                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                  <div className="rounded-lg bg-muted/10 px-3 py-2.5">
                     <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                       Submitted reviews
                     </div>
                     <div className="mt-1 text-sm font-semibold text-foreground">{reviews.length}</div>
                   </div>
-                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                  <div className="rounded-lg bg-muted/10 px-3 py-2.5">
                     <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                       Current status
                     </div>
