@@ -381,6 +381,19 @@ function ProposalDetailInner() {
           .filter((id): id is string => Boolean(id))
       : [],
   );
+  const extraMaterialDescriptionByDocId = new Map<string, string>(
+    Array.isArray(aiWorkspace?.extra_materials)
+      ? aiWorkspace.extra_materials
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const o = item as Record<string, unknown>;
+            if (typeof o.document_id !== "string" || !o.document_id) return null;
+            const description = typeof o.description === "string" ? o.description.trim() : "";
+            return [o.document_id, description] as const;
+          })
+          .filter((entry): entry is readonly [string, string] => Boolean(entry))
+      : [],
+  );
 
   async function downloadProposalDocument(documentId: string) {
     try {
@@ -558,7 +571,11 @@ function ProposalDetailInner() {
                     ) : null}
                     {proposal.documents
                       .filter((doc) => {
-                        if (doc.file_name.toLowerCase().endsWith(".md")) return false;
+                        const lowerName = doc.file_name.toLowerCase();
+                        if (lowerName.endsWith(".md")) return false;
+                        // Hide generated submission artifacts from the generic files list.
+                        if (/^proposal-package-.*\.(pdf|docx)$/.test(lowerName)) return false;
+                        if (/^irb-submission-.*\.(pdf|docx)$/.test(lowerName)) return false;
                         if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
                           return false;
                         }
@@ -585,6 +602,11 @@ function ProposalDetailInner() {
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
                             <p className="text-sm font-medium">{doc.file_name}</p>
+                            {extraMaterialDescriptionByDocId.get(doc.id) ? (
+                              <p className="text-xs text-muted-foreground">
+                                {extraMaterialDescriptionByDocId.get(doc.id)}
+                              </p>
+                            ) : null}
                             <p className="text-xs text-muted-foreground">
                               {new Date(doc.uploaded_at).toLocaleDateString()}
                             </p>
