@@ -2,15 +2,14 @@
 
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Brain,
   Send,
   UserPlus,
   FileEdit,
-  CheckCircle2,
   Loader2,
-  MessageSquare,
   AlertCircle,
   Calendar,
   FileStack,
@@ -21,7 +20,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,6 +61,14 @@ import type {
 const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages", "submit_review"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
+const ProposalCanvasEditor = dynamic(
+  () => import("@/components/proposals/ProposalCanvasEditor").then((m) => m.ProposalCanvasEditor),
+  {
+    ssr: false,
+    loading: () => <div className="min-h-[min(55vh,34rem)] animate-pulse rounded-none bg-muted/10" />,
+  },
+);
+
 /** Large / internal blobs — hide from admin Details for clarity (PI still has full data elsewhere). */
 const ADMIN_DETAILS_SKIP = new Set(["ai_workspace", "submission_snapshot"]);
 
@@ -85,6 +91,19 @@ function markdownToPlainText(input: string): string {
     .replace(/^\s*[-*+]\s+/gm, "• ")
     .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
     .trim();
+}
+
+function recordString(
+  obj: Record<string, unknown> | null | undefined,
+  key: string,
+  fallback = "",
+): string {
+  if (!obj) return fallback;
+  const v = obj[key];
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  if (typeof v === "boolean") return v ? "true" : "false";
+  return fallback;
 }
 
 /** Avoid "Objects are not valid as a React child" for nested JSON in form_data / summaries. */
@@ -179,6 +198,15 @@ function AdminProposalDetailInner() {
   const [banner, setBanner] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const [revisionNote, setRevisionNote] = useState("");
+  const [fullSummaryOpen, setFullSummaryOpen] = useState(false);
+  const [fullSummaryActiveKey, setFullSummaryActiveKey] = useState<string | null>(null);
+  const [aiFlagsOpen, setAiFlagsOpen] = useState(false);
+  const [aiFlagsActiveIndex, setAiFlagsActiveIndex] = useState(0);
+  const [revisionLetterOpen, setRevisionLetterOpen] = useState(false);
+  const [reviewerHubOpen, setReviewerHubOpen] = useState(false);
+  const [reviewerHubPanel, setReviewerHubPanel] = useState<
+    "workflow" | "assign" | "assignments" | "reviews"
+  >("workflow");
   const [activeNode, setActiveNode] = useState<string | null>(null);
   /** When set, reviewers see AI summary / details / messages but not workflow or admin-only tabs. */
   const [staffRole, setStaffRole] = useState<string | null>(null);
@@ -192,6 +220,9 @@ function AdminProposalDetailInner() {
     recommendations: "",
   });
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  const fullSummaryEntries =
+    summary ? Object.entries(summary).filter(([key]) => !SUMMARY_COMPACT_KEYS.has(key)) : [];
 
   const validFormSections = proposal?.form_data
     ? Object.entries(proposal.form_data).filter(
@@ -339,7 +370,7 @@ function AdminProposalDetailInner() {
       setPendingLetterId(letter.id);
       setLetters((prev) => [letter, ...prev.filter((x) => x.id !== letter.id)]);
       setBanner("Draft saved — review the text, then send to the PI.");
-      setTab("letter");
+      setRevisionLetterOpen(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -586,20 +617,32 @@ function AdminProposalDetailInner() {
     submissionSnapshot?.docx_file_name && proposal.documents?.length
       ? proposal.documents.find((d) => d.file_name === submissionSnapshot.docx_file_name)
       : undefined;
-
-  function downloadSubmissionMarkdown() {
-    if (!submissionSnapshot) return;
-    const blob = new Blob([submissionSnapshot.markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = submissionSnapshot.file_name;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
+  const pdfDocument =
+    submissionSnapshot?.pdf_file_name && proposal.documents?.length
+      ? proposal.documents.find((d) => d.file_name === submissionSnapshot.pdf_file_name)
+      : undefined;
+  const contextAttachmentDocIds = new Set(
+    Array.isArray(aiWorkspace?.context_attachments)
+      ? aiWorkspace.context_attachments
+          .map((item) =>
+            item && typeof item === "object" && typeof (item as Record<string, unknown>).document_id === "string"
+              ? (item as Record<string, unknown>).document_id
+              : null,
+          )
+          .filter((id): id is string => Boolean(id))
+      : [],
+  );
+  const extraMaterialDocIds = new Set(
+    Array.isArray(aiWorkspace?.extra_materials)
+      ? aiWorkspace.extra_materials
+          .map((item) =>
+            item && typeof item === "object" && typeof (item as Record<string, unknown>).document_id === "string"
+              ? (item as Record<string, unknown>).document_id
+              : null,
+          )
+          .filter((id): id is string => Boolean(id))
+      : [],
+  );
 
   async function openStoredDocumentDownload(documentId: string) {
     setError(null);
@@ -699,10 +742,11 @@ function AdminProposalDetailInner() {
           <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                Submission package &amp; files
+                Submission documents &amp; files
               </CardTitle>
               <CardDescription>
-                Markdown is stored with the proposal; Word is generated on submit and stored like other uploads.
+                Finalized submission files are provided as Word and optional PDF. Supporting materials are listed
+                separately.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
@@ -710,19 +754,11 @@ function AdminProposalDetailInner() {
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">Submitted package (Markdown)</p>
-                    <p className="text-xs text-muted-foreground">{submissionSnapshot.file_name}</p>
+                    <p className="text-sm font-medium">Finalized submission document</p>
+                    <p className="text-xs text-muted-foreground">
+                      {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
+                    </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer shrink-0"
-                    onClick={downloadSubmissionMarkdown}
-                  >
-                    <Download className="mr-1.5 h-3.5 w-3.5" />
-                    .md
-                  </Button>
                   {docxDocument ? (
                     <Button
                       type="button"
@@ -737,19 +773,40 @@ function AdminProposalDetailInner() {
                   ) : submissionSnapshot.docx_file_name ? (
                     <span className="text-xs text-muted-foreground">Word file pending or missing</span>
                   ) : null}
+                  {pdfDocument ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer shrink-0"
+                      onClick={() => void openStoredDocumentDownload(pdfDocument.id)}
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      PDF
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
               {proposal.documents && proposal.documents.length > 0 ? (
                 <ul className="space-y-1.5">
                   {proposal.documents
                     .filter((doc) => {
+                      if (doc.file_name.toLowerCase().endsWith(".md")) return false;
+                      if (submissionSnapshot?.docx_file_name && doc.file_name === submissionSnapshot.docx_file_name) {
+                        return false;
+                      }
+                      if (submissionSnapshot?.pdf_file_name && doc.file_name === submissionSnapshot.pdf_file_name) {
+                        return false;
+                      }
                       if (docxDocument && doc.id === docxDocument.id) return false;
+                      if (pdfDocument && doc.id === pdfDocument.id) return false;
                       if (
                         submissionSnapshot &&
                         doc.file_name === submissionSnapshot.file_name
                       ) {
                         return false;
                       }
+                      if (contextAttachmentDocIds.has(doc.id) && !extraMaterialDocIds.has(doc.id)) return false;
                       return true;
                     })
                     .map((doc) => (
@@ -782,141 +839,559 @@ function AdminProposalDetailInner() {
           </Card>
         ) : null}
 
-        {!isStaffReviewer ? (
-        <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
-          <CardHeader className="space-y-1 pb-2">
-            <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-              Workflow
-            </CardTitle>
-            <CardDescription className="text-sm leading-relaxed">
-              Advance the protocol, request changes from the PI, or open the revision letter tab to draft and send formal
-              feedback.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-2">
-            <div className="flex flex-wrap gap-2">
-              {proposal.status === "submitted" && (
-                <Button
-                  size="sm"
-                  className="cursor-pointer"
-                  onClick={() => updateStatus("initial_review")}
-                  disabled={statusUpdating}
-                >
-                  {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Begin Review
-                </Button>
-              )}
-              {proposal.status === "initial_review" && (
-                <>
-                  <Button
-                    size="sm"
-                    className="cursor-pointer"
-                    onClick={() => updateStatus("under_committee_review")}
-                    disabled={statusUpdating}
-                  >
-                    {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Send to Committee
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="cursor-pointer"
-                    onClick={() => setRevisionDialogOpen(true)}
-                    disabled={statusUpdating}
-                  >
-                    Request revisions (status only)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="cursor-pointer border-border bg-background hover:bg-muted"
-                    onClick={() => updateStatus("approved")}
-                    disabled={statusUpdating}
-                  >
-                    {statusUpdating ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-1 h-4 w-4" />
-                    )}
-                    Approve
-                  </Button>
-                </>
-              )}
-              {proposal.status === "under_committee_review" && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="cursor-pointer"
-                    onClick={() => setRevisionDialogOpen(true)}
-                    disabled={statusUpdating}
-                  >
-                    Request revisions (status only)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="cursor-pointer border-border bg-background hover:bg-muted"
-                    onClick={() => updateStatus("approved")}
-                    disabled={statusUpdating}
-                  >
-                    {statusUpdating ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-1 h-4 w-4" />
-                    )}
-                    Approve
-                  </Button>
-                </>
-              )}
-              {proposal.status === "resubmitted" && (
-                <Button
-                  size="sm"
-                  className="cursor-pointer"
-                  onClick={() => updateStatus("initial_review")}
-                  disabled={statusUpdating}
-                >
-                  {statusUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Begin Re-Review
-                </Button>
-              )}
-            </div>
+        {/* Workflow controls moved into Reviewer & workflow hub modal */}
+      </div>
 
-            {canRequestRevisions ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/80 bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Propose revisions to the PI</p>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Draft a formal letter (tab below), or change status now and optionally post a short note to Messages.
-                  </p>
+      <Dialog open={reviewerHubOpen} onOpenChange={setReviewerHubOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <DialogTitle className="font-sans">Reviewer &amp; workflow hub</DialogTitle>
+              <DialogDescription>
+                Assign reviewers, move review status forward, and request revisions. This is the admin control center.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[360px_1fr]">
+              <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setReviewerHubPanel("workflow")}
+                      className={cn(
+                        "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        reviewerHubPanel === "workflow"
+                          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">Workflow actions</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewerHubPanel("assign")}
+                      className={cn(
+                        "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        reviewerHubPanel === "assign"
+                          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">Assign reviewer</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewerHubPanel("assignments")}
+                      className={cn(
+                        "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        reviewerHubPanel === "assignments"
+                          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                        Current assignments ({assignments.length})
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewerHubPanel("reviews")}
+                      className={cn(
+                        "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        reviewerHubPanel === "reviews"
+                          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                          : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                      )}
+                    >
+                      <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                        Submitted reviews ({reviews.length})
+                      </span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="cursor-pointer"
-                    onClick={() => setTab("letter")}
-                  >
-                    <FileEdit className="mr-2 h-4 w-4" />
-                    Open revision letter
-                  </Button>
+              </div>
+              <div className="min-h-0 bg-background p-4 sm:p-6">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="mx-auto w-full max-w-3xl">
+                    {reviewerHubPanel === "workflow" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Workflow actions
+                        </p>
+                        {!isStaffReviewer ? (
+                          <div className="space-y-4 border-t border-border/40 pt-4">
+                            <p className="text-xs text-muted-foreground">
+                              Current status:{" "}
+                              <span className="font-medium text-foreground">{proposal.status.replace(/_/g, " ")}</span>
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {proposal.status === "submitted" ? (
+                                <Button
+                                  size="sm"
+                                  className="cursor-pointer"
+                                  onClick={() => void updateStatus("initial_review")}
+                                  disabled={statusUpdating}
+                                >
+                                  Begin review
+                                </Button>
+                              ) : null}
+                              {proposal.status === "initial_review" ? (
+                                <Button
+                                  size="sm"
+                                  className="cursor-pointer"
+                                  onClick={() => void updateStatus("under_committee_review")}
+                                  disabled={statusUpdating}
+                                >
+                                  Send to committee
+                                </Button>
+                              ) : null}
+                              {proposal.status === "resubmitted" ? (
+                                <Button
+                                  size="sm"
+                                  className="cursor-pointer"
+                                  onClick={() => void updateStatus("initial_review")}
+                                  disabled={statusUpdating}
+                                >
+                                  Begin re-review
+                                </Button>
+                              ) : null}
+                            </div>
+
+                            {canRequestRevisions ? (
+                              <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border/80 bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium text-foreground">Propose revisions to the PI</p>
+                                  <p className="text-xs leading-relaxed text-muted-foreground">
+                                    Draft a formal letter, or change status now and optionally post a short note to Messages.
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="cursor-pointer"
+                                    onClick={() => setRevisionLetterOpen(true)}
+                                  >
+                                    <FileEdit className="mr-2 h-4 w-4" />
+                                    Open revision letter
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="cursor-pointer"
+                                    onClick={() => setRevisionDialogOpen(true)}
+                                  >
+                                    Status + note
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="border-t border-border/40 pt-4">
+                            <p className="text-sm text-muted-foreground">Reviewer accounts can view status but cannot update it.</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {reviewerHubPanel === "assign" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assign reviewer</p>
+                        {!isStaffReviewer ? (
+                          <div className="space-y-3 border-t border-border/40 pt-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                              <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
+                                <SelectTrigger className="flex-1 rounded-xl">
+                                  <SelectValue placeholder="Select a reviewer" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {reviewers.map((r) => (
+                                    <SelectItem key={r.id} value={r.id}>
+                                      {r.full_name} ({r.email})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                className="cursor-pointer shrink-0 sm:w-auto"
+                                onClick={() => void assignReviewer()}
+                                disabled={!selectedReviewer || assigning}
+                              >
+                                {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                                Assign
+                              </Button>
+                            </div>
+                            {reviewers.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">No reviewer accounts in your institution yet.</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="border-t border-border/40 pt-4">
+                            <p className="text-sm text-muted-foreground">Reviewer accounts cannot assign reviewers.</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {reviewerHubPanel === "assignments" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current assignments</p>
+                        <div className="border-t border-border/40 pt-4">
+                          {assignments.length > 0 ? (
+                            <div className="space-y-2">
+                              {assignments.map((a) => (
+                                <div
+                                  key={a.id}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-4 py-3"
+                                >
+                                  <div>
+                                    <p className="text-sm font-medium">{a.reviewer_name || "Reviewer"}</p>
+                                    <p className="text-xs text-muted-foreground capitalize">
+                                      {a.status.replace(/_/g, " ")} · Assigned {new Date(a.assigned_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No reviewers assigned yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {reviewerHubPanel === "reviews" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Submitted reviews</p>
+                        <div className="border-t border-border/40 pt-4">
+                          {reviews.length > 0 ? (
+                            <div className="space-y-3">
+                              {reviews.map((r) => (
+                                <div key={r.id} className="rounded-xl border border-border p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-sm font-semibold capitalize">{r.decision.replace(/_/g, " ")}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(r.submitted_at).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  {r.comments ? (
+                                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                      {Object.entries(r.comments).map(([k, v]) => (
+                                        <div key={k} className="space-y-1">
+                                          <strong className="capitalize text-foreground">{k.replace(/_/g, " ")}:</strong>
+                                          <div className="pl-0">{renderJsonValue(v as unknown)}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No submitted reviews yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fullSummaryOpen} onOpenChange={setFullSummaryOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <DialogTitle className="font-sans">Full AI summary</DialogTitle>
+              <DialogDescription>
+                Use the left panel to jump between sections. This view is read-only.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[360px_1fr]">
+              <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="space-y-1">
+                    {fullSummaryEntries.map(([key]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFullSummaryActiveKey(key)}
+                        className={cn(
+                          "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                          fullSummaryActiveKey === key
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                            : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                        )}
+                      >
+                        <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                          {key.replace(/_/g, " ")}
+                        </span>
+                      </button>
+                    ))}
+                    {fullSummaryEntries.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No additional summary fields.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 bg-background p-4 sm:p-6">
+                <div className="h-full overflow-auto pr-1">
+                  {summary && fullSummaryActiveKey ? (
+                    <div className="mx-auto w-full max-w-3xl">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {fullSummaryActiveKey.replace(/_/g, " ")}
+                      </p>
+                      <div className="mt-3 border-t border-border/40 pt-4">
+                        <div className="text-sm leading-relaxed text-foreground">
+                          {renderJsonValue((summary as Record<string, unknown>)[fullSummaryActiveKey])}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mx-auto w-full max-w-3xl">
+                      <p className="text-sm text-muted-foreground">Select a section to view details.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={aiFlagsOpen} onOpenChange={setAiFlagsOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <DialogTitle className="font-sans">AI flagged items</DialogTitle>
+              <DialogDescription>
+                Compliance flags generated by the model. These are informational and should be validated by the reviewer.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[360px_1fr]">
+              <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="space-y-1">
+                    {complianceFlags.map((f, idx) => {
+                      const sev = recordString(f, "severity", "info");
+                      const section = recordString(f, "section_key", "general").replace(/_/g, " ");
+                      const msg = markdownToPlainText(recordString(f, "message", "")).trim();
+                      return (
+                        <button
+                          key={recordString(f, "id", String(idx))}
+                          type="button"
+                          onClick={() => setAiFlagsActiveIndex(idx)}
+                          className={cn(
+                            "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                            aiFlagsActiveIndex === idx
+                              ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                              : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                          )}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {sev}
+                            </span>
+                            <span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                              {section}
+                            </span>
+                          </div>
+                          <div className="mt-1 line-clamp-2 text-sm text-foreground">{msg || "—"}</div>
+                        </button>
+                      );
+                    })}
+                    {complianceFlags.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No AI flagged items.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 bg-background p-4 sm:p-6">
+                <div className="h-full overflow-auto pr-1">
+                  {complianceFlags.length > 0 ? (
+                    (() => {
+                      const f = complianceFlags[Math.min(aiFlagsActiveIndex, complianceFlags.length - 1)];
+                      const sev = recordString(f, "severity", "info");
+                      const section = recordString(f, "section_key", "general").replace(/_/g, " ");
+                      const msg = markdownToPlainText(recordString(f, "message", "")).trim();
+                      const citation = recordString(f, "cfr_reference", "").trim();
+                      const actionable = recordString(f, "actionable", "").trim();
+                      return (
+                        <div className="mx-auto w-full max-w-3xl">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {sev}
+                            </span>
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {section}
+                            </span>
+                          </div>
+                          <div className="mt-4 border-t border-border/40 pt-4">
+                            <p className="text-sm leading-relaxed text-foreground">{msg || "—"}</p>
+                            {citation ? (
+                              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                <span className="font-semibold text-foreground">Citation:</span> {citation}
+                              </p>
+                            ) : null}
+                            {actionable ? (
+                              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                                <span className="font-semibold text-foreground">Suggestion:</span> {actionable}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="mx-auto w-full max-w-3xl">
+                      <p className="text-sm text-muted-foreground">No AI flagged items.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revisionLetterOpen} onOpenChange={setRevisionLetterOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <DialogTitle className="font-sans">Revision letter</DialogTitle>
+                  <DialogDescription>
+                    Draft manually or with AI. Sending records the letter for the PI in-app and sets status to{" "}
+                    <strong>Revisions Requested</strong> when allowed.
+                  </DialogDescription>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="cursor-pointer"
-                    onClick={() => setRevisionDialogOpen(true)}
+                    className="h-9 cursor-pointer gap-2"
+                    onClick={() => void draftRevisionLetter()}
+                    disabled={drafting}
                   >
-                    Status + note
+                    {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                    {revisionLetter.trim() ? "Regenerate" : "AI draft"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-9 cursor-pointer gap-2"
+                    disabled={!revisionLetter.trim() || sendingLetter}
+                    onClick={() => void sendRevisionLetterToPi()}
+                  >
+                    {sendingLetter ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Send to PI
                   </Button>
                 </div>
               </div>
-            ) : null}
-          </CardContent>
-        </Card>
-        ) : null}
-      </div>
+            </DialogHeader>
+
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[360px_1fr]">
+              <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="flex items-center justify-between gap-2 px-2 pb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Recent letters
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 cursor-pointer text-xs"
+                      onClick={() => {
+                        setPendingLetterId(null);
+                        setRevisionLetter("");
+                        setBanner("New draft started — write, then AI draft or send when ready.");
+                      }}
+                    >
+                      Create new draft
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    {letters
+                      .filter((l) => l.type === "revision")
+                      .slice(0, 12)
+                      .map((l) => {
+                        const isActive = pendingLetterId ? l.id === pendingLetterId : false;
+                        return (
+                          <button
+                            key={l.id}
+                            type="button"
+                            onClick={() => {
+                              setRevisionLetter(l.content ?? "");
+                              setPendingLetterId(l.id);
+                            }}
+                            className={cn(
+                              "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                              isActive
+                                ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                                : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                            )}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[0.7rem] font-medium text-muted-foreground">
+                                {new Date(l.created_at).toLocaleString()}
+                              </span>
+                              <span
+                                className={cn(
+                                  "rounded-md px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
+                                  l.sent_at
+                                    ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+                                    : "bg-muted/40 text-muted-foreground",
+                                )}
+                              >
+                                {l.sent_at ? "Sent" : "Draft"}
+                              </span>
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-sm text-foreground">
+                              {markdownToPlainText(l.content ?? "") || "—"}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    {letters.filter((l) => l.type === "revision").length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">No revision letters yet.</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 bg-background p-4 sm:p-6">
+                <div className="h-full overflow-auto pr-1">
+                  <div className="mx-auto w-full max-w-4xl">
+                    {pendingLetterId ? (
+                      <p className="mb-4 text-xs text-muted-foreground">
+                        Editing draft letter ID{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">{pendingLetterId.slice(0, 8)}…</code>{" "}
+                        — sending will update this draft.
+                      </p>
+                    ) : null}
+                    <ProposalCanvasEditor
+                      markdown={revisionLetter}
+                      onMarkdownChange={(md) => setRevisionLetter(md)}
+                      placeholder="Start writing here…"
+                      className="px-0"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -967,6 +1442,15 @@ function AdminProposalDetailInner() {
             selectedIds={activeNode ? [activeNode] : []}
             onNodeClick={(node) => {
               if (node.children) return;
+              if (node.id === "ai_flags") {
+                setAiFlagsActiveIndex(0);
+                setAiFlagsOpen(true);
+                return;
+              }
+              if (node.id === "letter") {
+                setRevisionLetterOpen(true);
+                return;
+              }
               setActiveNode(node.id);
               if (TAB_VALUES.includes(node.id as TabValue)) {
                 setTab(node.id as TabValue);
@@ -1007,7 +1491,10 @@ function AdminProposalDetailInner() {
                     variant="outline"
                     size="sm"
                     className="mb-5 cursor-pointer"
-                    onClick={() => setActiveNode("ai_flags")}
+                    onClick={() => {
+                      setAiFlagsActiveIndex(0);
+                      setAiFlagsOpen(true);
+                    }}
                   >
                     View AI flagged items ({complianceFlags.length})
                   </Button>
@@ -1034,31 +1521,30 @@ function AdminProposalDetailInner() {
                       })}
                     </div>
                     {Object.entries(summary).some(([key]) => !SUMMARY_COMPACT_KEYS.has(key)) ? (
-                      <details className="group rounded-lg border border-border/60 bg-muted/10 open:bg-muted/15">
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium outline-none marker:content-none [&::-webkit-details-marker]:hidden">
-                          <span>Full AI summary</span>
-                          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-                        </summary>
-                        <div className="border-t border-border/40 px-4 pb-4 pt-3">
-                          <dl className="grid gap-3 md:grid-cols-2">
-                            {Object.entries(summary)
-                              .filter(([key]) => !SUMMARY_COMPACT_KEYS.has(key))
-                              .map(([key, value]) => (
-                                <div
-                                  key={key}
-                                  className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5"
-                                >
-                                  <dt className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-                                    {key.replace(/_/g, " ")}
-                                  </dt>
-                                  <dd className="mt-1 text-sm leading-relaxed text-foreground">
-                                    {renderJsonValue(value)}
-                                  </dd>
-                                </div>
-                              ))}
-                          </dl>
+                      <div className="rounded-lg border border-border/60 bg-muted/10 px-4 py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">Full AI summary</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                              Open in a wider view for easier scanning.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 cursor-pointer"
+                            onClick={() => {
+                              const first =
+                                Object.entries(summary).find(([k]) => !SUMMARY_COMPACT_KEYS.has(k))?.[0] ?? null;
+                              setFullSummaryActiveKey(first);
+                              setFullSummaryOpen(true);
+                            }}
+                          >
+                            Open full summary
+                          </Button>
                         </div>
-                      </details>
+                      </div>
                     ) : null}
                   </div>
                 ) : (
@@ -1088,25 +1574,25 @@ function AdminProposalDetailInner() {
                   <div className="space-y-2">
                     {complianceFlags.map((f, i) => (
                       <div
-                        key={String((f as any)?.id ?? i)}
+                        key={recordString(f, "id", String(i))}
                         className="rounded-xl border border-border/10 bg-muted/5 px-4 py-3"
                       >
                         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          {String((f as any)?.severity ?? "info")} · {String((f as any)?.section_key ?? "general")}
+                          {recordString(f, "severity", "info")} · {recordString(f, "section_key", "general")}
                         </div>
                         <p className="mt-1 text-sm leading-relaxed text-foreground">
-                          {markdownToPlainText(String((f as any)?.message ?? ""))}
+                          {markdownToPlainText(recordString(f, "message", ""))}
                         </p>
-                        {(f as any)?.cfr_reference ? (
+                        {recordString(f, "cfr_reference", "").trim() ? (
                           <p className="mt-2 text-xs text-muted-foreground">
                             <span className="font-semibold text-foreground">Reference:</span>{" "}
-                            {String((f as any)?.cfr_reference)}
+                            {recordString(f, "cfr_reference", "")}
                           </p>
                         ) : null}
-                        {(f as any)?.actionable ? (
+                        {recordString(f, "actionable", "").trim() ? (
                           <p className="mt-2 text-xs text-muted-foreground">
                             <span className="font-semibold text-foreground">Suggested fix:</span>{" "}
-                            {String((f as any)?.actionable)}
+                            {recordString(f, "actionable", "")}
                           </p>
                         ) : null}
                       </div>
@@ -1116,99 +1602,53 @@ function AdminProposalDetailInner() {
               </CardContent>
             </Card>
           ) : activeNode === "reviewers" ? (
-            <div className="space-y-4">
-              {assignments.length > 0 ? (
-                <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
-                <CardHeader>
-                  <CardTitle className="font-sans text-base font-semibold">Current assignments</CardTitle>
-                  <CardDescription>Reviewers who have been invited for this protocol.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {assignments.map((a) => (
-                      <div
-                      key={a.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-4 py-3"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{a.reviewer_name || "Reviewer"}</p>
-                        <p className="text-xs text-muted-foreground capitalize">
-                          {a.status.replace(/_/g, " ")} · Assigned{" "}
-                          {new Date(a.assigned_at).toLocaleDateString()}
-                        </p>
-                      </div>
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">
+                <div className="space-y-1">
+                  <CardTitle className="font-sans text-base font-semibold tracking-tight">
+                    Reviewer &amp; workflow hub
+                  </CardTitle>
+                  <CardDescription>
+                    Assign reviewers, advance review status, and coordinate revision requests from one place.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="cursor-pointer shrink-0"
+                  onClick={() => setReviewerHubOpen(true)}
+                >
+                  Open hub
+                </Button>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                    <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                      Assigned reviewers
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {!isStaffReviewer ? (
-              <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
-                <CardHeader>
-                  <CardTitle className="font-sans text-base font-semibold">Assign reviewer</CardTitle>
-                  <CardDescription>Reviewers receive an email with the proposal title.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <Select value={selectedReviewer} onValueChange={(v) => setSelectedReviewer(v ?? "")}>
-                      <SelectTrigger className="flex-1 rounded-xl">
-                        <SelectValue placeholder="Select a reviewer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {reviewers.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.full_name} ({r.email})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      className="cursor-pointer shrink-0 sm:w-auto"
-                      onClick={() => void assignReviewer()}
-                      disabled={!selectedReviewer || assigning}
-                    >
-                      {assigning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                      Assign
-                    </Button>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{assignments.length}</div>
                   </div>
-                  {reviewers.length === 0 ? (
-                    <p className="mt-3 text-xs text-muted-foreground">No reviewer accounts in your institution yet.</p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {reviews.length > 0 && (
-              <details className={`group ${dashboardCardClass}`}>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-6 py-4 font-sans text-base font-semibold outline-none marker:content-none [&::-webkit-details-marker]:hidden">
-                  <span>Submitted reviews ({reviews.length})</span>
-                  <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-                </summary>
-                <CardContent className="space-y-4 border-t border-border/40 px-6 pb-6 pt-4">
-                  {reviews.map((r) => (
-                    <div key={r.id} className="rounded-xl border border-border p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold capitalize">{r.decision.replace(/_/g, " ")}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(r.submitted_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      {r.comments && (
-                        <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                          {Object.entries(r.comments).map(([k, v]) => (
-                            <div key={k} className="space-y-1">
-                              <strong className="capitalize text-foreground">{k.replace(/_/g, " ")}:</strong>
-                              <div className="pl-0">{renderJsonValue(v as unknown)}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                    <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                      Submitted reviews
                     </div>
-                  ))}
-                </CardContent>
-                </details>
-              )}
-            </div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{reviews.length}</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2.5">
+                    <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                      Current status
+                    </div>
+                    <div className="mt-1 text-sm font-semibold capitalize text-foreground">
+                      {proposal.status.replace(/_/g, " ")}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Use the hub to take actions; supporting materials remain in the Documents section above.
+                </p>
+              </CardContent>
+            </Card>
           ) : activeNode === "letter" ? (
             <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 border-b border-border/50 pb-4">

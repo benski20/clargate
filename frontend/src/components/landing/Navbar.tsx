@@ -70,7 +70,7 @@ export function Navbar() {
                   <a
                     key={item.href}
                     href={item.href}
-                    className="text-[#0A0A0A] hover:text-[#D9381E]"
+                    className="text-[#0A0A0A] hover:text-[#555555]"
                     onClick={() => setOpen(false)}
                   >
                     {item.label}
@@ -78,7 +78,7 @@ export function Navbar() {
                 ))}
                 <Link
                   href="/signup"
-                  className="text-[#D9381E]"
+                  className="text-[#0A0A0A]"
                   onClick={() => setOpen(false)}
                 >
                   Start Trial

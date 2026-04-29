@@ -49,7 +49,7 @@ export function Hero() {
               </p>
               <a
                 href="#workflow"
-                className="group inline-flex items-center gap-4 border-b border-[#0A0A0A] pb-1 font-mono text-xs tracking-[0.15em] text-[#0A0A0A] uppercase transition-colors duration-300 hover:border-[#D9381E] hover:text-[#D9381E]"
+                className="group inline-flex items-center gap-4 border-b border-[#0A0A0A] pb-1 font-mono text-xs tracking-[0.15em] text-[#0A0A0A] uppercase transition-colors duration-300 hover:border-[#555555] hover:text-[#555555]"
               >
                 View Architecture
                 <ArrowRight className="size-[1.2rem] transition-transform duration-500 group-hover:translate-x-2" />

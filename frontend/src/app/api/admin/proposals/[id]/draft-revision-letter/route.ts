@@ -15,7 +15,8 @@ Guidelines:
 - Use numbered items for easy reference
 - Maintain a constructive, supportive tone
 - End with submission instructions and a deadline reminder
-- Do NOT make definitive regulatory determinations — frame suggestions as reviewer recommendations`;
+- Do NOT make definitive regulatory determinations — frame suggestions as reviewer recommendations
+- Output plain text only. Do NOT use Markdown formatting (no **asterisks**, no bullet markers like "*", no heading syntax).`;
 
 const SYSTEM_WITHOUT_REVIEWS = `You are a professional IRB administrator drafting a revision request letter to a principal investigator (PI). No formal reviewer comments have been submitted yet — use the protocol intake data below to identify likely gaps, missing elements, or clarifications commonly needed before IRB review.
 
@@ -25,7 +26,8 @@ Guidelines:
 - Use numbered items for easy reference
 - Maintain a constructive, supportive tone
 - End with submission instructions and a deadline reminder
-- Do NOT make definitive regulatory determinations`;
+- Do NOT make definitive regulatory determinations
+- Output plain text only. Do NOT use Markdown formatting (no **asterisks**, no bullet markers like "*", no heading syntax).`;
 
 export async function POST(
   request: NextRequest,
