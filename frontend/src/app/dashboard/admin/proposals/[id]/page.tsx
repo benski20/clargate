@@ -47,6 +47,17 @@ import { db } from "@/lib/database";
 import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
+import {
+  getTourDemoAdminLetters,
+  getTourDemoAdminSummary,
+  getTourDemoInstitutionUsers,
+  getTourDemoPiMessages,
+  getTourDemoPiProposal,
+  getTourDemoReviewAssignments,
+  getTourDemoReviews,
+  isTourDemoProposalId,
+} from "@/lib/tour-demo";
+import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import type {
   Letter,
   ProposalDetail,
@@ -173,6 +184,7 @@ function AdminProposalDetailInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const proposalId = params.id as string;
+  const isDemo = isTourDemoProposalId(proposalId);
 
   const tabParam = searchParams.get("tab");
 
@@ -258,6 +270,25 @@ function AdminProposalDetailInner() {
       if (cancelled) return;
       setStaffRole(u?.role ?? null);
       setAppUserId(u?.id ?? null);
+
+      if (isDemo) {
+        setProposal(getTourDemoPiProposal("detail"));
+        setReviews(getTourDemoReviews());
+        setAssignments(getTourDemoReviewAssignments());
+        const letterRows = getTourDemoAdminLetters();
+        setLetters(letterRows);
+        setSummary(getTourDemoAdminSummary());
+        setMessages(getTourDemoPiMessages());
+        setUsers(getTourDemoInstitutionUsers());
+        const unsent = letterRows.find((l) => l.type === "revision" && !l.sent_at);
+        if (unsent) {
+          setRevisionLetter(unsent.content);
+          setPendingLetterId(unsent.id);
+        }
+        setLoading(false);
+        return;
+      }
+
       const isAdmin = u?.role === "admin";
 
       const instUsersPromise = isAdmin
@@ -296,10 +327,10 @@ function AdminProposalDetailInner() {
     return () => {
       cancelled = true;
     };
-  }, [proposalId]);
+  }, [proposalId, isDemo]);
 
   useEffect(() => {
-    if (activeNode !== "messages" || !proposalId || !appUserId) return;
+    if (isDemo || activeNode !== "messages" || !proposalId || !appUserId) return;
     const hasUnread = messages.some((m) => !m.is_read && m.sender_user_id !== appUserId);
     if (!hasUnread) return;
     let cancelled = false;
@@ -317,7 +348,7 @@ function AdminProposalDetailInner() {
     return () => {
       cancelled = true;
     };
-  }, [activeNode, proposalId, appUserId, messages]);
+  }, [activeNode, proposalId, appUserId, messages, isDemo]);
 
   function setTab(next: TabValue) {
     const q = new URLSearchParams(searchParams.toString());
@@ -745,7 +776,7 @@ function AdminProposalDetailInner() {
     }
   }
 
-  return (
+  const page = (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 pb-16">
       <div className="flex flex-col gap-6 border-b border-border/70 pb-8">
         <div className="flex items-start gap-3 sm:gap-4">
@@ -2186,6 +2217,8 @@ function AdminProposalDetailInner() {
       </div>
     </div>
   );
+
+  return isDemo ? <TourDemoShell>{page}</TourDemoShell> : page;
 }
 
 export default function AdminProposalDetailPage() {

@@ -45,7 +45,7 @@ export function PlatformGuideCard({ role }: { role: UserRole }) {
               How to use Arbiter
             </h3>
             <p className="text-sm text-foreground/70 max-w-[18rem] leading-relaxed">
-              Walk through key screens with Next and Back—your page updates at each step.
+              A full walkthrough of your role—intake, review, messaging, and more—with Next and Back as each screen updates.
             </p>
           </div>
 

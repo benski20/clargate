@@ -6,10 +6,12 @@ import { BookOpen, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  pathMatchesPlatformGuideStep,
   PLATFORM_TOUR_QUERY,
+  intakeWizardStepBadge,
+  platformGuideStepPath,
   platformGuideSteps,
   platformTourUrl,
+  stepMatchesPath,
   stripPlatformTour,
 } from "@/lib/platform-guide";
 import type { User } from "@/lib/types";
@@ -27,7 +29,9 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const steps = platformGuideSteps(appUser.role);
+  const role = appUser.role;
+  const steps = React.useMemo(() => platformGuideSteps(role), [role]);
+  const tourSearch = searchParams.toString();
   const stepParam = parseTourStep(searchParams.get(PLATFORM_TOUR_QUERY));
   const active = stepParam !== null;
 
@@ -41,7 +45,7 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
     if (stepParam === null) return;
     const max = steps.length - 1;
     if (stepParam > max) {
-      router.replace(platformTourUrl(steps[max].path, max));
+      router.replace(platformTourUrl(platformGuideStepPath(steps[max]), max));
     }
   }, [stepParam, steps, router]);
 
@@ -50,13 +54,13 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
     if (stepParam === null || step === null) return;
     const def = steps[step];
     if (!def) return;
-    if (pathMatchesPlatformGuideStep(pathname, def.path)) return;
-    router.replace(platformTourUrl(def.path, step));
-  }, [stepParam, step, steps, pathname, router]);
+    if (stepMatchesPath(def, pathname, tourSearch)) return;
+    router.replace(platformTourUrl(platformGuideStepPath(def), step));
+  }, [stepParam, step, steps, pathname, tourSearch, router]);
 
   const exitTour = React.useCallback(() => {
-    router.replace(stripPlatformTour(pathname, searchParams.toString()));
-  }, [router, pathname, searchParams]);
+    router.replace(stripPlatformTour(pathname, tourSearch));
+  }, [router, pathname, tourSearch]);
 
   React.useEffect(() => {
     if (!active) return;
@@ -77,26 +81,30 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
 
   const last = step >= steps.length - 1;
   const first = step === 0;
+  const hasTourScreen = Boolean(def.tourPath);
+  const intakeBadge = intakeWizardStepBadge(def.tourPath);
 
   function goToStep(next: number) {
     const target = steps[next];
     if (!target) return;
-    router.push(platformTourUrl(target.path, next));
+    router.push(platformTourUrl(platformGuideStepPath(target), next));
   }
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Exit tour"
-        className="fixed inset-0 z-[100] cursor-default bg-black/0 transition-opacity supports-backdrop-filter:backdrop-blur-[0.1px]"
-        onClick={exitTour}
-      />
+      {!hasTourScreen ? (
+        <button
+          type="button"
+          aria-label="Exit tour"
+          className="fixed inset-0 z-[100] cursor-default bg-transparent"
+          onClick={exitTour}
+        />
+      ) : null}
 
       <div
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-[101] max-h-[min(52vh,420px)] overflow-y-auto rounded-t-2xl border border-border/80 bg-popover p-5 shadow-2xl ring-1 ring-border/60",
-          "sm:bottom-6 sm:left-auto sm:right-6 sm:max-h-[min(70vh,480px)] sm:w-full sm:max-w-md sm:rounded-xl"
+          "fixed bottom-0 left-0 right-0 z-[102] max-h-[min(52vh,420px)] overflow-y-auto rounded-t-2xl border border-border/80 bg-popover p-5 shadow-2xl ring-1 ring-border/60",
+          "sm:bottom-6 sm:left-auto sm:right-6 sm:max-h-[min(70vh,480px)] sm:w-full sm:max-w-md sm:rounded-xl",
         )}
         role="dialog"
         aria-modal="true"
@@ -108,7 +116,18 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
           <div className="flex min-w-0 items-center gap-2 text-sky-600 dark:text-sky-400">
             <BookOpen className="size-4 shrink-0" aria-hidden />
             <span className="font-mono text-[0.65rem] font-normal uppercase tracking-[0.18em]">
-              Step {step + 1} of {steps.length}
+              {intakeBadge ? (
+                <>
+                  {intakeBadge}
+                  {" · Tour "}
+                  {step + 1} of {steps.length}
+                </>
+              ) : (
+                <>
+                  Step {step + 1} of {steps.length}
+                </>
+              )}
+              {hasTourScreen ? " · Live preview" : ""}
             </span>
           </div>
           <Button

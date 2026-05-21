@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { dashboardCardClass } from "@/components/dashboard/dashboard-ui";
+import { DraftPrivacyCallout } from "@/components/dashboard/tour-demo/draft-privacy-callout";
+import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import { db } from "@/lib/database";
+import { getTourDemoPiProposalsList } from "@/lib/tour-demo";
 import type { Proposal } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export default function MyProposalsPage() {
+function MyProposalsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const demoDrafts = searchParams.get("demo") === "drafts";
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<"unknown" | "yes" | "no">("unknown");
@@ -30,6 +35,11 @@ export default function MyProposalsPage() {
         return;
       }
       setAllowed("yes");
+      if (demoDrafts) {
+        setProposals(getTourDemoPiProposalsList());
+        setLoading(false);
+        return;
+      }
       try {
         const list = await db.getProposals({ pageSize: 100 });
         if (!cancelled) setProposals(list);
@@ -42,9 +52,10 @@ export default function MyProposalsPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, demoDrafts]);
 
   async function hideDraftFromList(proposalId: string) {
+    if (demoDrafts) return;
     const ok = window.confirm(
       "Remove this draft from your list? The submission is not deleted—it stays on record for your institution, but it will no longer appear here.",
     );
@@ -68,7 +79,7 @@ export default function MyProposalsPage() {
     );
   }
 
-  return (
+  const page = (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -77,13 +88,12 @@ export default function MyProposalsPage() {
             size="icon"
             className="mt-0.5 shrink-0 cursor-pointer"
             render={<Link href="/dashboard" />}
+            disabled={demoDrafts}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">
-              My proposals
-            </h1>
+            <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">My proposals</h1>
             <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
               Open a proposal for details, messages, and documents, or start a new submission.
             </p>
@@ -92,11 +102,14 @@ export default function MyProposalsPage() {
         <Button
           className="h-9 w-full shrink-0 cursor-pointer gap-2 rounded-md bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90 sm:w-auto"
           render={<Link href="/dashboard/proposals/new" />}
+          disabled={demoDrafts}
         >
           <Plus className="h-4 w-4" />
           New proposal
         </Button>
       </div>
+
+      {demoDrafts ? <DraftPrivacyCallout /> : null}
 
       <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
         <CardHeader>
@@ -126,11 +139,16 @@ export default function MyProposalsPage() {
               {proposals.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 transition-colors duration-200 hover:border-border hover:bg-muted/50 sm:gap-2 sm:px-3 sm:py-2"
+                  className={cn(
+                    "flex items-center gap-1 rounded-lg border border-transparent px-2 py-1.5 transition-colors duration-200 hover:border-border hover:bg-muted/50 sm:gap-2 sm:px-3 sm:py-2",
+                    demoDrafts && p.status === "draft" && "border-sky-500/25 bg-sky-500/[0.04]",
+                  )}
                 >
                   <Link
                     href={`/dashboard/proposals/${p.id}`}
                     className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 px-2 py-1.5 sm:px-3"
+                    tabIndex={demoDrafts ? -1 : undefined}
+                    aria-disabled={demoDrafts}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-foreground">{p.title}</p>
@@ -146,7 +164,7 @@ export default function MyProposalsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground/70"
-                      disabled={removingId === p.id}
+                      disabled={demoDrafts || removingId === p.id}
                       title="Remove draft from this list"
                       aria-label={`Remove draft “${p.title}” from your list`}
                       onClick={(e) => {
@@ -168,5 +186,21 @@ export default function MyProposalsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+
+  return demoDrafts ? <TourDemoShell>{page}</TourDemoShell> : page;
+}
+
+export default function MyProposalsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center px-4 py-16">
+          <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
+        </div>
+      }
+    >
+      <MyProposalsPageInner />
+    </Suspense>
   );
 }
