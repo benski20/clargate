@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { ChevronRight, Folder, File, FolderOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,13 @@ export function TreeView({
   const isControlled =
     selectedIds !== undefined && onSelectionChange !== undefined;
   const currentSelectedIds = isControlled ? selectedIds : internalSelectedIds;
+
+  /** Keep highlight in sync when parent drives `selectedIds` without `onSelectionChange`. */
+  const selectedKey = selectedIds.join("\0");
+  useEffect(() => {
+    if (isControlled) return;
+    setInternalSelectedIds(selectedIds);
+  }, [selectedKey, isControlled, selectedIds]);
 
   const toggleExpanded = useCallback(
     (nodeId: string) => {

@@ -59,6 +59,7 @@ import {
   proposalPackagePdfFilename,
   buildProposalPackagePdfBytes,
 } from "@/lib/ai-proposal-package-markdown";
+import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import {
   MAX_INGEST_BYTES_PER_FILE,
   MAX_UPLOAD_ATTACHMENTS_CHAT,
@@ -103,12 +104,22 @@ export function AiIntakeWorkspace({
   onBack,
   variant: variantProp = "chat",
   existingProposalId = null,
+  demoMode = false,
+  demoSeed,
 }: {
   onBack: () => void;
   /** Upload-first path: files + “Run AI review” instead of conversational chat. */
   variant?: "chat" | "upload";
   /** Load an existing draft or a proposal in “revisions requested” for edit + submit / resubmit. */
   existingProposalId?: string | null;
+  /** Guided tour: render the real workspace with fixture data; no saves or API calls. */
+  demoMode?: boolean;
+  demoSeed?: {
+    workspace: AiWorkspaceState;
+    title: string;
+    uploadWizardStep?: number;
+    draftWizardStep?: number;
+  };
 }) {
   const router = useRouter();
   /** When reopening a saved draft, `form_data.entry_mode` wins over the initial `variant` prop. */
@@ -120,9 +131,9 @@ export function AiIntakeWorkspace({
   const maxAttachments =
     effectiveVariant === "upload" ? MAX_UPLOAD_ATTACHMENTS_MATERIALS : MAX_UPLOAD_ATTACHMENTS_CHAT;
   const maxFileBytes = MAX_INGEST_BYTES_PER_FILE;
-  const [ws, setWs] = useState<AiWorkspaceState>(() => emptyAiWorkspace());
-  const [suggestedTitle, setSuggestedTitle] = useState("");
-  const [proposalId, setProposalId] = useState<string | null>(null);
+  const [ws, setWs] = useState<AiWorkspaceState>(() => demoSeed?.workspace ?? emptyAiWorkspace());
+  const [suggestedTitle, setSuggestedTitle] = useState(() => demoSeed?.title ?? "");
+  const [proposalId, setProposalId] = useState<string | null>(() => (demoMode ? "platform-tour-demo" : null));
   const [chatInput, setChatInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -142,13 +153,15 @@ export function AiIntakeWorkspace({
   const [uploadChatMessages, setUploadChatMessages] = useState<AiChatMessage[]>([]);
   const [uploadChatInput, setUploadChatInput] = useState("");
   const [uploadChatBusy, setUploadChatBusy] = useState(false);
-  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
+  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(
+    () => demoMode && (demoSeed?.uploadWizardStep ?? 0) > 0,
+  );
   const [uploadSubmitConfirmOpen, setUploadSubmitConfirmOpen] = useState(false);
   const [uploadSubmitConfirmed, setUploadSubmitConfirmed] = useState(false);
   /** Upload variant: which wizard screen is shown (0–4). Does not replace `rightTab` for data logic. */
-  const [uploadWizardStep, setUploadWizardStep] = useState(0);
+  const [uploadWizardStep, setUploadWizardStep] = useState(() => demoSeed?.uploadWizardStep ?? 0);
   /** Chat ("Draft with AI") variant: wizard step index (0–6). */
-  const [draftWizardStep, setDraftWizardStep] = useState(0);
+  const [draftWizardStep, setDraftWizardStep] = useState(() => demoSeed?.draftWizardStep ?? 0);
   const [uploadAiReviewConsentDialogOpen, setUploadAiReviewConsentDialogOpen] = useState(false);
   const bootRef = useRef(false);
   const prevReviewBusyRef = useRef(false);
@@ -180,7 +193,7 @@ export function AiIntakeWorkspace({
   }, [packageMarkdown]);
 
   const [hydrationStatus, setHydrationStatus] = useState<"loading" | "ready" | "no_workspace">(() =>
-    existingProposalId ? "loading" : "ready",
+    demoMode ? "ready" : existingProposalId ? "loading" : "ready",
   );
   const [loadedProposalStatus, setLoadedProposalStatus] = useState<ProposalStatus | null>(null);
 
@@ -217,6 +230,7 @@ export function AiIntakeWorkspace({
 
   const persist = useCallback(
     async (next: AiWorkspaceState, title: string): Promise<string | null> => {
+      if (demoMode) return proposalId;
       setSaving(true);
       try {
         const merged = buildFormDataFromAiWorkspace(next, title, {
@@ -237,7 +251,7 @@ export function AiIntakeWorkspace({
         setSaving(false);
       }
     },
-    [proposalId, effectiveVariant],
+    [proposalId, effectiveVariant, demoMode],
   );
 
   const navigateWorkspaceTab = useCallback(
@@ -294,6 +308,17 @@ export function AiIntakeWorkspace({
     else if (draftWizardStep === 6) setRightTab("context");
     else if (draftWizardStep === 7) setRightTab("compliance");
   }, [draftWizardStep, effectiveVariant]);
+
+  /** Re-apply fixture when the guided tour advances to another wizard step. */
+  useEffect(() => {
+    if (!demoMode || !demoSeed) return;
+    setWs(demoSeed.workspace);
+    setSuggestedTitle(demoSeed.title);
+    if (demoSeed.uploadWizardStep !== undefined) setUploadWizardStep(demoSeed.uploadWizardStep);
+    if (demoSeed.draftWizardStep !== undefined) setDraftWizardStep(demoSeed.draftWizardStep);
+    setProposalId("platform-tour-demo");
+    setHydrationStatus("ready");
+  }, [demoMode, demoSeed]);
 
   /**
    * Uploads any context attachments that have local files but no `proposal_documents` row yet,
@@ -386,16 +411,17 @@ export function AiIntakeWorkspace({
   }
 
   useEffect(() => {
+    if (demoMode) return;
     if (existingProposalId && hydrationStatus !== "ready") return;
     if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     const t = setTimeout(() => {
       void persist(ws, suggestedTitle);
     }, 900);
     return () => clearTimeout(t);
-  }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus, effectiveVariant]);
+  }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus, effectiveVariant, demoMode]);
 
   useEffect(() => {
-    if (!existingProposalId) return;
+    if (demoMode || !existingProposalId) return;
     let cancelled = false;
     setHydrationStatus("loading");
     (async () => {
@@ -442,7 +468,7 @@ export function AiIntakeWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [existingProposalId, router]);
+  }, [existingProposalId, router, demoMode]);
 
   useLayoutEffect(() => {
     const el = chatScrollRef.current;
@@ -1853,11 +1879,11 @@ export function AiIntakeWorkspace({
     </div>
   );
 
-  return (
+  const workspace = (
     <div
       className={cn(
         // Full-bleed inside the dashboard content area (no "page inside a page").
-        "-mx-4 -my-6 md:-mx-8 md:-my-10 lg:-mx-10",
+        demoMode ? "-mx-4 md:-mx-8 lg:-mx-10" : "-mx-4 -my-6 md:-mx-8 md:-my-10 lg:-mx-10",
         "relative z-0 flex w-full flex-col bg-background",
         // Chat workspace benefits from a bounded height so it uses the bottom space.
         effectiveVariant !== "upload" &&
@@ -2946,4 +2972,6 @@ export function AiIntakeWorkspace({
       ) : null}
     </div>
   );
+
+  return demoMode ? <TourDemoShell layout="fullBleed">{workspace}</TourDemoShell> : workspace;
 }

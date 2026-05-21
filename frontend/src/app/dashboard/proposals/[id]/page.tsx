@@ -27,6 +27,13 @@ import { MessagesThread } from "@/components/messages/MessagesThread";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
+import {
+  getTourDemoPiLetters,
+  getTourDemoPiMessages,
+  getTourDemoPiProposal,
+  isTourDemoProposalId,
+} from "@/lib/tour-demo";
+import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import type { ProposalDetail, Message, Letter } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -184,6 +191,8 @@ function ProposalDetailInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const proposalId = params.id as string;
+  const isDemo = isTourDemoProposalId(proposalId);
+  const demoVariant = searchParams.get("variant") === "revisions" ? "revisions" : "detail";
   const justSubmitted = searchParams.get("submitted") === "1";
   const justResubmitted = searchParams.get("resubmitted") === "1";
 
@@ -224,12 +233,16 @@ function ProposalDetailInner() {
       setActiveNode(tabFromUrl);
       return;
     }
+    if (isDemo && demoVariant === "revisions") {
+      setActiveNode("letters");
+      return;
+    }
     setActiveNode((prev) => {
       if (prev) return prev;
       if (validFormSections.length > 0) return validFormSections[0][0];
       return "documents";
     });
-  }, [proposal, tabFromUrl, validFormSections]);
+  }, [proposal, tabFromUrl, validFormSections, isDemo, demoVariant]);
 
   const treeData = [
     {
@@ -261,6 +274,18 @@ function ProposalDetailInner() {
 
   useEffect(() => {
     let cancelled = false;
+    if (isDemo) {
+      setProposal(getTourDemoPiProposal(demoVariant));
+      setMessages(getTourDemoPiMessages());
+      setLetters(getTourDemoPiLetters(demoVariant));
+      void db.getCurrentAppUser().then((appUser) => {
+        if (!cancelled) setAppUserId(appUser?.id ?? null);
+      });
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
     Promise.all([
       db.getProposal(proposalId),
       db.getMessages(proposalId),
@@ -281,10 +306,10 @@ function ProposalDetailInner() {
     return () => {
       cancelled = true;
     };
-  }, [proposalId]);
+  }, [proposalId, isDemo, demoVariant]);
 
   useEffect(() => {
-    if (activeNode !== "messages" || !proposalId || !appUserId) return;
+    if (isDemo || activeNode !== "messages" || !proposalId || !appUserId) return;
     const hasUnread = messages.some((m) => !m.is_read && m.sender_user_id !== appUserId);
     if (!hasUnread) return;
     let cancelled = false;
@@ -302,7 +327,7 @@ function ProposalDetailInner() {
     return () => {
       cancelled = true;
     };
-  }, [activeNode, proposalId, appUserId, messages]);
+  }, [activeNode, proposalId, appUserId, messages, isDemo]);
 
   useEffect(() => {
     if (!justSubmitted && !justResubmitted) return;
@@ -434,7 +459,7 @@ function ProposalDetailInner() {
     }
   }
 
-  return (
+  const page = (
     <div className="space-y-6">
       {justSubmitted ? (
         <div
@@ -811,6 +836,8 @@ function ProposalDetailInner() {
       </Dialog>
     </div>
   );
+
+  return isDemo ? <TourDemoShell>{page}</TourDemoShell> : page;
 }
 
 export default function ProposalDetailPage() {
