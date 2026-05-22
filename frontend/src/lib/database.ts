@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import type {
   AuditLogEntry,
+  ComplianceCertification,
+  ComplianceCertificationType,
+  CertificationExtractedMetadata,
   InstitutionAiGuidanceRow,
   Letter,
   Proposal,
@@ -409,6 +412,129 @@ export const db = {
       download_url: json.download_url,
       file_name: json.file_name ?? "document",
     };
+  },
+
+  /** PI: list own compliance certificates (RLS). */
+  async getComplianceCertifications(): Promise<ComplianceCertification[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("compliance_certifications")
+      .select("*")
+      .eq("is_deleted", false)
+      .order("uploaded_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as ComplianceCertification[];
+  },
+
+  /** Admin: all compliance certificates in the caller's institution (RLS). */
+  async getInstitutionComplianceCertifications(): Promise<ComplianceCertification[]> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("compliance_certifications")
+      .select("*")
+      .eq("is_deleted", false)
+      .order("uploaded_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as ComplianceCertification[];
+  },
+
+  async analyzeComplianceCertification(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/certifications/analyze", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      extracted?: CertificationExtractedMetadata;
+      file_name?: string;
+      mime_type?: string;
+      file_size_bytes?: number;
+      error?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Analysis failed (${res.status})`);
+    }
+    if (!json.extracted) {
+      throw new Error("Invalid response from analysis");
+    }
+    return {
+      extracted: json.extracted,
+      file_name: json.file_name ?? file.name,
+      mime_type: json.mime_type ?? file.type,
+      file_size_bytes: json.file_size_bytes ?? file.size,
+    };
+  },
+
+  async uploadComplianceCertification(params: {
+    file: File;
+    certification_type: ComplianceCertificationType;
+    title?: string;
+    trainee_name?: string;
+    issued_at?: string;
+    expires_at?: string;
+    extracted_metadata?: CertificationExtractedMetadata;
+  }) {
+    const formData = new FormData();
+    formData.append("file", params.file);
+    formData.append("certification_type", params.certification_type);
+    if (params.title?.trim()) formData.append("title", params.title.trim());
+    if (params.trainee_name?.trim()) formData.append("trainee_name", params.trainee_name.trim());
+    if (params.issued_at?.trim()) formData.append("issued_at", params.issued_at.trim());
+    if (params.expires_at?.trim()) formData.append("expires_at", params.expires_at.trim());
+    if (params.extracted_metadata) {
+      formData.append("extracted_metadata", JSON.stringify(params.extracted_metadata));
+    }
+
+    const res = await fetch("/api/certifications/upload", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      certification?: ComplianceCertification;
+      error?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Upload failed (${res.status})`);
+    }
+    if (!json.certification) {
+      throw new Error("Invalid response from upload");
+    }
+    return json.certification;
+  },
+
+  async getComplianceCertificationDownload(certificationId: string) {
+    const res = await fetch(`/api/certifications/${certificationId}/download`, {
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      download_url?: string;
+      file_name?: string;
+    };
+    if (!res.ok) {
+      throw new Error(json.error || `Download failed (${res.status})`);
+    }
+    if (!json.download_url) {
+      throw new Error("No download URL");
+    }
+    return {
+      download_url: json.download_url,
+      file_name: json.file_name ?? "certificate",
+    };
+  },
+
+  async deleteComplianceCertification(certificationId: string) {
+    const res = await fetch(`/api/certifications/${certificationId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+    if (!res.ok) {
+      throw new Error(json.error || `Delete failed (${res.status})`);
+    }
   },
 
   async getAuditLog(opts?: { entityType?: string; action?: string; pageSize?: number }): Promise<AuditLogEntry[]> {
