@@ -68,7 +68,7 @@ Set these on the **frontend host** (e.g. Vercel environment variables), not in t
 | Variable | Purpose |
 |----------|---------|
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only; inserts rows and audit log. |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM with `s3:PutObject` on the bucket/prefix. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM with `s3:PutObject` / `s3:GetObject` on `proposals/*`, `institutions/*`, and `certifications/*` (see below). |
 | `S3_BUCKET_NAME` | Target bucket. |
 | `AWS_REGION` or `AWS_DEFAULT_REGION` | Must match the bucket region. |
 
@@ -89,6 +89,61 @@ The `presign-upload` Edge Function can still generate S3 PUT presigned URLs for 
 | `AWS_DEFAULT_REGION` | Must match the bucket region (e.g. `us-east-1`). |
 
 Without the AWS variables, presign calls return 500 or the client shows an upload error on the Proposal tab.
+
+---
+
+## S3 key prefixes & IAM policy (`clargate-s3-user`)
+
+The app writes objects under these prefixes in `S3_BUCKET_NAME` (e.g. `clargate-documents-prod`):
+
+| Prefix | Used for |
+|--------|----------|
+| `proposals/*` | PI proposal documents |
+| `institutions/*/ai-guidance/*` | Admin institution guidance uploads |
+| `certifications/*` | PI compliance training certificates |
+
+The IAM user used by Vercel / Edge Functions (`clargate-s3-user`) must allow **PutObject** and **GetObject** on all prefixes above. If you add a new prefix in code, update the IAM policy in AWS — uploads fail with `not authorized to perform: s3:PutObject` until you do.
+
+**Example inline policy** (attach to `clargate-s3-user` or merge into the existing policy):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ClargateDocumentsReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::clargate-documents-prod/proposals/*",
+        "arn:aws:s3:::clargate-documents-prod/institutions/*",
+        "arn:aws:s3:::clargate-documents-prod/certifications/*"
+      ]
+    },
+    {
+      "Sid": "ClargateDocumentsListBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::clargate-documents-prod",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "proposals/*",
+            "institutions/*",
+            "certifications/*"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+Replace `clargate-documents-prod` if your bucket name differs. After saving the policy in **IAM → Users → clargate-s3-user → Permissions**, retry the certificate upload (no app redeploy required).
 
 ---
 

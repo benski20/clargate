@@ -139,7 +139,46 @@ function WizardProgress({ step }: { step: WizardStep }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[0.65rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">{children}</p>
+    <p className="text-xs font-medium tracking-wide text-muted-foreground">{children}</p>
+  );
+}
+
+/** Soft inset fields that sit flush with the certification review canvas. */
+const reviewFieldClass =
+  "h-11 w-full rounded-xl border-0 bg-muted/25 px-3.5 text-sm shadow-none ring-1 ring-border/10 transition-[background-color,box-shadow] placeholder:text-muted-foreground/55 hover:bg-muted/35 focus-visible:bg-background/95 focus-visible:ring-[3px] focus-visible:ring-primary/15 dark:bg-muted/15 dark:hover:bg-muted/25";
+
+const reviewTextareaClass = cn(
+  reviewFieldClass,
+  "field-sizing-content min-h-[5rem] h-auto resize-none py-3 leading-relaxed",
+);
+
+function ReviewSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl bg-muted/[0.06] p-4 sm:p-5">
+      <SectionLabel>{title}</SectionLabel>
+      <div className="mt-4 space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function ReviewField({
+  id,
+  label,
+  children,
+  className,
+}: {
+  id?: string;
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
   );
 }
 
@@ -532,7 +571,7 @@ export default function CertificationPage() {
             ) : (
               <>
                 {selectedFile ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-muted/15 px-4 py-3">
+                  <div className="flex items-center gap-3 rounded-2xl bg-muted/[0.06] px-4 py-3">
                     <SelectedFileIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{selectedFile.name}</p>
@@ -541,31 +580,29 @@ export default function CertificationPage() {
                   </div>
                 ) : null}
 
-                <div className="flex gap-3 rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-4 py-3.5">
-                  <Sparkles className="mt-0.5 size-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+                <div className="flex gap-3 rounded-2xl bg-sky-500/[0.04] px-4 py-3.5">
+                  <Sparkles className="mt-0.5 size-4 shrink-0 text-sky-600/80 dark:text-sky-400/90" aria-hidden />
                   <div className="min-w-0 text-sm">
                     <p className="font-medium text-foreground">AI extraction complete</p>
                     <p className="mt-0.5 leading-relaxed text-muted-foreground">
-                      Confidence:{" "}
-                      <span className="font-medium capitalize text-foreground">{reviewForm.confidence}</span>
+                      Confidence{" "}
+                      <span className="font-medium capitalize text-foreground/90">{reviewForm.confidence}</span>
                       {reviewForm.notes ? <> · {reviewForm.notes}</> : null}
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <SectionLabel>Certificate</SectionLabel>
+                <div className="space-y-4">
+                  <ReviewSection title="Certificate details">
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="review-type">Type</Label>
+                      <ReviewField id="review-type" label="Type" className="sm:col-span-2">
                         <Select
                           value={reviewForm.certification_type}
                           onValueChange={(v) =>
                             updateReviewField("certification_type", v as ComplianceCertificationType)
                           }
                         >
-                          <SelectTrigger id="review-type" className="w-full cursor-pointer">
+                          <SelectTrigger id="review-type" className={cn(reviewFieldClass, "w-full cursor-pointer")}>
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -576,91 +613,89 @@ export default function CertificationPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="review-title">Title / course name</Label>
+                      </ReviewField>
+                      <ReviewField id="review-title" label="Title / course name" className="sm:col-span-2">
                         <Input
                           id="review-title"
+                          className={reviewFieldClass}
                           value={reviewForm.title ?? ""}
                           onChange={(e) => updateReviewField("title", e.target.value || null)}
                           placeholder="e.g. Basic Course in Human Subjects Research"
                           maxLength={200}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="review-trainee">Name on certificate</Label>
+                      </ReviewField>
+                      <ReviewField id="review-trainee" label="Name on certificate">
                         <Input
                           id="review-trainee"
+                          className={reviewFieldClass}
                           value={reviewForm.trainee_name ?? ""}
                           onChange={(e) => updateReviewField("trainee_name", e.target.value || null)}
                           placeholder="Full name"
                           maxLength={200}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="review-org">Issuing organization</Label>
+                      </ReviewField>
+                      <ReviewField id="review-org" label="Issuing organization">
                         <Input
                           id="review-org"
+                          className={reviewFieldClass}
                           value={reviewForm.issuing_organization ?? ""}
                           onChange={(e) => updateReviewField("issuing_organization", e.target.value || null)}
                           placeholder="e.g. CITI Program"
                           maxLength={200}
                         />
-                      </div>
+                      </ReviewField>
                     </div>
-                  </div>
+                  </ReviewSection>
 
-                  <div className="space-y-4">
-                    <SectionLabel>Dates</SectionLabel>
+                  <ReviewSection title="Dates">
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="review-issued">Completion date</Label>
+                      <ReviewField id="review-issued" label="Completion date">
                         <Input
                           id="review-issued"
                           type="date"
+                          className={reviewFieldClass}
                           value={reviewForm.issued_at ?? ""}
                           onChange={(e) => updateReviewField("issued_at", e.target.value || null)}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="review-expires">Expiration date</Label>
+                      </ReviewField>
+                      <ReviewField id="review-expires" label="Expiration date">
                         <Input
                           id="review-expires"
                           type="date"
+                          className={reviewFieldClass}
                           value={reviewForm.expires_at ?? ""}
                           onChange={(e) => updateReviewField("expires_at", e.target.value || null)}
                         />
-                      </div>
+                      </ReviewField>
                     </div>
-                  </div>
+                  </ReviewSection>
 
-                  <div className="space-y-4">
-                    <SectionLabel>Additional</SectionLabel>
-                    <div className="grid gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="review-number">Certificate / completion ID</Label>
+                  <ReviewSection title="Additional information">
+                    <div className="space-y-4">
+                      <ReviewField id="review-number" label="Certificate / completion ID">
                         <Input
                           id="review-number"
+                          className={reviewFieldClass}
                           value={reviewForm.certificate_number ?? ""}
                           onChange={(e) => updateReviewField("certificate_number", e.target.value || null)}
                           placeholder="Optional record number"
                           maxLength={100}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="review-notes">Notes</Label>
+                      </ReviewField>
+                      <ReviewField id="review-notes" label="Notes">
                         <Textarea
                           id="review-notes"
+                          variant="md"
+                          className={reviewTextareaClass}
                           value={reviewForm.notes ?? ""}
                           onChange={(e) => updateReviewField("notes", e.target.value || null)}
                           placeholder="Optional notes for your records"
-                          rows={2}
+                          rows={3}
                           maxLength={500}
-                          className="resize-none"
                         />
-                      </div>
+                      </ReviewField>
                     </div>
-                  </div>
+                  </ReviewSection>
                 </div>
 
                 {saveError ? <AlertBanner>{saveError}</AlertBanner> : null}
