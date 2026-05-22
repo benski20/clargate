@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import pdf from "pdf-parse";
 import { requireAdminSession } from "@/lib/require-admin-server";
 import {
+  deleteObjectFromS3,
   generateInstitutionGuidanceS3Key,
   putObjectToS3,
 } from "@/lib/s3-server";
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
   const titleRaw = formData.get("title");
   const title = typeof titleRaw === "string" ? titleRaw.trim() || null : null;
 
+  const replaceIdRaw = formData.get("guidance_id");
+  const replaceId = typeof replaceIdRaw === "string" ? replaceIdRaw.trim() || null : null;
+
   const file = formData.get("file");
   if (!(file instanceof Blob) || file.size === 0) {
     return NextResponse.json({ error: "file required" }, { status: 400 });
@@ -82,8 +86,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const id = crypto.randomUUID();
+  const id = replaceId ?? crypto.randomUUID();
   const institutionId = auth.session.appUser.institution_id;
+
+  let existingRow: { id: string; s3_key: string | null; content_type: string } | null = null;
+
+  if (replaceId) {
+    const { data: existing, error: existingErr } = await auth.session.supabase
+      .from("institution_ai_guidance")
+      .select("id, s3_key, content_type")
+      .eq("id", replaceId)
+      .eq("institution_id", institutionId)
+      .maybeSingle();
+
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (existing.content_type !== "file") {
+      return NextResponse.json({ error: "Can only replace file entries" }, { status: 400 });
+    }
+    existingRow = existing;
+  }
+
   const s3Key = generateInstitutionGuidanceS3Key(institutionId, id, fileName);
 
   try {
@@ -101,6 +128,41 @@ export async function POST(req: Request) {
       );
     }
     return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
+  if (replaceId && existingRow) {
+    const oldKey = existingRow.s3_key;
+    if (oldKey && oldKey !== s3Key) {
+      try {
+        await deleteObjectFromS3(oldKey);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes("Missing ")) {
+          return NextResponse.json({ error: msg }, { status: 500 });
+        }
+      }
+    }
+
+    const { data, error } = await auth.session.supabase
+      .from("institution_ai_guidance")
+      .update({
+        title,
+        file_name: fileName,
+        s3_key: s3Key,
+        mime_type: mimeType,
+        extracted_text: extracted,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", replaceId)
+      .eq("institution_id", institutionId)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ item: data });
   }
 
   const { data, error } = await auth.session.supabase

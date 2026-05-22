@@ -26,6 +26,13 @@ function previewContent(row: InstitutionAiGuidanceRow): string {
   return (row.extracted_text ?? "").slice(0, 160) || row.file_name || "";
 }
 
+function editableContent(row: InstitutionAiGuidanceRow): string {
+  if (row.content_type === "text") {
+    return row.body_text ?? "";
+  }
+  return row.extracted_text ?? "";
+}
+
 export default function ConfigurePage() {
   const router = useRouter();
   const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
@@ -47,6 +54,10 @@ export default function ConfigurePage() {
   const [savingCategory, setSavingCategory] = useState<InstitutionAiGuidanceCategory | null>(null);
   const [uploadingCategory, setUploadingCategory] = useState<InstitutionAiGuidanceCategory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ title: string; body: string }>({ title: "", body: "" });
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [replacingFileId, setReplacingFileId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
@@ -134,6 +145,7 @@ export default function ConfigurePage() {
   }
 
   async function remove(id: string) {
+    if (editingId === id) cancelEdit();
     setDeletingId(id);
     setLoadError(null);
     try {
@@ -145,6 +157,86 @@ export default function ConfigurePage() {
       setLoadError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function startEdit(row: InstitutionAiGuidanceRow) {
+    setEditingId(row.id);
+    setEditDraft({
+      title: row.title?.trim() ?? "",
+      body: editableContent(row),
+    });
+    setLoadError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDraft({ title: "", body: "" });
+  }
+
+  async function saveEdit(row: InstitutionAiGuidanceRow) {
+    const body = editDraft.body.trim();
+    if (!body) return;
+    setUpdatingId(row.id);
+    setLoadError(null);
+    try {
+      const payload =
+        row.content_type === "text"
+          ? {
+              title: editDraft.title.trim() || null,
+              body_text: body,
+            }
+          : {
+              title: editDraft.title.trim() || null,
+              extracted_text: body,
+            };
+
+      const res = await fetch(`/api/admin/institution-guidance/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      cancelEdit();
+      await refresh();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function replaceFile(row: InstitutionAiGuidanceRow, fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!file) return;
+    setReplacingFileId(row.id);
+    setLoadError(null);
+    try {
+      const fd = new FormData();
+      fd.set("category", row.category);
+      fd.set("file", file);
+      fd.set("guidance_id", row.id);
+      if (editDraft.title.trim()) fd.set("title", editDraft.title.trim());
+
+      const res = await fetch("/api/admin/institution-guidance/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json()) as { error?: string; item?: InstitutionAiGuidanceRow };
+      if (!res.ok) throw new Error(data.error || "Replace failed");
+      if (data.item) {
+        setEditDraft((d) => ({
+          ...d,
+          body: editableContent(data.item!),
+        }));
+      }
+      cancelEdit();
+      await refresh();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Replace failed");
+    } finally {
+      setReplacingFileId(null);
     }
   }
 
@@ -202,6 +294,7 @@ export default function ConfigurePage() {
               selectedIds={activeSection ? [activeSection] : []}
               onNodeClick={(node) => {
                 if (node.children) return;
+                cancelEdit();
                 setActiveSection(node.id);
               }}
               showIcons={false}
@@ -234,39 +327,172 @@ export default function ConfigurePage() {
                           Saved Items ({rows.length})
                         </p>
                         <ul className="space-y-3">
-                          {rows.map((row) => (
+                          {rows.map((row) => {
+                            const isEditing = editingId === row.id;
+                            const rowBusy =
+                              updatingId === row.id ||
+                              deletingId === row.id ||
+                              replacingFileId === row.id;
+
+                            return (
                             <li
                               key={row.id}
-                              className="flex items-start justify-between gap-4 rounded-xl border border-border/10 bg-muted/5 px-4 py-4"
+                              className={cn(
+                                "rounded-xl border px-4 py-4 transition-colors",
+                                isEditing
+                                  ? "border-border/20 bg-muted/10"
+                                  : "border-border/10 bg-muted/5",
+                              )}
                             >
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium leading-snug text-foreground">
-                                  {row.title?.trim() ||
-                                    (row.content_type === "file" ? row.file_name : "Text note")}
-                                </p>
-                                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                                  {row.content_type === "file" ? "File · " : "Text · "}
-                                  {previewContent(row)}
-                                  {previewContent(row).length >= 160 ? "…" : ""}
-                                </p>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground/70 hover:bg-muted/50"
-                                disabled={deletingId === row.id}
-                                onClick={() => void remove(row.id)}
-                                aria-label="Remove"
-                              >
-                                {deletingId === row.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </Button>
+                              {isEditing ? (
+                                <div className="space-y-4">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm font-medium text-foreground">Revise entry</p>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="shrink-0 cursor-pointer text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+                                        disabled={rowBusy}
+                                        onClick={() => void remove(row.id)}
+                                        aria-label="Remove"
+                                      >
+                                        {deletingId === row.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-medium text-foreground">Label (Optional)</label>
+                                    <Input
+                                      placeholder="e.g. Social-behavioral template"
+                                      value={editDraft.title}
+                                      onChange={(e) =>
+                                        setEditDraft((d) => ({ ...d, title: e.target.value }))
+                                      }
+                                      className="h-10 rounded-lg border-border/80 bg-background text-sm shadow-none"
+                                      disabled={rowBusy}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-medium text-foreground">
+                                      {row.content_type === "file" ? "Extracted text" : "Content"}
+                                    </label>
+                                    <Textarea
+                                      value={editDraft.body}
+                                      onChange={(e) =>
+                                        setEditDraft((d) => ({ ...d, body: e.target.value }))
+                                      }
+                                      className="min-h-[160px] resize-y rounded-lg border-border/20 bg-background/70 px-3 py-2.5 text-sm leading-relaxed shadow-none"
+                                      disabled={rowBusy}
+                                    />
+                                    {row.content_type === "file" ? (
+                                      <p className="text-xs leading-relaxed text-muted-foreground">
+                                        Edit the extracted text used by AI, or replace the source file below.
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  {row.content_type === "file" ? (
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-medium text-foreground">Replace file</p>
+                                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/15 bg-background/70 px-4 py-2.5 text-sm font-medium shadow-none transition-colors hover:bg-muted/20 disabled:opacity-50">
+                                        <Upload className="h-4 w-4 opacity-80" strokeWidth={2} />
+                                        Choose new file
+                                        <input
+                                          type="file"
+                                          className="sr-only"
+                                          accept=".pdf,.txt,.md,.csv,.json,.html,.xml"
+                                          disabled={rowBusy}
+                                          onChange={(e) => {
+                                            void replaceFile(row, e.target.files);
+                                            e.target.value = "";
+                                          }}
+                                        />
+                                      </label>
+                                      <p className="text-xs text-muted-foreground">
+                                        Current file: {row.file_name ?? "Unknown"}
+                                      </p>
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      className="h-9 cursor-pointer rounded-md px-4 font-medium"
+                                      disabled={rowBusy || !editDraft.body.trim()}
+                                      onClick={() => void saveEdit(row)}
+                                    >
+                                      {updatingId === row.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        "Save changes"
+                                      )}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-9 cursor-pointer rounded-md px-4"
+                                      disabled={rowBusy}
+                                      onClick={cancelEdit}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    {replacingFileId === row.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium leading-snug text-foreground">
+                                      {row.title?.trim() ||
+                                        (row.content_type === "file" ? row.file_name : "Text note")}
+                                    </p>
+                                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                      {row.content_type === "file" ? "File · " : "Text · "}
+                                      {previewContent(row)}
+                                      {previewContent(row).length >= 160 ? "…" : ""}
+                                    </p>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                      disabled={rowBusy || editingId !== null}
+                                      onClick={() => startEdit(row)}
+                                      aria-label="Revise"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground/70 hover:bg-muted/50"
+                                      disabled={rowBusy || editingId !== null}
+                                      onClick={() => void remove(row.id)}
+                                      aria-label="Remove"
+                                    >
+                                      {deletingId === row.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
                             </li>
-                          ))}
+                            );
+                          })}
                         </ul>
                       </div>
                     ) : (
