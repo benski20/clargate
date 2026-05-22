@@ -157,6 +157,46 @@ export interface InstitutionAiGuidanceRow {
   created_by: string | null;
 }
 
+export type ComplianceCertificationType =
+  | "citi_human_subjects"
+  | "hipaa"
+  | "biosafety"
+  | "conflict_of_interest"
+  | "other";
+
+export type CertificationExtractedMetadata = {
+  certification_type: ComplianceCertificationType;
+  title: string | null;
+  trainee_name: string | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  issuing_organization: string | null;
+  certificate_number: string | null;
+  confidence: "high" | "medium" | "low";
+  notes: string | null;
+};
+
+/** Row in `compliance_certifications` (PI-uploaded training certificates). */
+export interface ComplianceCertification {
+  id: string;
+  user_id: string;
+  institution_id: string;
+  certification_type: ComplianceCertificationType;
+  title: string | null;
+  trainee_name: string | null;
+  file_name: string;
+  s3_key: string;
+  mime_type: string;
+  file_size_bytes: number | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  extracted_metadata: Record<string, unknown> | null;
+  uploaded_at: string;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AuditLogEntry {
   id: string;
   user_id: string | null;

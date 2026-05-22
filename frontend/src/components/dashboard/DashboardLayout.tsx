@@ -16,6 +16,7 @@ import {
   BookMarked,
   Building2,
   Shield,
+  ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -62,6 +63,12 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "reviewer", "pi"] },
   { label: "My Proposals", href: "/dashboard/proposals", icon: FileText, roles: ["pi"] },
   { label: "Inbox", href: "/dashboard/inbox", icon: Inbox, roles: ["pi"] },
+  {
+    label: "Certification",
+    href: "/dashboard/certification",
+    icon: ShieldCheck,
+    roles: ["pi"],
+  },
   {
     label: "Your institution",
     href: "/dashboard/institution",

@@ -16,6 +16,17 @@ export function generateInstitutionGuidanceS3Key(
   return `institutions/${institutionId}/ai-guidance/${guidanceId}/${safe}`;
 }
 
+/** PI / student compliance training certificates (scoped by institution + user). */
+export function generateComplianceCertificationS3Key(
+  institutionId: string,
+  userId: string,
+  fileName: string,
+): string {
+  const unique = crypto.randomUUID().slice(0, 8);
+  const safe = fileName.replace(/[/\\]/g, "_").slice(0, 200);
+  return `certifications/${institutionId}/${userId}/${unique}_${safe}`;
+}
+
 export function getS3Client(): S3Client {
   const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID;

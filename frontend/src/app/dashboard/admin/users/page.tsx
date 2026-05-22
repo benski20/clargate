@@ -33,9 +33,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { dashboardCardClass, DashboardPageHeader } from "@/components/dashboard/dashboard-ui";
+import {
+  AdminUserCertificateCell,
+  AdminUserCertificatesDialog,
+} from "@/components/dashboard/admin-user-certificates-dialog";
 import { db } from "@/lib/database";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
-import type { SignupCodeRow, User, UserRole } from "@/lib/types";
+import type { ComplianceCertification, SignupCodeRow, User, UserRole } from "@/lib/types";
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100",
@@ -54,6 +58,11 @@ export default function AdminUsersPage() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codesLoadError, setCodesLoadError] = useState<string | null>(null);
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+  const [certificationsByUserId, setCertificationsByUserId] = useState<
+    Record<string, ComplianceCertification[]>
+  >({});
+  const [certModalUser, setCertModalUser] = useState<User | null>(null);
+  const [certModalOpen, setCertModalOpen] = useState(false);
   const [codeForm, setCodeForm] = useState({
     role: "pi" as UserRole,
     max_uses: "",
@@ -78,8 +87,20 @@ export default function AdminUsersPage() {
     let cancelled = false;
     (async () => {
       try {
-        const u = await db.getInstitutionUsers();
-        if (!cancelled) setUsers(u);
+        const [u, certs] = await Promise.all([
+          db.getInstitutionUsers(),
+          db.getInstitutionComplianceCertifications().catch(() => [] as ComplianceCertification[]),
+        ]);
+        if (!cancelled) {
+          setUsers(u);
+          const byUser: Record<string, ComplianceCertification[]> = {};
+          for (const cert of certs) {
+            const list = byUser[cert.user_id] ?? [];
+            list.push(cert);
+            byUser[cert.user_id] = list;
+          }
+          setCertificationsByUserId(byUser);
+        }
       } catch {
         if (!cancelled) setUsers([]);
       }
@@ -298,13 +319,14 @@ export default function AdminUsersPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Certificate</TableHead>
                 <TableHead>Joined</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center">
+                  <TableCell colSpan={6} className="py-12 text-center">
                     <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" aria-label="Loading" />
                   </TableCell>
                 </TableRow>
@@ -348,6 +370,15 @@ export default function AdminUsersPage() {
                         {u.is_active ? "Active" : "Pending"}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <AdminUserCertificateCell
+                        certificates={certificationsByUserId[u.id] ?? []}
+                        onShowMore={() => {
+                          setCertModalUser(u);
+                          setCertModalOpen(true);
+                        }}
+                      />
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {new Date(u.created_at).toLocaleDateString()}
                     </TableCell>
@@ -358,6 +389,16 @@ export default function AdminUsersPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <AdminUserCertificatesDialog
+        user={certModalUser}
+        certificates={certModalUser ? certificationsByUserId[certModalUser.id] ?? [] : []}
+        open={certModalOpen}
+        onOpenChange={(open) => {
+          setCertModalOpen(open);
+          if (!open) setCertModalUser(null);
+        }}
+      />
     </div>
   );
 }
