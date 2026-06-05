@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { formatReviewTypeLabel } from "@/lib/review-types";
 import {
   dashboardCardClass,
   dashboardInputClass,
@@ -162,7 +163,7 @@ export default function AdminDashboardPage() {
                       <StatusBadge status={p.status} />
                     </TableCell>
                     <TableCell className="capitalize text-muted-foreground">
-                      {p.review_type?.replace(/_/g, " ") || "—"}
+                      {formatReviewTypeLabel(p.review_type)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {p.submitted_at

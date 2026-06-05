@@ -11,14 +11,15 @@ export type ProposalStatus =
   | "rejected"
   | "tabled";
 
-export type ReviewType = "exempt" | "expedited" | "full_board" | "not_sure";
-
 export type ReviewDecision =
   | "approve"
   | "minor_modifications"
   | "revisions_required"
   | "reject"
   | "table";
+
+export type { ReviewPathway, ReviewType } from "@/lib/review-types";
+import type { ReviewType } from "@/lib/review-types";
 
 export type AssignmentStatus = "not_started" | "in_progress" | "submitted";
 

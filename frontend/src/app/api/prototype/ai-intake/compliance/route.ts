@@ -5,6 +5,7 @@ import type { ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS, normalizeComplianceFlags } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
+import { REVIEW_TYPE_VALUES, normalizeReviewType } from "@/lib/review-types";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 const sectionEnum: string[] = [...PROTOCOL_SECTION_KEYS, "consent", "general"];
@@ -19,8 +20,9 @@ const complianceDeclaration: FunctionDeclaration = {
       predicted_category: {
         type: SchemaType.STRING,
         format: "enum",
-        enum: ["exempt", "expedited", "full_board"],
-        description: "Best-effort prediction; not legal determination.",
+        enum: [...REVIEW_TYPE_VALUES],
+        description:
+          "Best-effort prediction of the most specific applicable review type (exempt subcategory, expedited subcategory, full board, or not_sure). Not a legal determination.",
       },
       flags: {
         type: SchemaType.ARRAY,
@@ -70,7 +72,7 @@ export async function POST(req: Request) {
 
 Reference framework: 45 CFR Part 46 at a high level (identify plausible gaps, cite part/subpart when helpful; you are not rendering a legal opinion).
 
-Protocol:\n${JSON.stringify(protocol, null, 2)}\n\nConsent:\n${consent_markdown || "(missing)"}${extra}\n\nReturn actionable flags only (each with id, severity info|warning|error, message, section_key one of: ${sectionEnum.join(", ")}, optional cfr_reference, optional actionable fix hint).\nAlso predict review category: exempt vs expedited vs full_board (heuristic only).\nFlag: missing sections, internal contradictions between protocol, consent, and uploads/notes, factors suggesting full board (e.g. greater than minimal risk, vulnerable populations, deception).\n`;
+Protocol:\n${JSON.stringify(protocol, null, 2)}\n\nConsent:\n${consent_markdown || "(missing)"}${extra}\n\nReturn actionable flags only (each with id, severity info|warning|error, message, section_key one of: ${sectionEnum.join(", ")}, optional cfr_reference, optional actionable fix hint).\nAlso predict the most specific review type from the enum (prefer granular exempt_cat_* or expedited_cat_* values when supported by the protocol; use full_board when greater than minimal risk, vulnerable populations, deception, or invasive procedures apply; use not_sure when insufficient information).\nFlag: missing sections, internal contradictions between protocol, consent, and uploads/notes, factors suggesting full board.\n`;
 
     const toolInput = await generateWithForcedToolCall<{
       predicted_category: string;
@@ -85,12 +87,7 @@ Protocol:\n${JSON.stringify(protocol, null, 2)}\n\nConsent:\n${consent_markdown 
     });
 
     const { predicted_category, flags } = toolInput;
-    const cat =
-      predicted_category === "exempt" ||
-      predicted_category === "expedited" ||
-      predicted_category === "full_board"
-        ? predicted_category
-        : "full_board";
+    const cat = normalizeReviewType(predicted_category);
 
     return NextResponse.json({
       predicted_category: cat,

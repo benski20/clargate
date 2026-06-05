@@ -56,7 +56,7 @@ function complianceReady(ws: AiWorkspaceState): AiWorkspaceState {
   return {
     ...ws,
     phase: "compliance",
-    predicted_category: "expedited",
+    predicted_category: "expedited_cat_7_behavioral_focus_groups",
     compliance_flags: [
       {
         id: "flag-1",

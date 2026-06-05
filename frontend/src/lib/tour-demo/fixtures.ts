@@ -33,7 +33,7 @@ const uploadWorkspace: AiWorkspaceState = {
   ],
   consent_markdown:
     "You are invited to participate in a research study about cognitive load during remote instruction. Your participation is voluntary.",
-  predicted_category: "expedited",
+  predicted_category: "expedited_cat_7_behavioral_focus_groups",
   compliance_flags: [
     {
       id: "flag-1",
@@ -51,7 +51,7 @@ function baseProposal(overrides: Partial<ProposalDetail>): ProposalDetail {
     pi_user_id: "00000000-0000-4000-8000-000000000010",
     pi_name: "Dr. Jane Chen",
     title: "Sleep hygiene in shift workers",
-    review_type: "expedited",
+    review_type: "expedited_cat_7_behavioral_focus_groups",
     status: "initial_review",
     form_data: {
       purpose: {
@@ -122,7 +122,7 @@ export function getTourDemoPiProposalsList(): Proposal[] {
       pi_user_id: "00000000-0000-4000-8000-000000000010",
       pi_name: "Dr. Jane Chen",
       title: "Sleep hygiene in shift workers",
-      review_type: "expedited",
+      review_type: "expedited_cat_7_behavioral_focus_groups",
       status: "initial_review",
       form_data: null,
       submitted_at: NOW,
