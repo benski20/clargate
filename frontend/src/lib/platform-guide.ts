@@ -67,7 +67,7 @@ const PI_STEPS: PlatformGuideStep[] = [
     title: "Upload · Compliance",
     path: "/dashboard/proposals/new",
     tourPath: "/dashboard/proposals/new?demo=upload&demoStep=3",
-    body: "Upload path, step 4: compliance checks flag regulatory items and predict review category (exempt, expedited, or full board). Address flags before submitting.",
+    body: "Upload path, step 4: compliance checks flag regulatory items and predict a specific review type (exempt or expedited subcategories under 45 CFR 46.104/46.110, full board, or undetermined). Confirm or adjust before submitting.",
   },
   {
     title: "Upload · Extra materials",

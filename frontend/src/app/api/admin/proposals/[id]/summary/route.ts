@@ -3,6 +3,7 @@ import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
 import { requireAdminOrAssignedReviewerForProposal } from "@/lib/require-proposal-staff-server";
 import { createServiceClient } from "@/lib/supabase-service";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { REVIEW_TYPE_VALUES } from "@/lib/review-types";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ const summaryDeclaration: FunctionDeclaration = {
       regulatory_category_suggestion: {
         type: SchemaType.STRING,
         format: "enum",
-        enum: ["exempt", "expedited", "full_board"],
+        enum: [...REVIEW_TYPE_VALUES],
       },
       regulatory_rationale: { type: SchemaType.STRING },
       study_duration_estimate: { type: SchemaType.STRING },
@@ -90,7 +91,7 @@ Return fields:
 - participant_population: concise description; mention vulnerable groups if present
 - methodology_summary: 2-3 sentences
 - key_concerns: concrete admin concerns
-- regulatory_category_suggestion: exempt|expedited|full_board
+- regulatory_category_suggestion: most specific applicable review type from the enum (prefer exempt_cat_* or expedited_cat_* when supported)
 - regulatory_rationale: brief rationale
 - study_duration_estimate: estimate if discernible
 - data_sensitivity: low|medium|high

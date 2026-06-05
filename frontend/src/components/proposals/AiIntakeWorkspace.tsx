@@ -32,6 +32,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
+import { ReviewTypeSelect } from "@/components/proposals/ReviewTypeSelect";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -52,6 +53,11 @@ import {
   type ProtocolSectionKey,
 } from "@/lib/ai-proposal-types";
 import { buildFormDataFromAiWorkspace } from "@/lib/ai-proposal-merge";
+import {
+  formatReviewTypeLabel,
+  getReviewTypeOption,
+  isValidReviewType,
+} from "@/lib/review-types";
 import {
   buildProposalPackageMarkdown,
   downloadProposalPackagePdf,
@@ -447,7 +453,7 @@ export function AiIntakeWorkspace({
         }
         let next = normalizeAiWorkspace(fd.ai_workspace);
         const rt = p.review_type;
-        if (rt === "exempt" || rt === "expedited" || rt === "full_board") {
+        if (isValidReviewType(rt)) {
           next = {
             ...next,
             predicted_category: next.predicted_category ?? rt,
@@ -1026,10 +1032,7 @@ export function AiIntakeWorkspace({
       setWs((w) => ({
         ...w,
         phase: "compliance",
-        predicted_category:
-          data.predicted_category === "exempt" || data.predicted_category === "expedited" || data.predicted_category === "full_board"
-            ? data.predicted_category
-            : null,
+        predicted_category: isValidReviewType(data.predicted_category) ? data.predicted_category : null,
         compliance_flags: normalizeComplianceFlags(data.flags ?? []),
       }));
     } catch {
@@ -1070,12 +1073,7 @@ export function AiIntakeWorkspace({
         error?: string;
       };
       if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
-      const cat =
-        compData.predicted_category === "exempt" ||
-        compData.predicted_category === "expedited" ||
-        compData.predicted_category === "full_board"
-          ? compData.predicted_category
-          : null;
+      const cat = isValidReviewType(compData.predicted_category) ? compData.predicted_category : null;
       setWs((w) => ({
         ...w,
         phase: "compliance",
@@ -1198,12 +1196,7 @@ export function AiIntakeWorkspace({
         error?: string;
       };
       if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
-      const cat =
-        compData.predicted_category === "exempt" ||
-        compData.predicted_category === "expedited" ||
-        compData.predicted_category === "full_board"
-          ? compData.predicted_category
-          : null;
+      const cat = isValidReviewType(compData.predicted_category) ? compData.predicted_category : null;
       next = {
         ...next,
         phase: "compliance",
@@ -1429,6 +1422,42 @@ export function AiIntakeWorkspace({
 
   const complianceReviewSection = (
     <div className="space-y-8">
+      <div className="rounded-xl border border-border/15 bg-muted/[0.06] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-semibold text-foreground">Predicted review type</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              AI suggests the most specific applicable category under 45 CFR 46.104 (exempt) or 46.110
+              (expedited). Confirm or adjust before submitting—the IRB makes the final determination.
+            </p>
+          </div>
+          {ws.predicted_category ? (
+            <span className="shrink-0 rounded-md bg-primary/8 px-2.5 py-1 text-xs font-medium text-primary">
+              {formatReviewTypeLabel(ws.predicted_category)}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-4">
+          <ReviewTypeSelect
+            id="predicted-review-type"
+            value={ws.predicted_category}
+            onValueChange={(v) =>
+              setWs((w) => ({
+                ...w,
+                phase: w.phase === "intake" || w.phase === "consent" ? "compliance" : w.phase,
+                predicted_category: v,
+              }))
+            }
+            disabled={complianceBusy || reviewBusy}
+          />
+          {ws.predicted_category && getReviewTypeOption(ws.predicted_category)?.description ? (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              {getReviewTypeOption(ws.predicted_category)?.description}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
       {complianceBusy || reviewBusy ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,5 +1,7 @@
 /** AI-assisted draft flow stored under proposal.form_data.ai_workspace */
 
+import type { ReviewType } from "@/lib/review-types";
+
 export const PROTOCOL_SECTION_KEYS = [
   "background_rationale",
   "study_design",
@@ -115,7 +117,7 @@ export type AiWorkspaceState = {
   /** User opted out of AI consent draft generation during upload AI review; consent step is skipped in the flow. */
   consent_generation_declined?: boolean;
   consent_missing: string[];
-  predicted_category: "exempt" | "expedited" | "full_board" | null;
+  predicted_category: ReviewType | null;
   compliance_flags: ComplianceFlag[];
   last_intake_focus?: string;
 };

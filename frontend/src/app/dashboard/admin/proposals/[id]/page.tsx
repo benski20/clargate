@@ -68,6 +68,7 @@ import type {
   Message,
   User,
 } from "@/lib/types";
+import { formatReviewTypeLabel } from "@/lib/review-types";
 
 const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages", "submit_review"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -807,7 +808,7 @@ function AdminProposalDetailInner() {
               <span>
                 Type:{" "}
                 <span className="text-foreground">
-                  {proposal.review_type?.replace(/_/g, " ") || "—"}
+                  {formatReviewTypeLabel(proposal.review_type)}
                 </span>
               </span>
               {submittedAt ? (
