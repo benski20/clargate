@@ -78,7 +78,7 @@ For EACH protocol section key, write **review-style notes** only:
 
 Pay special attention to the consolidated IRB-relevant facts and study metadata — these determine the correct review category.
 
-Use short paragraphs or bullets. Do NOT produce a polished substitute protocol.`
+Use short paragraphs or markdown lists (one \`- item\` per line). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol.`
       : `The researcher uploaded ORIGINAL study materials below. Those files are the source of truth and must NOT be rewritten or reformatted by you.
 
 For EACH protocol section key, write **review-style notes** only:
@@ -87,7 +87,7 @@ For EACH protocol section key, write **review-style notes** only:
 - Suggested revisions or clarifications the researcher might make (as bullet ideas referencing themes, not re-drafting their prose).
 - If a topic is absent, say "Not clearly addressed in the materials."
 
-Use short paragraphs or bullets. Do NOT produce a polished substitute protocol or paste long paraphrases of their document. Quote at most short phrases when necessary.`;
+Use short paragraphs or markdown lists (one \`- item\` per line). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol or paste long paraphrases of their document. Quote at most short phrases when necessary.`;
 
     const fullSynthesisInstructions = `You are mapping uploaded IRB / human-subjects study materials into a structured protocol outline.
 

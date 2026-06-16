@@ -4,6 +4,7 @@ import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { normalizeInlineBulletsForMarkdown } from "@/lib/format-ai-review-text";
 
 const mdComponents: Components = {
   h1: ({ className, ...props }) => (
@@ -122,10 +123,11 @@ type ProposalMarkdownPreviewProps = {
  * this is display-only.
  */
 export function ProposalMarkdownPreview({ markdown, className }: ProposalMarkdownPreviewProps) {
+  const normalized = normalizeInlineBulletsForMarkdown(markdown);
   return (
     <article className={cn("max-w-none text-foreground", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-        {markdown}
+        {normalized}
       </ReactMarkdown>
     </article>
   );

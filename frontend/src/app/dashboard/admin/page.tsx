@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatReviewTypeLabel } from "@/lib/review-types";
+import { getProposalReviewTypeLabel } from "@/lib/review-types";
 import {
   dashboardCardClass,
   dashboardInputClass,
@@ -163,7 +163,7 @@ export default function AdminDashboardPage() {
                       <StatusBadge status={p.status} />
                     </TableCell>
                     <TableCell className="capitalize text-muted-foreground">
-                      {formatReviewTypeLabel(p.review_type)}
+                      {getProposalReviewTypeLabel(p)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {p.submitted_at

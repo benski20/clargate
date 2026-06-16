@@ -273,4 +273,17 @@
       flex: 3;
     }
   }
+
+  /** TipTap Placeholder extension — visible gray hint on empty canvas editors. */
+  .proposal-canvas-editor .tiptap p.is-empty:first-child::before,
+  .proposal-canvas-editor .tiptap p.is-editor-empty:first-child::before,
+  .proposal-canvas-editor .ProseMirror p.is-empty:first-child::before,
+  .proposal-canvas-editor .ProseMirror p.is-editor-empty:first-child::before {
+    color: var(--muted-foreground);
+    opacity: 0.55;
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
 }

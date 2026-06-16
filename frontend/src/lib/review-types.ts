@@ -244,7 +244,31 @@ export function getReviewTypeOption(type: ReviewType | string | null | undefined
   return REVIEW_TYPE_BY_VALUE.get(type as ReviewType) ?? null;
 }
 
-/** Normalize AI or legacy coarse values into a valid stored review type. */
+/** Coarse value stored on `proposals.review_type` (Postgres enum). Granular categories live in form_data. */
+export type CoarseReviewType = ReviewPathway;
+
+/** Map any review type to the coarse Postgres enum on proposals.review_type. */
+export function toCoarseReviewTypeForDb(
+  type: ReviewType | string | null | undefined,
+): CoarseReviewType {
+  return getReviewPathway(type) ?? "not_sure";
+}
+
+/** Prefer granular AI prediction in form_data; fall back to the coarse proposals column. */
+export function getProposalReviewTypeLabel(proposal: {
+  review_type: ReviewType | string | null | undefined;
+  form_data?: Record<string, unknown> | null;
+}): string {
+  const ws = proposal.form_data?.ai_workspace;
+  if (ws && typeof ws === "object" && ws !== null) {
+    const predicted = (ws as { predicted_category?: unknown }).predicted_category;
+    if (typeof predicted === "string" && isValidReviewType(predicted)) {
+      return formatReviewTypeLabel(predicted);
+    }
+  }
+  return formatReviewTypeLabel(proposal.review_type);
+}
+
 export function normalizeReviewType(value: string | null | undefined): ReviewType {
   if (isValidReviewType(value)) return value;
   return "full_board";

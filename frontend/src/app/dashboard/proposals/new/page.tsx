@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, FileUp, Loader2, MessageSquareText } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileUp, Loader2, MessageSquareText, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import { AiIntakeWorkspace } from "@/components/proposals/AiIntakeWorkspace";
@@ -26,7 +26,7 @@ function NewProposalPageInner() {
   const pickHighlight = searchParams.get("pick");
   const demoPicker = demo === "picker";
   const [entryMode, setEntryMode] = useState<EntryMode>("choose");
-  const [access, setAccess] = useState<"loading" | "allowed" | "denied">("loading");
+  const [access, setAccess] = useState<"loading" | "allowed" | "denied" | "no_certificate">("loading");
 
   const demoMode = demo === "upload" || demo === "chat";
 
@@ -47,22 +47,56 @@ function NewProposalPageInner() {
     (async () => {
       const u = await db.getCurrentAppUser();
       if (cancelled) return;
-      if (u?.role === "pi") {
-        setAccess("allowed");
-      } else {
+      if (u?.role !== "pi") {
         setAccess("denied");
         router.replace("/dashboard");
+        return;
       }
+      if (demoMode) {
+        setAccess("allowed");
+        return;
+      }
+      const certs = await db.getComplianceCertifications();
+      if (cancelled) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const hasValidCert = certs.some(
+        (cert) => !cert.expires_at || cert.expires_at >= today,
+      );
+      setAccess(hasValidCert ? "allowed" : "no_certificate");
     })();
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, demoMode]);
 
   if (access === "loading" || access === "denied") {
     return (
       <div className="flex min-h-[40vh] items-center justify-center px-4 py-16">
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (access === "no_certificate") {
+    return (
+      <div className="mx-auto max-w-xl space-y-6 px-4 py-16 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+          <ShieldAlert className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+        </div>
+        <h2 className="text-xl font-semibold tracking-tight">Training certificate required</h2>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          You need a valid, non-expired compliance certificate (e.g., CITI human subjects training) on file before you
+          can create a proposal. Upload your certificate first, then return here to start drafting.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <Button variant="outline" onClick={() => router.push("/dashboard/proposals")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to proposals
+          </Button>
+          <Button onClick={() => router.push("/dashboard/certification")}>
+            Upload certificate
+          </Button>
+        </div>
       </div>
     );
   }

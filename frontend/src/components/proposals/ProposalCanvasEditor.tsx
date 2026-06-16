@@ -99,7 +99,12 @@ export function ProposalCanvasEditor({
   }
 
   return (
-    <div className={cn("rounded-none border-0 bg-transparent shadow-none ring-0", className)}>
+    <div
+      className={cn(
+        "proposal-canvas-editor rounded-none border-0 bg-transparent shadow-none ring-0",
+        className,
+      )}
+    >
       <EditorContent editor={editor} />
     </div>
   );
