@@ -4,6 +4,11 @@ import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import { PROTOCOL_SECTION_KEYS, type ProtocolDraft } from "@/lib/ai-proposal-types";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import {
+  extractFileSummary,
+  mergeExtractionResults,
+  type ExtractionResult,
+} from "@/lib/server/extract-file-summary";
 
 const protocolDeclaration: FunctionDeclaration = {
   name: "structured_protocol",
@@ -23,25 +28,58 @@ const protocolDeclaration: FunctionDeclaration = {
   },
 };
 
-const MAX_INPUT_CHARS = 150_000;
+const MAX_INPUT_CHARS = 800_000;
+
+type RequestBody = {
+  raw_text?: string;
+  files?: { name: string; text: string }[];
+  title?: string;
+  mode?: "upload_review" | "full_synthesis";
+};
 
 export async function POST(req: Request) {
   try {
-    const { raw_text, title, mode } = (await req.json()) as {
-      raw_text?: string;
-      title?: string;
-      /** Upload path: observations & gaps only — do not replace the researcher's source documents */
-      mode?: "upload_review" | "full_synthesis";
-    };
-    const raw = String(raw_text ?? "").trim();
-    if (!raw) {
-      return NextResponse.json({ error: "raw_text required" }, { status: 400 });
+    const body = (await req.json()) as RequestBody;
+    const studyTitle = String(body.title ?? "").trim() || "Uploaded study";
+    const mode = body.mode;
+    const files = Array.isArray(body.files) ? body.files : [];
+
+    const useMapReduce = files.length > 0;
+
+    let inputText: string;
+    let truncated = false;
+    let extractionResults: ExtractionResult[] = [];
+
+    if (useMapReduce) {
+      extractionResults = await Promise.all(
+        files.map((file) => extractFileSummary(file)),
+      );
+      inputText = mergeExtractionResults(extractionResults);
+    } else {
+      const text = String(body.raw_text ?? "").trim();
+      if (!text) {
+        return NextResponse.json({ error: "raw_text or files required" }, { status: 400 });
+      }
+      truncated = text.length > MAX_INPUT_CHARS;
+      inputText = truncated ? text.slice(0, MAX_INPUT_CHARS) : text;
     }
 
-    const truncated = raw.length > MAX_INPUT_CHARS ? raw.slice(0, MAX_INPUT_CHARS) : raw;
-    const studyTitle = String(title ?? "").trim() || "Uploaded study";
+    const supabase = await createServerSupabaseClient();
+    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
 
-    const uploadReviewInstructions = `The researcher uploaded ORIGINAL study materials below. Those files are the source of truth and must NOT be rewritten or reformatted by you.
+    const uploadReviewInstructions = useMapReduce
+      ? `The researcher uploaded study materials that have been individually analyzed below. This is a structured extraction from ${files.length} documents — every document has been processed.
+
+For EACH protocol section key, write **review-style notes** only:
+- What the uploaded materials appear to address (brief).
+- Gaps, ambiguities, or missing IRB-relevant information.
+- Suggested revisions or clarifications the researcher might make (as bullet ideas referencing themes, not re-drafting their prose).
+- If a topic is absent, say "Not clearly addressed in the materials."
+
+Pay special attention to the consolidated IRB-relevant facts and study metadata — these determine the correct review category.
+
+Use short paragraphs or bullets. Do NOT produce a polished substitute protocol.`
+      : `The researcher uploaded ORIGINAL study materials below. Those files are the source of truth and must NOT be rewritten or reformatted by you.
 
 For EACH protocol section key, write **review-style notes** only:
 - What the uploaded materials appear to address (brief).
@@ -55,9 +93,9 @@ Use short paragraphs or bullets. Do NOT produce a polished substitute protocol o
 
 Study title (if known): ${studyTitle}
 
-Unstructured materials (may include multiple files concatenated):
+${useMapReduce ? "Structured extraction from uploaded materials" : "Unstructured materials (may include multiple files concatenated)"}:
 ---
-${truncated}
+${inputText}
 ---
 
 Fill every section with the best available content inferred from the materials. If something is missing, write a short placeholder noting what is missing. Use clear academic language.`;
@@ -68,19 +106,16 @@ Fill every section with the best available content inferred from the materials. 
 
 Study title (if known): ${studyTitle}
 
-Uploaded materials (excerpt; may be truncated):
+${useMapReduce ? "Structured extraction from all uploaded documents" : "Uploaded materials (excerpt; may be truncated)"}:
 ---
-${truncated}
+${inputText}
 ---`
         : fullSynthesisInstructions;
 
-    const supabase = await createServerSupabaseClient();
-    const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
-
     const systemBase =
       mode === "upload_review"
-        ? `You return structured section notes ONLY via the structured_protocol tool. Each field is AI review commentary for that IRB section—not a replacement document. Never present your output as the researcher's finalized protocol text.${institutionGuidance}`
-        : `You return structured protocol sections only via the structured_protocol tool. Never invent study facts not supported by the text; when uncertain, say so briefly in that section.${institutionGuidance}`;
+        ? `You return structured section notes ONLY via the structured_protocol tool. Each field is AI review commentary for that IRB section—not a replacement document. Never present your output as the researcher's finalized protocol text. Do NOT use markdown bold (**text**) or italic (*text*) formatting in your output — use plain text only.${institutionGuidance}`
+        : `You return structured protocol sections only via the structured_protocol tool. Never invent study facts not supported by the text; when uncertain, say so briefly in that section. Do NOT use markdown bold (**text**) or italic (*text*) formatting in your output — use plain text only.${institutionGuidance}`;
 
     const result = await generateWithForcedToolCall<ProtocolDraft>({
       systemInstruction: systemBase,
@@ -88,7 +123,7 @@ ${truncated}
       userText,
       declaration: protocolDeclaration,
       toolName: "structured_protocol",
-      maxOutputTokens: 8192,
+      maxOutputTokens: 16384,
     });
 
     const protocol: ProtocolDraft = { ...result };
@@ -98,11 +133,20 @@ ${truncated}
       }
     }
 
-    return NextResponse.json({ protocol });
-  } catch (e) {
-    console.error(e);
+    const failedFiles = extractionResults
+      .filter((r) => r.summary === null)
+      .map((r) => r.fileName);
+
+    return NextResponse.json({
+      protocol,
+      truncated,
+      filesProcessed: useMapReduce ? extractionResults.length : undefined,
+      failedFiles: failedFiles.length > 0 ? failedFiles : undefined,
+    });
+  } catch (error) {
+    console.error(error);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Synthesis failed" },
+      { error: error instanceof Error ? error.message : "Synthesis failed" },
       { status: 500 },
     );
   }
