@@ -4,6 +4,7 @@ import { requireAdminOrAssignedReviewerForProposal } from "@/lib/require-proposa
 import { createServiceClient } from "@/lib/supabase-service";
 import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import { REVIEW_TYPE_VALUES } from "@/lib/review-types";
+import { buildAdminSummaryContext } from "@/lib/admin-summary-context";
 
 export const runtime = "nodejs";
 
@@ -80,11 +81,29 @@ export async function POST(
     return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
   }
 
+  const { data: documents } = await svc
+    .from("proposal_documents")
+    .select("file_name")
+    .eq("proposal_id", proposal.id)
+    .order("uploaded_at", { ascending: false });
+
+  const documentFileNames = (documents ?? [])
+    .map((d) => (typeof d.file_name === "string" ? d.file_name : ""))
+    .filter(Boolean);
+
   try {
-    const userText = `Title: ${proposal.title}\n\nForm Data:\n${JSON.stringify(proposal.form_data, null, 2)}`;
+    const formData =
+      proposal.form_data && typeof proposal.form_data === "object" && !Array.isArray(proposal.form_data)
+        ? (proposal.form_data as Record<string, unknown>)
+        : null;
+
+    const contextJson = buildAdminSummaryContext(proposal.title, formData, { documentFileNames });
+    const userText = `Produce an IRB administrator summary for this submission.\n\n${contextJson}`;
 
     const summary = await generateWithForcedToolCall<Record<string, unknown>>({
-      systemInstruction: `You are an expert IRB (Institutional Review Board) analyst. Given a research proposal's form data, produce a structured JSON summary for IRB administrators.
+      systemInstruction: `You are an expert IRB (Institutional Review Board) analyst. Given a research proposal's structured form data, AI review notes, compliance flags, and material previews, produce a structured JSON summary for IRB administrators.
+
+When many files are present, attachment text may be truncated — prioritize ai_review.protocol_review_sections and compliance_flags over raw previews.
 
 Return fields:
 - risk_level: minimal|moderate|significant

@@ -14,6 +14,7 @@ import type {
   UserRole,
 } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SimulatedBoardReviewResult } from "@/lib/simulated-board-review-types";
 
 function getClient(): SupabaseClient {
   return createClient();
@@ -362,6 +363,26 @@ export const db = {
       return raw as Record<string, unknown>;
     }
     return null;
+  },
+
+  async getLatestBoardSimulation(proposalId: string): Promise<SimulatedBoardReviewResult | null> {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from("ai_summaries")
+      .select("summary")
+      .eq("proposal_id", proposalId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    const row = (data ?? []).find(
+      (record) =>
+        record.summary &&
+        typeof record.summary === "object" &&
+        !Array.isArray(record.summary) &&
+        (record.summary as Record<string, unknown>).type === "simulated_board_review",
+    );
+    if (!row) return null;
+    return row.summary as SimulatedBoardReviewResult;
   },
 
   async getInstitutionUsers() {

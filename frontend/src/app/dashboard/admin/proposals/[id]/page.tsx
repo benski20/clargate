@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -16,7 +16,9 @@ import {
   ChevronDown,
   Download,
   FileText,
+  Check,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -71,6 +73,7 @@ import type {
 import { getProposalReviewTypeLabel } from "@/lib/review-types";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
 import { markdownToPlainText } from "@/lib/format-ai-review-text";
+import type { SimulatedBoardReviewResult } from "@/lib/simulated-board-review-types";
 
 const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages", "submit_review"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -208,13 +211,18 @@ function AdminProposalDetailInner() {
   const [revisionLetterOpen, setRevisionLetterOpen] = useState(false);
   const [reviewerHubOpen, setReviewerHubOpen] = useState(false);
   const [reviewerHubPanel, setReviewerHubPanel] = useState<
-    "workflow" | "assign" | "assignments" | "reviews" | "history"
+    "workflow" | "assign" | "assignments" | "reviews" | "history" | "board_simulation"
   >("workflow");
+  const [boardSimulation, setBoardSimulation] = useState<SimulatedBoardReviewResult | null>(null);
+  const [simulationRunning, setSimulationRunning] = useState(false);
+  const [simulationPhase, setSimulationPhase] = useState(0);
+  const [simulationJustFinished, setSimulationJustFinished] = useState(false);
   const [activeNode, setActiveNode] = useState<string | null>(null);
   /** When set, reviewers see AI summary / details / messages but not workflow or admin-only tabs. */
   const [staffRole, setStaffRole] = useState<string | null>(null);
   const [appUserId, setAppUserId] = useState<string | null>(null);
   const [reviewDecision, setReviewDecision] = useState<ReviewDecision | "">("");
+  const autoSummaryAttemptedRef = useRef(false);
   const [reviewComments, setReviewComments] = useState({
     overall: "",
     methodology: "",
@@ -285,7 +293,7 @@ function AdminProposalDetailInner() {
         : Promise.resolve([] as User[]);
 
       try {
-        const [p, r, a, letterRows, aiSummary, m, uList] = await Promise.all([
+        const [p, r, a, letterRows, aiSummary, m, uList, existingSimulation] = await Promise.all([
           db.getProposal(proposalId),
           db.getReviews(proposalId).catch(() => []),
           db.getReviewAssignmentsForProposal(proposalId).catch(() => []),
@@ -293,6 +301,7 @@ function AdminProposalDetailInner() {
           db.getLatestAiSummary(proposalId).catch(() => null),
           db.getMessages(proposalId).catch(() => []),
           instUsersPromise,
+          isAdmin ? db.getLatestBoardSimulation(proposalId).catch(() => null) : Promise.resolve(null),
         ]);
         if (cancelled) return;
         setProposal(p as ProposalDetail);
@@ -302,6 +311,7 @@ function AdminProposalDetailInner() {
         if (aiSummary) setSummary(aiSummary);
         setMessages(m as Message[]);
         setUsers(uList as User[]);
+        if (existingSimulation) setBoardSimulation(existingSimulation);
 
         const list = letterRows as Letter[];
         const unsent = list.find((l) => l.type === "revision" && !l.sent_at);
@@ -369,6 +379,61 @@ function AdminProposalDetailInner() {
       setSummarizing(false);
     }
   }
+
+  const SIMULATION_PHASES = [
+    "Preparing proposal context…",
+    "Primary reviewer analyzing…",
+    "Ethics reviewer analyzing…",
+    "Regulatory specialist analyzing…",
+    "Synthesizing board recommendation…",
+  ];
+
+  async function runBoardSimulation() {
+    setSimulationRunning(true);
+    setSimulationPhase(0);
+    setSimulationJustFinished(false);
+    setError(null);
+
+    const phaseTimers = [2000, 3000, 3000, 3000];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let elapsed = 0;
+    for (let i = 0; i < phaseTimers.length; i++) {
+      elapsed += phaseTimers[i];
+      timers.push(setTimeout(() => setSimulationPhase(i + 1), elapsed));
+    }
+
+    try {
+      const res = await fetch(`/api/admin/proposals/${proposalId}/simulate-board-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        result?: SimulatedBoardReviewResult;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error || `Board simulation failed (${res.status})`);
+      if (!json.result) throw new Error("No simulation result returned");
+      timers.forEach(clearTimeout);
+      setSimulationPhase(SIMULATION_PHASES.length);
+      setBoardSimulation(json.result);
+      setSimulationJustFinished(true);
+      setTimeout(() => setSimulationJustFinished(false), 3000);
+    } catch (e) {
+      timers.forEach(clearTimeout);
+      setError((e as Error).message);
+    } finally {
+      setSimulationRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isDemo || loading || summarizing || summary !== null) return;
+    if (proposal?.status === "draft") return;
+    if (autoSummaryAttemptedRef.current) return;
+    autoSummaryAttemptedRef.current = true;
+    void generateSummary();
+  }, [isDemo, loading, summarizing, summary, proposal?.status, proposalId]);
 
   async function draftRevisionLetter() {
     setDrafting(true);
@@ -1018,6 +1083,22 @@ function AdminProposalDetailInner() {
                         Submission history ({submissionHistory.length})
                       </span>
                     </button>
+                    {!isStaffReviewer ? (
+                      <button
+                        type="button"
+                        onClick={() => setReviewerHubPanel("board_simulation")}
+                        className={cn(
+                          "w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                          reviewerHubPanel === "board_simulation"
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                            : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                        )}
+                      >
+                        <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                          AI board simulation
+                        </span>
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1322,6 +1403,247 @@ function AdminProposalDetailInner() {
                           ) : (
                             <p className="text-sm text-muted-foreground">No prior submission artifacts found.</p>
                           )}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {reviewerHubPanel === "board_simulation" ? (
+                      <div className="space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          AI board simulation
+                        </p>
+                        <div className="border-t border-border/40 pt-4">
+                          {!simulationRunning && !boardSimulation ? (
+                            <div className="flex flex-col items-center gap-3 py-8 text-center">
+                              <div className="rounded-full border border-border/60 bg-muted/20 p-3">
+                                <Brain className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">Simulate an IRB board review</p>
+                                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                                  Three AI reviewers independently assess this proposal, then a board chair synthesizes a recommendation.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="mt-1 cursor-pointer"
+                                disabled={isDemo}
+                                onClick={() => void runBoardSimulation()}
+                              >
+                                <Brain className="mr-2 h-3.5 w-3.5" />
+                                Run simulation
+                              </Button>
+                            </div>
+                          ) : null}
+
+                          {simulationRunning ? (
+                            <div className="space-y-2 py-4">
+                              {SIMULATION_PHASES.map((label, i) => {
+                                const done = simulationPhase > i;
+                                const active = simulationPhase === i;
+                                return (
+                                  <motion.div
+                                    key={label}
+                                    initial={{ opacity: 0, y: 8 }}
+                                    animate={{ opacity: i <= simulationPhase ? 1 : 0.3, y: 0 }}
+                                    transition={{ duration: 0.35, delay: i * 0.08 }}
+                                    className="flex items-center gap-3 rounded-lg px-3 py-2"
+                                  >
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center">
+                                      {done ? (
+                                        <motion.div
+                                          initial={{ scale: 0 }}
+                                          animate={{ scale: 1 }}
+                                          transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                                        >
+                                          <Check className="h-4 w-4 text-emerald-600" />
+                                        </motion.div>
+                                      ) : active ? (
+                                        <Loader2 className="h-4 w-4 animate-spin text-foreground" />
+                                      ) : (
+                                        <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                                      )}
+                                    </div>
+                                    <span className={cn(
+                                      "text-sm transition-colors duration-300",
+                                      active ? "font-medium text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/50",
+                                    )}>
+                                      {label}
+                                    </span>
+                                  </motion.div>
+                                );
+                              })}
+                              {simulationPhase >= 1 ? (
+                                <motion.div
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.5 }}
+                                  className="mt-3 px-3"
+                                >
+                                  <div className="h-1 overflow-hidden rounded-full bg-muted/40">
+                                    <motion.div
+                                      className="h-full rounded-full bg-foreground/20"
+                                      initial={{ width: "0%" }}
+                                      animate={{ width: `${Math.min(((simulationPhase) / SIMULATION_PHASES.length) * 100, 95)}%` }}
+                                      transition={{ duration: 1.5, ease: "easeOut" }}
+                                    />
+                                  </div>
+                                </motion.div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {!simulationRunning && boardSimulation ? (
+                            <AnimatePresence>
+                              <motion.div
+                                initial={simulationJustFinished ? { opacity: 0, y: 12 } : false}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.4 }}
+                                className="space-y-3"
+                              >
+                                <div className="rounded-xl border border-border bg-muted/5 p-4">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={cn(
+                                      "rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
+                                      boardSimulation.synthesis.board_decision === "approve"
+                                        ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+                                        : boardSimulation.synthesis.board_decision === "reject"
+                                          ? "border border-red-500/40 bg-red-500/10 text-red-700"
+                                          : "border border-amber-500/40 bg-amber-500/10 text-amber-700",
+                                    )}>
+                                      {boardSimulation.synthesis.board_decision.replace(/_/g, " ")}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {boardSimulation.synthesis.vote_summary}
+                                    </span>
+                                  </div>
+
+                                  {boardSimulation.synthesis.required_modifications.length > 0 ? (
+                                    <div className="mt-3">
+                                      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Required modifications</p>
+                                      <ul className="mt-1.5 space-y-1">
+                                        {boardSimulation.synthesis.required_modifications.map((mod, i) => (
+                                          <li key={i} className="flex gap-2 text-sm text-foreground/90">
+                                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-500" />
+                                            {mod}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ) : null}
+
+                                  {boardSimulation.synthesis.recommended_conditions.length > 0 ? (
+                                    <div className="mt-3">
+                                      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Conditions</p>
+                                      <ul className="mt-1.5 space-y-1">
+                                        {boardSimulation.synthesis.recommended_conditions.map((cond, i) => (
+                                          <li key={i} className="flex gap-2 text-sm text-foreground/90">
+                                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                                            {cond}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ) : null}
+
+                                  <details className="mt-3 group">
+                                    <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+                                      Full rationale
+                                    </summary>
+                                    <p className="mt-2 text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
+                                      {boardSimulation.synthesis.rationale}
+                                    </p>
+                                    {boardSimulation.synthesis.dissenting_views.length > 0 ? (
+                                      <div className="mt-2">
+                                        <p className="text-xs font-medium text-muted-foreground">Dissenting views</p>
+                                        <ul className="mt-1 space-y-1">
+                                          {boardSimulation.synthesis.dissenting_views.map((v, i) => (
+                                            <li key={i} className="text-sm text-foreground/80">{v}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ) : null}
+                                  </details>
+                                </div>
+
+                                {boardSimulation.reviewer_assessments.map((assessment) => {
+                                  const roleLabels: Record<string, string> = {
+                                    primary: "Primary",
+                                    ethics: "Ethics",
+                                    regulatory: "Regulatory",
+                                  };
+                                  return (
+                                    <details key={assessment.role} className="group rounded-lg border border-border/60">
+                                      <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-medium">{roleLabels[assessment.role] ?? assessment.role}</span>
+                                          <span className={cn(
+                                            "rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase",
+                                            assessment.decision === "approve"
+                                              ? "bg-emerald-500/10 text-emerald-700"
+                                              : assessment.decision === "reject"
+                                                ? "bg-red-500/10 text-red-700"
+                                                : "bg-amber-500/10 text-amber-700",
+                                          )}>
+                                            {assessment.decision.replace(/_/g, " ")}
+                                          </span>
+                                        </div>
+                                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                                      </summary>
+                                      <div className="border-t border-border/40 px-3 py-3 space-y-2">
+                                        <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
+                                          {assessment.narrative}
+                                        </p>
+                                        {assessment.concerns.length > 0 ? (
+                                          <div>
+                                            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Concerns</p>
+                                            <ul className="mt-1 space-y-0.5">
+                                              {assessment.concerns.map((c, i) => (
+                                                <li key={i} className="flex gap-2 text-sm text-foreground/80">
+                                                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-red-400/60" />
+                                                  {c}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        ) : null}
+                                        {assessment.conditions.length > 0 ? (
+                                          <div>
+                                            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Conditions</p>
+                                            <ul className="mt-1 space-y-0.5">
+                                              {assessment.conditions.map((c, i) => (
+                                                <li key={i} className="flex gap-2 text-sm text-foreground/80">
+                                                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-400/60" />
+                                                  {c}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    </details>
+                                  );
+                                })}
+
+                                <div className="flex items-center justify-between pt-1">
+                                  <p className="text-[0.62rem] text-muted-foreground">
+                                    {new Date(boardSimulation.completed_at).toLocaleString()} · Advisory only
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 cursor-pointer px-2 text-xs text-muted-foreground"
+                                    disabled={simulationRunning || isDemo}
+                                    onClick={() => void runBoardSimulation()}
+                                  >
+                                    Re-run
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            </AnimatePresence>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -1832,10 +2154,21 @@ function AdminProposalDetailInner() {
                   </div>
                 ) : (
                   <div className="rounded-xl bg-muted/10 px-6 py-12 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      Generate a summary to see risk level, population, methodology, and pathway suggestions for this
-                      protocol.
-                    </p>
+                    {summarizing ? (
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
+                        <p className="text-sm font-medium text-foreground">Generating summary…</p>
+                        <p className="mx-auto max-w-md text-xs leading-relaxed text-muted-foreground">
+                          Analyzing protocol notes, compliance flags, and uploaded materials. Large submissions
+                          with many files may take a minute.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Generate a summary to see risk level, population, methodology, and pathway suggestions for
+                        this protocol.
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
