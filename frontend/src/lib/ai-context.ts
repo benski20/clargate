@@ -14,8 +14,8 @@ export type SupplementaryContextPayload = {
   attachments: { name: string; text: string }[];
 };
 
-const PER_FILE_MAX = 48_000;
-const TOTAL_MAX = 160_000;
+const PER_FILE_MAX = 80_000;
+const TOTAL_MAX = 800_000;
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;

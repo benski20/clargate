@@ -41,6 +41,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ text: (result.value || "").trim() });
     }
 
+    const isExcel =
+      mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      mimeType === "application/vnd.ms-excel" ||
+      /\.(xlsx|xls)$/i.test(lower);
+
+    if (isExcel) {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buf, { type: "buffer" });
+      const sheets: string[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        if (csv.trim()) sheets.push(`## Sheet: ${sheetName}\n${csv}`);
+      }
+      const text = sheets.join("\n\n").trim();
+      if (!text) {
+        return NextResponse.json({ error: "No readable data found in spreadsheet." }, { status: 400 });
+      }
+      return NextResponse.json({ text });
+    }
+
     const isText =
       mimeType.startsWith("text/") ||
       ["application/json", "application/xml"].includes(mimeType) ||
@@ -53,7 +75,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          "Unsupported type. Use PDF, Word (.docx), or plain text (.txt, .md, .csv, .json, .html).",
+          "Unsupported type. Use PDF, Word (.docx), Excel (.xlsx, .xls), or plain text (.txt, .md, .csv, .json, .html).",
       },
       { status: 400 },
     );

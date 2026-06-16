@@ -47,7 +47,7 @@ export const REVIEW_TYPE_OPTIONS: ReviewTypeOption[] = [
     value: "exempt_cat_2_surveys_interviews",
     label: "Exempt · Cat. 2 — Surveys, interviews & public observation",
     description:
-      "Educational tests, surveys, interviews, or observation of public behavior when data are anonymous or disclosure poses no reputational, legal, or financial risk.",
+      "Surveys, interviews, educational tests, or observation of public behavior with adult subjects, where data are recorded anonymously, disclosure would not put subjects at risk, or adequate privacy protections are in place (limited IRB review).",
     pathway: "exempt",
     cfrRef: "45 CFR 46.104(d)(2)",
   },
@@ -55,7 +55,7 @@ export const REVIEW_TYPE_OPTIONS: ReviewTypeOption[] = [
     value: "exempt_cat_3_benign_behavioral",
     label: "Exempt · Cat. 3 — Benign behavioral interventions",
     description:
-      "Brief, harmless, painless behavioral manipulations with adult subjects who prospectively agree (e.g., online puzzle with background music).",
+      "Brief, harmless, painless behavioral interventions (not just observation) with adult subjects who prospectively agree, where data protections match Cat. 2 requirements. Distinct from Cat. 2 because there is an experimental manipulation, not just data collection.",
     pathway: "exempt",
     cfrRef: "45 CFR 46.104(d)(3)",
   },
@@ -158,7 +158,7 @@ export const REVIEW_TYPE_OPTIONS: ReviewTypeOption[] = [
     value: "expedited_cat_7_behavioral_focus_groups",
     label: "Expedited · Cat. 7 — Behavioral research & focus groups",
     description:
-      "Research on individual or group characteristics, beliefs, or practices using surveys, interviews, focus groups, oral histories, or program evaluation.",
+      "Research on individual/group characteristics or behavior using surveys, interviews, focus groups, or program evaluation — only when exempt status does not apply (e.g., involves children, identifiable data with disclosure risk, or sensitive topics posing more than minimal emotional distress).",
     pathway: "expedited",
     cfrRef: "45 CFR 46.110",
   },
