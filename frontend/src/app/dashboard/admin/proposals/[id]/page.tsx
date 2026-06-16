@@ -68,7 +68,9 @@ import type {
   Message,
   User,
 } from "@/lib/types";
-import { formatReviewTypeLabel } from "@/lib/review-types";
+import { getProposalReviewTypeLabel } from "@/lib/review-types";
+import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
+import { markdownToPlainText } from "@/lib/format-ai-review-text";
 
 const TAB_VALUES = ["summary", "details", "reviewers", "letter", "messages", "submit_review"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -91,20 +93,6 @@ const SUMMARY_COMPACT_KEYS = new Set([
   "data_sensitivity",
 ]);
 
-function markdownToPlainText(input: string): string {
-  if (!input) return "";
-  return input
-    .replace(/\r\n/g, "\n")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^\s*\d+\.\s+/gm, "• ")
-    .replace(/^\s*[-*+]\s+/gm, "• ")
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
-    .trim();
-}
-
 function recordString(
   obj: Record<string, unknown> | null | undefined,
   key: string,
@@ -122,7 +110,7 @@ function recordString(
 function renderJsonValue(value: unknown): ReactNode {
   if (value === null || value === undefined) return null;
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string") return markdownToPlainText(value);
+  if (typeof value === "string") return <FormJsonStringValue value={value} />;
   if (typeof value === "number") return value;
   if (Array.isArray(value)) {
     if (value.length === 0) return "—";
@@ -808,7 +796,7 @@ function AdminProposalDetailInner() {
               <span>
                 Type:{" "}
                 <span className="text-foreground">
-                  {formatReviewTypeLabel(proposal.review_type)}
+                  {getProposalReviewTypeLabel(proposal)}
                 </span>
               </span>
               {submittedAt ? (
@@ -1622,7 +1610,7 @@ function AdminProposalDetailInner() {
                     <ProposalCanvasEditor
                       markdown={revisionLetter}
                       onMarkdownChange={(md) => setRevisionLetter(md)}
-                      placeholder="Start writing here…"
+                      placeholder="Click here to draft your revision letter to the PI…"
                       className="px-0"
                     />
                   </div>

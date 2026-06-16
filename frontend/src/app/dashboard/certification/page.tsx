@@ -580,17 +580,27 @@ export default function CertificationPage() {
                   </div>
                 ) : null}
 
-                <div className="flex gap-3 rounded-2xl bg-sky-500/[0.04] px-4 py-3.5">
-                  <Sparkles className="mt-0.5 size-4 shrink-0 text-sky-600/80 dark:text-sky-400/90" aria-hidden />
-                  <div className="min-w-0 text-sm">
-                    <p className="font-medium text-foreground">AI extraction complete</p>
-                    <p className="mt-0.5 leading-relaxed text-muted-foreground">
-                      Confidence{" "}
-                      <span className="font-medium capitalize text-foreground/90">{reviewForm.confidence}</span>
-                      {reviewForm.notes ? <> · {reviewForm.notes}</> : null}
-                    </p>
+                {reviewForm.confidence === "low" ? (
+                  <div className="flex gap-3 rounded-2xl border border-destructive/20 bg-destructive/[0.04] px-4 py-3.5" role="alert">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                    <div className="min-w-0 text-sm">
+                      <p className="font-medium text-destructive">This file does not appear to be a training certificate</p>
+                      <p className="mt-0.5 leading-relaxed text-muted-foreground">
+                        Please upload a compliance training certificate such as a CITI completion report, HIPAA training certificate, or similar document.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex gap-3 rounded-2xl bg-emerald-500/[0.04] px-4 py-3.5">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600/80 dark:text-emerald-400/90" aria-hidden />
+                    <div className="min-w-0 text-sm">
+                      <p className="font-medium text-foreground">Certificate details extracted</p>
+                      <p className="mt-0.5 leading-relaxed text-muted-foreground">
+                        Review the information below and correct anything that looks off before saving.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-4">
                   <ReviewSection title="Certificate details">
@@ -738,7 +748,7 @@ export default function CertificationPage() {
               <Button
                 type="button"
                 className="w-full cursor-pointer gap-2 sm:w-auto"
-                disabled={saving}
+                disabled={saving || reviewForm.confidence === "low"}
                 onClick={() => void handleSave()}
               >
                 {saving ? (

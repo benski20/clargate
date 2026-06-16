@@ -25,6 +25,7 @@ import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/
 import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
+import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import {
@@ -42,90 +43,11 @@ const HIDDEN_FORM_SECTIONS = new Set(["ai_workspace", "submission_snapshot", "en
 const PI_TABS = ["details", "documents", "letters", "messages"] as const;
 type PiTab = (typeof PI_TABS)[number];
 
-function markdownToPlainText(input: string): string {
-  if (!input) return "";
-  return input
-    .replace(/\r\n/g, "\n")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^\s*\d+\.\s+/gm, "• ")
-    .replace(/^\s*[-*+]\s+/gm, "• ")
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
-    .trim();
-}
-
-function extractAiCallouts(text: string): { body: string; gaps?: string; suggested?: string } | null {
-  const t = (text ?? "").trim();
-  if (!t) return null;
-
-  const gapsRe = /(?:^|\s)(?:Gaps\/Ambiguities|Gaps|Ambiguities)\s*:\s*/i;
-  const suggestedRe = /(?:^|\s)Suggested\s+Revisions?\s*:\s*/i;
-
-  if (!gapsRe.test(t) && !suggestedRe.test(t)) return null;
-
-  // Split preserving order without relying on exact capitalization.
-  let body = t;
-  let gaps: string | undefined;
-  let suggested: string | undefined;
-
-  const suggestedMatch = body.match(suggestedRe);
-  if (suggestedMatch?.index != null) {
-    const idx = suggestedMatch.index;
-    const before = body.slice(0, idx).trim();
-    const after = body.slice(idx).replace(suggestedRe, "").trim();
-    body = before;
-    suggested = after || undefined;
-  }
-
-  const gapsMatch = body.match(gapsRe);
-  if (gapsMatch?.index != null) {
-    const idx = gapsMatch.index;
-    const before = body.slice(0, idx).trim();
-    const after = body.slice(idx).replace(gapsRe, "").trim();
-    body = before;
-    gaps = after || undefined;
-  }
-
-  // In case the order was gaps then suggested, re-extract suggested from gaps block.
-  if (gaps && suggestedRe.test(gaps) && !suggested) {
-    const parts = gaps.split(suggestedRe);
-    gaps = parts[0].trim() || undefined;
-    suggested = (parts.slice(1).join(" ").trim()) || undefined;
-  }
-
-  return { body, gaps, suggested };
-}
-
 function renderJsonValue(value: unknown): ReactNode {
   if (value === null || value === undefined) return null;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") {
-    const plain = markdownToPlainText(value);
-    const callouts = extractAiCallouts(plain);
-    if (!callouts) return plain;
-    return (
-      <div className="space-y-2">
-        {callouts.body ? <p className="text-muted-foreground">{callouts.body}</p> : null}
-        {callouts.gaps ? (
-          <div className="rounded-md bg-muted/25 px-3 py-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Gaps / ambiguities
-            </div>
-            <div className="mt-1 text-sm text-foreground">{callouts.gaps}</div>
-          </div>
-        ) : null}
-        {callouts.suggested ? (
-          <div className="rounded-md bg-muted/25 px-3 py-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Suggested revisions
-            </div>
-            <div className="mt-1 text-sm text-foreground">{callouts.suggested}</div>
-          </div>
-        ) : null}
-      </div>
-    );
+    return <FormJsonStringValue value={value} mutedIntro />;
   }
   if (typeof value === "number") return value;
   if (Array.isArray(value)) {

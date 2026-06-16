@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +40,6 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
     return Math.min(stepParam, steps.length - 1);
   }, [stepParam, steps.length]);
 
-  /** Clamp invalid step indices in the URL to the last step. */
   React.useEffect(() => {
     if (stepParam === null) return;
     const max = steps.length - 1;
@@ -49,7 +48,6 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
     }
   }, [stepParam, steps, router]);
 
-  /** Keep the visible page aligned with the tour step in the URL. */
   React.useEffect(() => {
     if (stepParam === null || step === null) return;
     const def = steps[step];
@@ -83,6 +81,7 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
   const first = step === 0;
   const hasTourScreen = Boolean(def.tourPath);
   const intakeBadge = intakeWizardStepBadge(def.tourPath);
+  const progress = ((step + 1) / steps.length) * 100;
 
   function goToStep(next: number) {
     const target = steps[next];
@@ -96,15 +95,15 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
         <button
           type="button"
           aria-label="Exit tour"
-          className="fixed inset-0 z-[100] cursor-default bg-transparent"
+          className="fixed inset-0 z-[100] cursor-default bg-black/5 backdrop-blur-[1px] dark:bg-black/20"
           onClick={exitTour}
         />
       ) : null}
 
       <div
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-[102] max-h-[min(52vh,420px)] overflow-y-auto rounded-t-2xl border border-border/80 bg-popover p-5 shadow-2xl ring-1 ring-border/60",
-          "sm:bottom-6 sm:left-auto sm:right-6 sm:max-h-[min(70vh,480px)] sm:w-full sm:max-w-md sm:rounded-xl",
+          "fixed bottom-0 left-0 right-0 z-[102] overflow-hidden rounded-t-2xl border border-border/60 bg-popover shadow-2xl",
+          "sm:bottom-6 sm:left-auto sm:right-6 sm:w-full sm:max-w-[26rem] sm:rounded-2xl",
         )}
         role="dialog"
         aria-modal="true"
@@ -112,64 +111,77 @@ export function PlatformTourOverlay({ appUser }: { appUser: User }) {
         aria-describedby="platform-tour-body"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-sky-600 dark:text-sky-400">
-            <BookOpen className="size-4 shrink-0" aria-hidden />
-            <span className="font-mono text-[0.65rem] font-normal uppercase tracking-[0.18em]">
-              {intakeBadge ? (
-                <>
-                  {intakeBadge}
-                  {" · Tour "}
-                  {step + 1} of {steps.length}
-                </>
-              ) : (
-                <>
-                  Step {step + 1} of {steps.length}
-                </>
-              )}
-              {hasTourScreen ? " · Live preview" : ""}
-            </span>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={exitTour}
-            aria-label="Close tour"
-          >
-            <X className="size-4" />
-          </Button>
+        <div
+          className="h-1 bg-primary/20 transition-all duration-500"
+          role="progressbar"
+          aria-valuenow={step + 1}
+          aria-valuemin={1}
+          aria-valuemax={steps.length}
+        >
+          <div
+            className="h-full bg-primary transition-all duration-500 ease-out"
+            style={{ width: `${progress}%` }}
+          />
         </div>
 
-        <h2
-          id="platform-tour-title"
-          className="font-sans text-lg font-semibold tracking-tight text-foreground sm:text-xl"
-        >
-          {def.title}
-        </h2>
-        <p id="platform-tour-body" className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {def.body}
-        </p>
+        <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              {def.phase ? (
+                <span className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-primary/70">
+                  {def.phase}
+                </span>
+              ) : null}
+              <span className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                {intakeBadge ?? `Step ${step + 1} of ${steps.length}`}
+                {hasTourScreen ? " · Live preview" : ""}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={exitTour}
+              aria-label="Close tour"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-5">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-muted-foreground"
-            disabled={first}
-            onClick={() => goToStep(step - 1)}
+          <h2
+            id="platform-tour-title"
+            className="font-sans text-[1.1rem] font-semibold leading-tight tracking-tight text-foreground sm:text-lg"
           >
-            Back
-          </Button>
-          <div className="flex gap-2">
+            {def.title}
+          </h2>
+          <p
+            id="platform-tour-body"
+            className="mt-2.5 text-[0.82rem] leading-relaxed text-muted-foreground"
+          >
+            {def.body}
+          </p>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-muted-foreground"
+              disabled={first}
+              onClick={() => goToStep(step - 1)}
+            >
+              <ChevronLeft className="size-3.5" />
+              Back
+            </Button>
             {last ? (
-              <Button type="button" onClick={exitTour}>
+              <Button type="button" size="sm" onClick={exitTour}>
                 Done
               </Button>
             ) : (
-              <Button type="button" onClick={() => goToStep(step + 1)}>
+              <Button type="button" size="sm" className="gap-1" onClick={() => goToStep(step + 1)}>
                 Next
+                <ChevronRight className="size-3.5" />
               </Button>
             )}
           </div>

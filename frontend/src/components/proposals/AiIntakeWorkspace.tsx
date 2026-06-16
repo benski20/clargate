@@ -57,6 +57,7 @@ import {
   formatReviewTypeLabel,
   getReviewTypeOption,
   isValidReviewType,
+  toCoarseReviewTypeForDb,
 } from "@/lib/review-types";
 import {
   buildProposalPackageMarkdown,
@@ -1284,7 +1285,7 @@ export function AiIntakeWorkspace({
         // Do not generate/store a separate proposal package snapshot.
         await db.updateProposal(proposalId, {
           title,
-          review_type: wsSynced.predicted_category ?? undefined,
+          review_type: toCoarseReviewTypeForDb(wsSynced.predicted_category),
           form_data: merged,
         });
       } else {
@@ -1298,7 +1299,7 @@ export function AiIntakeWorkspace({
         const docxName = proposalPackageDocxFilename(proposalId, title);
         await db.updateProposal(proposalId, {
           title,
-          review_type: wsSynced.predicted_category ?? undefined,
+          review_type: toCoarseReviewTypeForDb(wsSynced.predicted_category),
           form_data: {
             ...merged,
             submission_snapshot: {
@@ -1355,7 +1356,13 @@ export function AiIntakeWorkspace({
       router.refresh();
     } catch (e) {
       setSubmitting(false);
-      setPackageS3Error(e instanceof Error ? e.message : "Submit failed. Try again.");
+      const msg =
+        e instanceof Error
+          ? e.message
+          : typeof e === "object" && e !== null && "message" in e
+            ? String((e as { message: unknown }).message)
+            : "Submit failed. Try again.";
+      setPackageS3Error(msg.trim() || "Submit failed. Try again.");
       focusSubmissionIssue();
     }
   }
