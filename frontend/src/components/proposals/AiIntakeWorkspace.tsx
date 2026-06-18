@@ -156,6 +156,7 @@ export function AiIntakeWorkspace({
   const [packageViewMode, setPackageViewMode] = useState<"preview" | "source">("preview");
   const [consentViewMode, setConsentViewMode] = useState<"preview" | "source">("preview");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewPhase, setReviewPhase] = useState<"idle" | "compliance" | "done">("idle");
   const [uploadChatOpen, setUploadChatOpen] = useState(false);
   const [uploadChatMessages, setUploadChatMessages] = useState<AiChatMessage[]>([]);
   const [uploadChatInput, setUploadChatInput] = useState("");
@@ -1075,9 +1076,11 @@ export function AiIntakeWorkspace({
 
   async function runDraftAiReview() {
     setReviewBusy(true);
+    setReviewPhase("compliance");
     setIngestError(null);
+    setContextWarning(null);
     try {
-      // Compliance (and category) using current protocol + consent (if present).
+      const warnings: string[] = [];
       const compRes = await fetch("/api/prototype/ai-intake/compliance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1096,6 +1099,13 @@ export function AiIntakeWorkspace({
       };
       if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
       const cat = isValidReviewType(compData.predicted_category) ? compData.predicted_category : null;
+      if (compData.category_confidence === "low") {
+        warnings.push(
+          `Category prediction confidence is low: ${compData.category_reasoning ?? "insufficient information to determine review type"}`,
+        );
+      }
+      if (warnings.length > 0) setContextWarning(warnings.join(" "));
+      setReviewPhase("done");
       setWs((w) => ({
         ...w,
         phase: "compliance",
@@ -1106,6 +1116,7 @@ export function AiIntakeWorkspace({
       setIngestError(e instanceof Error ? e.message : "AI review failed.");
     } finally {
       setReviewBusy(false);
+      setReviewPhase("idle");
     }
   }
 
@@ -2686,7 +2697,7 @@ export function AiIntakeWorkspace({
                                 ref={fileInputRef}
                                 type="file"
                                 className="sr-only"
-                                accept=".pdf,.txt,.md,.csv,.json,.html,.htm,text/plain,application/pdf"
+                                accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv,.json,.html,.htm,.markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                                 multiple
                                 onChange={(e) => void ingestFiles(e.target.files)}
                               />
@@ -2819,6 +2830,26 @@ export function AiIntakeWorkspace({
                             Run AI review
                           </Button>
                         </div>
+                        {reviewBusy ? (
+                          <div className="space-y-3 rounded-xl border border-border/50 bg-muted/15 px-5 py-5">
+                            <div className="flex items-center gap-3">
+                              <Loader2 className="h-4 w-4 animate-spin text-foreground" />
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  Running compliance analysis and category prediction
+                                </p>
+                                {ws.context_attachments.length > 0 ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    Analyzing protocol and {ws.context_attachments.length} uploaded document{ws.context_attachments.length === 1 ? "" : "s"} against 45 CFR 46
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="h-1 overflow-hidden rounded-full bg-muted/40">
+                              <div className="h-full animate-pulse rounded-full bg-primary/30" style={{ width: "60%" }} />
+                            </div>
+                          </div>
+                        ) : null}
                         {complianceReviewSection}
                       </div>
                     ) : null}
@@ -2900,7 +2931,7 @@ export function AiIntakeWorkspace({
                     ) : null}
 
                     {draftWizardStep === 6 ? (
-                      <div className="mx-auto w-full max-w-3xl space-y-6">
+                      <div className="w-full space-y-6">
                         <div className="space-y-2">
                           <h2 className="font-semibold text-2xl tracking-tight text-foreground md:text-3xl">
                             Extra materials
