@@ -183,6 +183,8 @@ export function AiIntakeWorkspace({
   /** Original upload binaries (session only); used to push materials to proposal file storage on Save. */
   const attachmentOriginalFilesRef = useRef<Map<string, File>>(new Map());
   const extraMaterialsOriginalFilesRef = useRef<Map<string, File>>(new Map());
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submittingRef = useRef(false);
 
   const packageMarkdown = useMemo(
     () =>
@@ -337,12 +339,22 @@ export function AiIntakeWorkspace({
     workspace: AiWorkspaceState,
   ): Promise<{ workspace: AiWorkspaceState; uploaded: number }> {
     const updates: { id: string; document_id: string; s3_key: string }[] = [];
+    const orphaned: string[] = [];
     for (const att of workspace.context_attachments) {
       if (att.document_id) continue;
       const orig = attachmentOriginalFilesRef.current.get(att.id);
-      if (!orig) continue;
+      if (!orig) {
+        orphaned.push(att.name);
+        continue;
+      }
       const res = await db.presignUploadProposalFile(targetProposalId, orig);
       updates.push({ id: att.id, document_id: res.document_id, s3_key: res.s3_key });
+    }
+    if (orphaned.length > 0) {
+      throw new Error(
+        `${orphaned.length} file(s) could not be uploaded because the browser no longer has them. ` +
+        `Please re-attach: ${orphaned.join(", ")}`,
+      );
     }
     if (updates.length === 0) {
       return { workspace, uploaded: 0 };
@@ -396,6 +408,10 @@ export function AiIntakeWorkspace({
   /** Saves workspace to the database and uploads the Markdown record to proposal file storage. */
   async function saveDraftAndFiles() {
     if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     setPackageS3Error(null);
     const id = await persist(ws, suggestedTitle);
     if (!id) return;
@@ -423,9 +439,14 @@ export function AiIntakeWorkspace({
     if (existingProposalId && hydrationStatus !== "ready") return;
     if (effectiveVariant === "upload" && !suggestedTitle.trim()) return;
     const t = setTimeout(() => {
+      if (submittingRef.current) return;
       void persist(ws, suggestedTitle);
     }, 900);
-    return () => clearTimeout(t);
+    autoSaveTimerRef.current = t;
+    return () => {
+      clearTimeout(t);
+      autoSaveTimerRef.current = null;
+    };
   }, [ws, suggestedTitle, persist, existingProposalId, hydrationStatus, effectiveVariant, demoMode]);
 
   useEffect(() => {
@@ -1277,6 +1298,11 @@ export function AiIntakeWorkspace({
       return;
     }
     setSubmitting(true);
+    submittingRef.current = true;
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     setPackageS3Error(null);
     try {
       const { workspace: wsWithCtx } = await syncOriginalAttachmentsToStorage(proposalId, ws);
@@ -1364,6 +1390,7 @@ export function AiIntakeWorkspace({
       router.refresh();
     } catch (e) {
       setSubmitting(false);
+      submittingRef.current = false;
       const msg =
         e instanceof Error
           ? e.message
