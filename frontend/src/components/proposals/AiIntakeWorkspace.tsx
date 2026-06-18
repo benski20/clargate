@@ -1282,7 +1282,31 @@ export function AiIntakeWorkspace({
     setSubmitting(true);
     setPackageS3Error(null);
     try {
-      const { workspace: wsWithCtx } = await syncOriginalAttachmentsToStorage(proposalId, ws);
+      let workspaceForSubmit = ws;
+      if (effectiveVariant !== "upload") {
+        const linkedIds = new Set(
+          ws.extra_materials
+            .map((m) => m.source_context_attachment_id)
+            .filter(Boolean),
+        );
+        const promotions = ws.context_attachments
+          .filter((att) => !linkedIds.has(att.id))
+          .map((att) => ({
+            id: crypto.randomUUID(),
+            name: att.name,
+            mimeType: att.mimeType,
+            description: "",
+            source_context_attachment_id: att.id,
+          }));
+        if (promotions.length > 0) {
+          workspaceForSubmit = {
+            ...ws,
+            extra_materials: [...ws.extra_materials, ...promotions],
+          };
+          setWs(workspaceForSubmit);
+        }
+      }
+      const { workspace: wsWithCtx } = await syncOriginalAttachmentsToStorage(proposalId, workspaceForSubmit);
       const { workspace: wsSynced } = await syncExtraMaterialsToStorage(proposalId, wsWithCtx);
       if (wsSynced !== ws) setWs(wsSynced);
       const merged = buildFormDataFromAiWorkspace(
