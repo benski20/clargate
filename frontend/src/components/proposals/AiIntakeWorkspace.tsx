@@ -2129,6 +2129,20 @@ export function AiIntakeWorkspace({
                 </span>
               </label>
             </div>
+            {!hasStudyTitle ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-destructive">
+                  Please enter a study title before submitting.
+                </p>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="e.g. Impact of Remote Work on Employee Wellbeing"
+                  value={suggestedTitle}
+                  onChange={(e) => setSuggestedTitle(e.target.value)}
+                />
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button
@@ -2142,7 +2156,7 @@ export function AiIntakeWorkspace({
             <Button
               type="button"
               className="cursor-pointer gap-2"
-              disabled={!uploadSubmitConfirmed || submitting || !canSubmitProposal || (effectiveVariant === "upload" && !hasStudyTitle)}
+              disabled={!uploadSubmitConfirmed || submitting || !canSubmitProposal || !hasStudyTitle}
               onClick={() => {
                 setUploadSubmitConfirmOpen(false);
                 void submitFinal();
