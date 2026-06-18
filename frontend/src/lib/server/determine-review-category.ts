@@ -204,7 +204,8 @@ const categoryDeclaration: FunctionDeclaration = {
       },
       predicted_category: {
         type: SchemaType.STRING,
-        description: `The most specific applicable review type. Must be one of: ${REVIEW_TYPE_VALUES.filter((v) => v !== "not_sure").join(", ")}`,
+        description:
+          "The most specific review type value matching the bracket labels in the framework, e.g. exempt_cat_2_surveys_interviews. Use an exempt category if ANY exempt category fits — only fall back to expedited if you can explain why every exempt category was ruled out.",
       },
       confidence: {
         type: SchemaType.STRING,
@@ -274,7 +275,7 @@ Now work through the decision framework step by step. Evaluate full board disqua
     reasoning: string;
   }>({
     systemInstruction:
-      "You are an IRB review category analyst. You determine the correct regulatory review pathway using 45 CFR 46. You MUST work through the decision framework systematically and justify your determination. Do NOT default to expedited_cat_7 — evaluate exempt categories first. Do NOT use markdown bold (**text**) or italic formatting in your output.",
+      "You are an IRB review category analyst. You determine the correct regulatory review pathway using 45 CFR 46. You MUST work through the decision framework systematically. CRITICAL RULE: surveys, interviews, questionnaires, and observational studies with adult subjects almost always qualify as EXEMPT Cat. 2 (exempt_cat_2_surveys_interviews), NOT Expedited Cat. 7. You may ONLY assign expedited_cat_7 if you first prove that every exempt category (especially Cat. 2 and Cat. 3) is disqualified. If data is de-identified or disclosure poses no risk, it is Cat. 2. Do NOT use markdown bold (**text**) or italic formatting in your output.",
     history: [],
     userText,
     declaration: categoryDeclaration,
