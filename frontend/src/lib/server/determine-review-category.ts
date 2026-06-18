@@ -240,8 +240,6 @@ export async function determineReviewCategory(
     .filter((section) => section.length > 20)
     .join("\n\n");
 
-  const hasSupplementary = supplementaryContext.trim().length > 50;
-
   const userText = `Using the Category Decision Framework below, determine the correct IRB review category for this study.
 
 IMPORTANT: Work through the framework step by step. Do NOT skip to expedited_cat_7 — most social/behavioral research qualifies as EXEMPT under Cat. 2 or Cat. 3. Only assign expedited_cat_7 if you can articulate why no exempt category applies.
@@ -252,10 +250,8 @@ ${CATEGORY_CRITERIA_REFERENCE}
 
 ## Study Materials
 
-${hasSupplementary ? "IMPORTANT: The researcher uploaded documents (shown under Supplementary materials below). These documents are PRIMARY SOURCE MATERIAL and carry equal or greater weight than the protocol sections. Base your category determination on ALL available information — protocol sections, consent document, AND uploaded documents together. Do NOT default to not_sure simply because protocol sections are incomplete if the uploaded documents contain the relevant details." : ""}
-
 ### Protocol
-${protocolText || "(protocol sections are sparse — rely on supplementary materials below for study details)"}
+${protocolText}
 
 ### Consent
 ${consentMarkdown || "(no consent document provided)"}
@@ -264,7 +260,7 @@ ${supplementaryContext}
 
 ---
 
-Now work through the decision framework step by step. Evaluate full board disqualifiers first, then exempt categories (especially Cat. 2 and Cat. 3), and only then expedited categories if no exempt category fits.${hasSupplementary ? " Use details from the uploaded documents to fill in any gaps in the protocol sections." : ""}`;
+Now work through the decision framework step by step. Evaluate full board disqualifiers first, then exempt categories (especially Cat. 2 and Cat. 3), and only then expedited categories if no exempt category fits.`;
 
   const result = await generateWithForcedToolCall<{
     full_board_disqualifiers: string[];
