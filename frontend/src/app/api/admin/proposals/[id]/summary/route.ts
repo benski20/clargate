@@ -1,36 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
+import { generateWithForcedToolCall, resolveProviderForTask, type ToolDefinition } from "@/lib/server/ai";
 import { requireAdminOrAssignedReviewerForProposal } from "@/lib/require-proposal-staff-server";
 import { createServiceClient } from "@/lib/supabase-service";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
-import { REVIEW_TYPE_VALUES } from "@/lib/review-types";
+import { getProposalReviewTypeLabel } from "@/lib/review-types";
 import { buildAdminSummaryContext } from "@/lib/admin-summary-context";
 
 export const runtime = "nodejs";
 
-const summaryDeclaration: FunctionDeclaration = {
+const summaryTool: ToolDefinition = {
   name: "proposal_summary",
   description: "Structured IRB admin summary for a proposal",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       risk_level: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: ["minimal", "moderate", "significant"],
       },
-      participant_population: { type: SchemaType.STRING },
-      methodology_summary: { type: SchemaType.STRING },
-      key_concerns: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-      regulatory_category_suggestion: {
-        type: SchemaType.STRING,
-        format: "enum",
-        enum: [...REVIEW_TYPE_VALUES],
-      },
-      regulatory_rationale: { type: SchemaType.STRING },
-      study_duration_estimate: { type: SchemaType.STRING },
+      participant_population: { type: "string" },
+      methodology_summary: { type: "string" },
+      key_concerns: { type: "array", items: { type: "string" } },
+      regulatory_rationale: { type: "string" },
+      study_duration_estimate: { type: "string" },
       data_sensitivity: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: ["low", "medium", "high"],
       },
@@ -40,7 +34,6 @@ const summaryDeclaration: FunctionDeclaration = {
       "participant_population",
       "methodology_summary",
       "key_concerns",
-      "regulatory_category_suggestion",
       "regulatory_rationale",
       "study_duration_estimate",
       "data_sensitivity",
@@ -71,7 +64,7 @@ export async function POST(
 
   const { data: proposal, error: fetchErr } = await svc
     .from("proposals")
-    .select("id, title, form_data, institution_id")
+    .select("id, title, form_data, institution_id, review_type")
     .eq("id", proposalId)
     .eq("institution_id", auth.session.appUser.institution_id)
     .neq("status", "draft")
@@ -97,37 +90,40 @@ export async function POST(
         ? (proposal.form_data as Record<string, unknown>)
         : null;
 
-    const contextJson = buildAdminSummaryContext(proposal.title, formData, { documentFileNames });
+    const contextJson = buildAdminSummaryContext(proposal.title, formData, {
+      documentFileNames,
+      reviewType: proposal.review_type,
+    });
     const userText = `Produce an IRB administrator summary for this submission.\n\n${contextJson}`;
 
-    const summary = await generateWithForcedToolCall<Record<string, unknown>>({
+    const summary = await generateWithForcedToolCall<Record<string, unknown>>("admin-summary", {
       systemInstruction: `You are an expert IRB (Institutional Review Board) analyst. Given a research proposal's structured form data, AI review notes, compliance flags, and material previews, produce a structured JSON summary for IRB administrators.
 
 When many files are present, attachment text may be truncated — prioritize ai_review.protocol_review_sections and compliance_flags over raw previews.
 
-Return fields:
+Write concisely — each field should be scannable in one glance:
 - risk_level: minimal|moderate|significant
-- participant_population: concise description; mention vulnerable groups if present
-- methodology_summary: 2-3 sentences
-- key_concerns: concrete admin concerns
-- regulatory_category_suggestion: most specific applicable review type from the enum (prefer exempt_cat_* or expedited_cat_* when supported)
-- regulatory_rationale: brief rationale
-- study_duration_estimate: estimate if discernible
+- participant_population: one sentence
+- methodology_summary: 1–2 sentences
+- key_concerns: up to 5 one-line bullets (≤120 chars each)
+- regulatory_rationale: 1–2 sentences for the submitted review category (see submitted_review_category — do not invent a different category)
+- study_duration_estimate: a short phrase if discernible, else "Not specified"
 - data_sensitivity: low|medium|high
 
 Be objective and note missing information where applicable.`,
       history: [],
       userText,
-      declaration: summaryDeclaration,
-      toolName: "proposal_summary",
+      tool: summaryTool,
     });
+
+    summary.regulatory_category_suggestion = getProposalReviewTypeLabel(proposal);
 
     const { data: aiSummary, error: insertErr } = await svc
       .from("ai_summaries")
       .insert({
         proposal_id: proposal.id,
         summary,
-        model_used: process.env.GEMINI_MODEL?.trim() || "gemini-3-flash-preview",
+        model_used: resolveProviderForTask("admin-summary"),
       })
       .select()
       .single();

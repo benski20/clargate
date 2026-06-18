@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { SchemaType, type FunctionDeclaration, type Schema } from "@google/generative-ai";
-import { generateMultiTurnTextStream, generateWithForcedToolCall } from "@/lib/server/gemini";
+import {
+  generateMultiTurnTextStream,
+  generateWithForcedToolCall,
+  type ToolDefinition,
+} from "@/lib/server/ai";
 import type { AiChatMessage, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
@@ -65,21 +68,19 @@ When the researcher mentions details with regulatory implications (vulnerable po
 
 Keep the tone academic, professional, IRB-appropriate. Reply in plain text or light Markdown.`;
 
-const protocolSchemaProps: Record<string, Schema> = Object.fromEntries(
-  PROTOCOL_SECTION_KEYS.map((k) => [k, { type: SchemaType.STRING } as Schema]),
-);
-
-const sessionUpdateDeclaration: FunctionDeclaration = {
+const sessionUpdateTool: ToolDefinition = {
   name: "session_update",
   description: "Your conversational reply and full protocol snapshot.",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
-      assistant_reply: { type: SchemaType.STRING },
-      suggested_title: { type: SchemaType.STRING },
+      assistant_reply: { type: "string" },
+      suggested_title: { type: "string" },
       protocol: {
-        type: SchemaType.OBJECT,
-        properties: protocolSchemaProps,
+        type: "object",
+        properties: Object.fromEntries(
+          PROTOCOL_SECTION_KEYS.map((k) => [k, { type: "string" as const }]),
+        ),
         required: [...PROTOCOL_SECTION_KEYS],
       },
     },
@@ -119,20 +120,18 @@ export async function POST(req: Request) {
         assistant_reply: string;
         suggested_title: string;
         protocol: ProtocolDraft;
-      }>({
+      }>("intake-chat", {
         systemInstruction,
         history: prior,
         userText: user_message,
-        declaration: sessionUpdateDeclaration,
-        toolName: "session_update",
+        tool: sessionUpdateTool,
       });
 
       const enc = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            // Stream the conversational reply quickly (no tools), while the structured tool call runs.
-            for await (const t of generateMultiTurnTextStream({
+            for await (const t of generateMultiTurnTextStream("intake-chat-stream", {
               systemInstruction: streamSystem,
               history: prior,
               userText: user_message,
@@ -160,7 +159,7 @@ export async function POST(req: Request) {
             controller.enqueue(
               enc.encode(
                 `data: ${JSON.stringify({
-                  error: e instanceof Error ? e.message : "Gemini request failed",
+                  error: e instanceof Error ? e.message : "AI request failed",
                 })}\n\n`,
               ),
             );
@@ -182,12 +181,11 @@ export async function POST(req: Request) {
       assistant_reply: string;
       suggested_title: string;
       protocol: ProtocolDraft;
-    }>({
+    }>("intake-chat", {
       systemInstruction,
       history: prior,
       userText: user_message,
-      declaration: sessionUpdateDeclaration,
-      toolName: "session_update",
+      tool: sessionUpdateTool,
     });
 
     const { assistant_reply, suggested_title, protocol: nextProtocol } = toolInput;
@@ -199,7 +197,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error(e);
-    const message = e instanceof Error ? e.message : "Gemini request failed";
+    const message = e instanceof Error ? e.message : "AI request failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

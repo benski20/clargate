@@ -1,25 +1,24 @@
 import { NextResponse } from "next/server";
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, type ToolDefinition } from "@/lib/server/ai";
 import type { ProtocolDraft } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
-const consentDeclaration: FunctionDeclaration = {
+const consentTool: ToolDefinition = {
   name: "consent_output",
   description: "Informed consent document and QA checklist",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       consent_markdown: {
-        type: SchemaType.STRING,
+        type: "string",
         description:
           "Full consent form in Markdown, ~8th grade reading level, short sentences, clear headers.",
       },
       missing_elements: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
+        type: "array",
+        items: { type: "string" },
         description:
           "Required elements absent or weak (e.g. right to withdraw, voluntary participation, risks, benefits, confidentiality/HIPAA if PHI, researcher contact, IRB contact).",
       },
@@ -48,13 +47,12 @@ export async function POST(req: Request) {
     const toolInput = await generateWithForcedToolCall<{
       consent_markdown: string;
       missing_elements: string[];
-    }>({
+    }>("consent-generation", {
       systemInstruction:
         `You produce structured consent drafts and QA lists via the consent_output tool only.${institutionGuidance}`,
       history: [],
       userText: userContent,
-      declaration: consentDeclaration,
-      toolName: "consent_output",
+      tool: consentTool,
     });
 
     return NextResponse.json({
@@ -63,7 +61,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error(e);
-    const message = e instanceof Error ? e.message : "Gemini request failed";
+    const message = e instanceof Error ? e.message : "AI request failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

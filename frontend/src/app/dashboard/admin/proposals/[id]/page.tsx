@@ -2108,7 +2108,24 @@ function AdminProposalDetailInner() {
                   <div className="space-y-4">
                     <div className="grid gap-2 sm:grid-cols-3">
                       {Array.from(SUMMARY_COMPACT_KEYS).map((key) => {
-                        if (!(key in summary)) return null;
+                        if (key === "regulatory_category_suggestion") {
+                          const label = proposal ? getProposalReviewTypeLabel(proposal) : null;
+                          if (!label || label === "—") return null;
+                          return (
+                            <div
+                              key={key}
+                              className="rounded-lg bg-muted/10 px-3 py-2.5"
+                            >
+                              <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                                Submitted review category
+                              </div>
+                              <div className="mt-1 text-sm font-medium leading-snug text-foreground">
+                                {label}
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (!summary || !(key in summary)) return null;
                         const value = summary[key];
                         return (
                           <div

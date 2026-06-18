@@ -968,10 +968,7 @@ export function AiIntakeWorkspace({
     }));
   }
 
-  // Upload mode default: every stage-1 context file is included as an extra material
-  // unless already present, so it is saved/submitted without extra manual steps.
   useEffect(() => {
-    if (effectiveVariant !== "upload") return;
     setWs((w) => {
       if (w.context_attachments.length === 0) return w;
       const existing = new Set(

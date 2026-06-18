@@ -4,6 +4,7 @@ import {
   PROTOCOL_SECTION_KEYS,
   type ProtocolSectionKey,
 } from "@/lib/ai-proposal-types";
+import { getProposalReviewTypeLabel } from "@/lib/review-types";
 
 const CONSENT_MAX = 6_000;
 const NOTES_MAX = 4_000;
@@ -41,7 +42,7 @@ function omitKeys(obj: Record<string, unknown>, keys: string[]): Record<string, 
 export function buildAdminSummaryContext(
   title: string,
   formData: Record<string, unknown> | null,
-  options?: { documentFileNames?: string[] },
+  options?: { documentFileNames?: string[]; reviewType?: string | null },
 ): string {
   const fd = formData ?? {};
   const ws = normalizeAiWorkspace(fd.ai_workspace);
@@ -111,6 +112,10 @@ export function buildAdminSummaryContext(
 
   const payload = {
     title,
+    submitted_review_category: getProposalReviewTypeLabel({
+      review_type: options?.reviewType,
+      form_data: fd,
+    }),
     entry_mode: fd.entry_mode ?? undefined,
     structured_form: structuredForm,
     ai_review: {

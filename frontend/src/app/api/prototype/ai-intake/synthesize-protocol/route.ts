@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, type ToolDefinition } from "@/lib/server/ai";
 import { PROTOCOL_SECTION_KEYS, type ProtocolDraft } from "@/lib/ai-proposal-types";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
@@ -10,16 +9,16 @@ import {
   type ExtractionResult,
 } from "@/lib/server/extract-file-summary";
 
-const protocolDeclaration: FunctionDeclaration = {
+const protocolTool: ToolDefinition = {
   name: "structured_protocol",
   description: "Map unstructured study materials into IRB protocol sections",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: Object.fromEntries(
       PROTOCOL_SECTION_KEYS.map((k) => [
         k,
         {
-          type: SchemaType.STRING,
+          type: "string" as const,
           description: `Section: ${k.replace(/_/g, " ")}`,
         },
       ]),
@@ -70,24 +69,24 @@ export async function POST(req: Request) {
     const uploadReviewInstructions = useMapReduce
       ? `The researcher uploaded study materials that have been individually analyzed below. This is a structured extraction from ${files.length} documents — every document has been processed.
 
-For EACH protocol section key, write **review-style notes** only:
-- What the uploaded materials appear to address (brief).
-- Gaps, ambiguities, or missing IRB-relevant information.
-- Suggested revisions or clarifications the researcher might make (as bullet ideas referencing themes, not re-drafting their prose).
+For EACH protocol section key, write **brief review-style notes** only (3–5 short bullets max per section):
+- What the materials appear to address (one line).
+- Key gaps or missing IRB-relevant information (group related gaps).
+- Up to 2 suggested clarifications the researcher might make.
 - If a topic is absent, say "Not clearly addressed in the materials."
 
 Pay special attention to the consolidated IRB-relevant facts and study metadata — these determine the correct review category.
 
-Use short paragraphs or markdown lists (one \`- item\` per line). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol.`
+Use markdown lists (one \`- item\` per line, ≤120 chars each). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol or long paraphrases.`
       : `The researcher uploaded ORIGINAL study materials below. Those files are the source of truth and must NOT be rewritten or reformatted by you.
 
-For EACH protocol section key, write **review-style notes** only:
-- What the uploaded materials appear to address (brief).
-- Gaps, ambiguities, or missing IRB-relevant information.
-- Suggested revisions or clarifications the researcher might make (as bullet ideas referencing themes, not re-drafting their prose).
+For EACH protocol section key, write **brief review-style notes** only (3–5 short bullets max per section):
+- What the materials appear to address (one line).
+- Key gaps or missing IRB-relevant information (group related gaps).
+- Up to 2 suggested clarifications the researcher might make.
 - If a topic is absent, say "Not clearly addressed in the materials."
 
-Use short paragraphs or markdown lists (one \`- item\` per line). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol or paste long paraphrases of their document. Quote at most short phrases when necessary.`;
+Use markdown lists (one \`- item\` per line, ≤120 chars each). Do NOT use inline bullet characters (•). Do NOT produce a polished substitute protocol or paste long paraphrases. Quote at most short phrases when necessary.`;
 
     const fullSynthesisInstructions = `You are mapping uploaded IRB / human-subjects study materials into a structured protocol outline.
 
@@ -114,15 +113,14 @@ ${inputText}
 
     const systemBase =
       mode === "upload_review"
-        ? `You return structured section notes ONLY via the structured_protocol tool. Each field is AI review commentary for that IRB section—not a replacement document. Never present your output as the researcher's finalized protocol text. Do NOT use markdown bold (**text**) or italic (*text*) formatting in your output — use plain text only.${institutionGuidance}`
+        ? `You return structured section notes ONLY via the structured_protocol tool. Each field is AI review commentary for that IRB section—not a replacement document. Keep each section concise (short bullets, no essays). Never present your output as the researcher's finalized protocol text. Do NOT use markdown bold (**text**) or italic (*text*) formatting in your output — use plain text only.${institutionGuidance}`
         : `You return structured protocol sections only via the structured_protocol tool. Never invent study facts not supported by the text; when uncertain, say so briefly in that section. Do NOT use markdown bold (**text**) or italic (*text*) formatting in your output — use plain text only.${institutionGuidance}`;
 
-    const result = await generateWithForcedToolCall<ProtocolDraft>({
+    const result = await generateWithForcedToolCall<ProtocolDraft>("protocol-synthesis", {
       systemInstruction: systemBase,
       history: [],
       userText,
-      declaration: protocolDeclaration,
-      toolName: "structured_protocol",
+      tool: protocolTool,
       maxOutputTokens: 16384,
     });
 
