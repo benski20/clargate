@@ -2142,7 +2142,7 @@ export function AiIntakeWorkspace({
             <Button
               type="button"
               className="cursor-pointer gap-2"
-              disabled={!uploadSubmitConfirmed || submitting || !canSubmitProposal || !hasStudyTitle}
+              disabled={!uploadSubmitConfirmed || submitting || !canSubmitProposal || (effectiveVariant === "upload" && !hasStudyTitle)}
               onClick={() => {
                 setUploadSubmitConfirmOpen(false);
                 void submitFinal();
