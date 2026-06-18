@@ -3,7 +3,7 @@ import { generateWithForcedToolCall } from "@/lib/server/gemini";
 import type { ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import type { ReviewType } from "@/lib/review-types";
-import { isValidReviewType } from "@/lib/review-types";
+import { isValidReviewType, REVIEW_TYPE_VALUES } from "@/lib/review-types";
 
 export type CategoryDetermination = {
   predicted_category: ReviewType;
@@ -162,7 +162,7 @@ After working through the framework:
 2. Then evaluate exempt categories IN ORDER (Step 2) — most social/behavioral studies are Exempt Cat. 2 or Cat. 3
 3. Only if no exempt category fits, evaluate expedited categories (Step 3)
 4. If neither exempt nor expedited fits, assign full_board (Step 4)
-5. Use not_sure only when there is genuinely insufficient information to make a determination
+5. If information is insufficient, default to full_board (the IRB can always downgrade)
 `;
 
 const categoryDeclaration: FunctionDeclaration = {
@@ -204,7 +204,9 @@ const categoryDeclaration: FunctionDeclaration = {
       },
       predicted_category: {
         type: SchemaType.STRING,
-        description: "The most specific applicable review type value from the enum.",
+        format: "enum",
+        enum: REVIEW_TYPE_VALUES.filter((v) => v !== "not_sure"),
+        description: "The most specific applicable review type value.",
       },
       confidence: {
         type: SchemaType.STRING,
@@ -284,7 +286,7 @@ Now work through the decision framework step by step. Evaluate full board disqua
 
   const category = isValidReviewType(result.predicted_category)
     ? result.predicted_category
-    : "not_sure";
+    : "full_board";
 
   const confidence =
     result.confidence === "high" || result.confidence === "medium" || result.confidence === "low"

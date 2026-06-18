@@ -212,11 +212,6 @@ export const REVIEW_TYPE_GROUPS: {
     title: "Full board",
     options: REVIEW_TYPE_OPTIONS.filter((o) => o.pathway === "full_board"),
   },
-  {
-    pathway: "not_sure",
-    title: "Undetermined",
-    options: REVIEW_TYPE_OPTIONS.filter((o) => o.pathway === "not_sure"),
-  },
 ];
 
 export function isValidReviewType(value: string | null | undefined): value is ReviewType {
