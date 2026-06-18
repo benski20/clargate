@@ -968,10 +968,7 @@ export function AiIntakeWorkspace({
     }));
   }
 
-  // Upload mode default: every stage-1 context file is included as an extra material
-  // unless already present, so it is saved/submitted without extra manual steps.
   useEffect(() => {
-    if (effectiveVariant !== "upload") return;
     setWs((w) => {
       if (w.context_attachments.length === 0) return w;
       const existing = new Set(
@@ -1282,31 +1279,7 @@ export function AiIntakeWorkspace({
     setSubmitting(true);
     setPackageS3Error(null);
     try {
-      let workspaceForSubmit = ws;
-      if (effectiveVariant !== "upload") {
-        const linkedIds = new Set(
-          ws.extra_materials
-            .map((m) => m.source_context_attachment_id)
-            .filter(Boolean),
-        );
-        const promotions = ws.context_attachments
-          .filter((att) => !linkedIds.has(att.id))
-          .map((att) => ({
-            id: crypto.randomUUID(),
-            name: att.name,
-            mimeType: att.mimeType,
-            description: "",
-            source_context_attachment_id: att.id,
-          }));
-        if (promotions.length > 0) {
-          workspaceForSubmit = {
-            ...ws,
-            extra_materials: [...ws.extra_materials, ...promotions],
-          };
-          setWs(workspaceForSubmit);
-        }
-      }
-      const { workspace: wsWithCtx } = await syncOriginalAttachmentsToStorage(proposalId, workspaceForSubmit);
+      const { workspace: wsWithCtx } = await syncOriginalAttachmentsToStorage(proposalId, ws);
       const { workspace: wsSynced } = await syncExtraMaterialsToStorage(proposalId, wsWithCtx);
       if (wsSynced !== ws) setWs(wsSynced);
       const merged = buildFormDataFromAiWorkspace(
