@@ -204,9 +204,7 @@ const categoryDeclaration: FunctionDeclaration = {
       },
       predicted_category: {
         type: SchemaType.STRING,
-        format: "enum",
-        enum: REVIEW_TYPE_VALUES.filter((v) => v !== "not_sure"),
-        description: "The most specific applicable review type value.",
+        description: `The most specific applicable review type. Must be one of: ${REVIEW_TYPE_VALUES.filter((v) => v !== "not_sure").join(", ")}`,
       },
       confidence: {
         type: SchemaType.STRING,
