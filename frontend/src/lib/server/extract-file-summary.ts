@@ -1,5 +1,4 @@
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, type ToolDefinition } from "@/lib/server/ai";
 import { PROTOCOL_SECTION_KEYS, type ProtocolSectionKey } from "@/lib/ai-proposal-types";
 
 export type FileSummary = {
@@ -23,56 +22,56 @@ export type ExtractionResult = {
 
 const PER_FILE_TEXT_CAP = 80_000;
 
-const extractionDeclaration: FunctionDeclaration = {
+const extractionTool: ToolDefinition = {
   name: "file_extraction",
   description: "Extract structured IRB-relevant information from a single uploaded document",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       document_type: {
-        type: SchemaType.STRING,
+        type: "string",
         description:
           "Classification: protocol_draft, consent_form, citi_certificate, recruitment_material, survey_instrument, data_collection_tool, irb_approval_letter, cv_biosketch, funding_document, data_safety_plan, spreadsheet_data, or other",
       },
       summary: {
-        type: SchemaType.STRING,
+        type: "string",
         description: "2-3 sentence overview of what this document contains",
       },
       irb_relevant_facts: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
+        type: "array",
+        items: { type: "string" },
         description:
           "Every fact relevant to IRB review: vulnerable populations, risk level, data sensitivity, regulatory triggers, funding sources, multi-site details, etc. Be exhaustive — omissions cause wrong review type predictions.",
       },
       study_metadata: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: {
           population: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "Target population and any vulnerable groups mentioned. Empty string if not found.",
           },
           methodology: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "Research methodology, design, interventions. Empty string if not found.",
           },
           risks: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "Risks to participants mentioned or implied. Empty string if not found.",
           },
           data_handling: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "Data collection, storage, de-identification, sharing plans. Empty string if not found.",
           },
         },
         required: ["population", "methodology", "risks", "data_handling"],
       },
       section_contributions: {
-        type: SchemaType.OBJECT,
+        type: "object",
         properties: Object.fromEntries(
           PROTOCOL_SECTION_KEYS.map((key) => [
             key,
             {
-              type: SchemaType.STRING,
+              type: "string" as const,
               description: `Content from this document relevant to the "${key.replace(/_/g, " ")}" protocol section. Empty string if nothing relevant.`,
             },
           ]),
@@ -102,12 +101,11 @@ export async function extractFileSummary(file: { name: string; text: string }): 
     file.text.length > PER_FILE_TEXT_CAP ? file.text.slice(0, PER_FILE_TEXT_CAP) : file.text;
 
   try {
-    const result = await generateWithForcedToolCall<FileSummary>({
+    const result = await generateWithForcedToolCall<FileSummary>("file-extraction", {
       systemInstruction: EXTRACTION_SYSTEM,
       history: [],
       userText: `Document name: ${file.name}\n\n---\n${truncatedText}\n---\n\nExtract all IRB-relevant information from this document. Miss nothing.`,
-      declaration: extractionDeclaration,
-      toolName: "file_extraction",
+      tool: extractionTool,
       maxOutputTokens: 4096,
     });
 

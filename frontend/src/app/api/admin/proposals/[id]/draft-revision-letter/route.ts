@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin-server";
 import { createServiceClient } from "@/lib/supabase-service";
-import { generatePlainText } from "@/lib/server/gemini";
+import { generatePlainText } from "@/lib/server/ai";
 
 export const runtime = "nodejs";
 
@@ -11,10 +11,10 @@ Guidelines:
 - Address the PI professionally
 - Reference the proposal by title
 - Organize revision requests by section/topic
-- For each revision point, clearly state what needs to change and why
-- Use numbered items for easy reference
+- One numbered item per issue; each item is 1–2 short sentences (no long paragraphs)
+- State what needs to change and why — skip boilerplate and repetition
 - Maintain a constructive, supportive tone
-- End with submission instructions and a deadline reminder
+- End with brief submission instructions and a deadline reminder
 - Do NOT make definitive regulatory determinations — frame suggestions as reviewer recommendations
 - Output plain text only. Do NOT use Markdown formatting (no **asterisks**, no bullet markers like "*", no heading syntax).`;
 
@@ -23,9 +23,9 @@ const SYSTEM_WITHOUT_REVIEWS = `You are a professional IRB administrator draftin
 Guidelines:
 - Address the PI professionally and reference the proposal by title
 - Frame items as preliminary administrative questions or clarifications (not final determinations)
-- Use numbered items for easy reference
+- One numbered item per issue; each item is 1–2 short sentences
 - Maintain a constructive, supportive tone
-- End with submission instructions and a deadline reminder
+- End with brief submission instructions and a deadline reminder
 - Do NOT make definitive regulatory determinations
 - Output plain text only. Do NOT use Markdown formatting (no **asterisks**, no bullet markers like "*", no heading syntax).`;
 
@@ -89,7 +89,7 @@ export async function POST(
   const systemPrompt = hasReviews ? SYSTEM_WITH_REVIEWS : SYSTEM_WITHOUT_REVIEWS;
 
   try {
-    const letterContent = await generatePlainText({
+    const letterContent = await generatePlainText("revision-letter", {
       systemInstruction: systemPrompt,
       userText: userContent,
       temperature: 0.4,

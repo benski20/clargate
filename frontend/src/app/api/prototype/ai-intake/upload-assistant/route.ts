@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AiChatMessage, ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { formatSupplementaryContextForModel, type SupplementaryContextPayload } from "@/lib/ai-context";
-import { generateMultiTurnText, generateMultiTurnTextStream } from "@/lib/server/gemini";
+import { generateMultiTurnText, generateMultiTurnTextStream } from "@/lib/server/ai";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -87,7 +87,7 @@ ${extra}`;
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const t of generateMultiTurnTextStream({
+            for await (const t of generateMultiTurnTextStream("upload-assistant-stream", {
               systemInstruction,
               history: prior,
               userText: user_message,
@@ -120,7 +120,7 @@ ${extra}`;
       });
     }
 
-    const reply = await generateMultiTurnText({
+    const reply = await generateMultiTurnText("upload-assistant", {
       systemInstruction,
       history: prior,
       userText: user_message,

@@ -1,5 +1,4 @@
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, type ToolDefinition } from "@/lib/server/ai";
 import type { ProtocolDraft } from "@/lib/ai-proposal-types";
 import { PROTOCOL_SECTION_KEYS } from "@/lib/ai-proposal-types";
 import type { ReviewType } from "@/lib/review-types";
@@ -165,57 +164,57 @@ After working through the framework:
 5. If information is insufficient, default to full_board (the IRB can always downgrade)
 `;
 
-const categoryDeclaration: FunctionDeclaration = {
+const categoryTool: ToolDefinition = {
   name: "category_determination",
   description: "Determine IRB review category through structured regulatory analysis",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       full_board_disqualifiers: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
+        type: "array",
+        items: { type: "string" },
         description: "List any factors that would require full board review. Empty array if none found.",
       },
       exempt_evaluation: {
-        type: SchemaType.ARRAY,
+        type: "array",
         items: {
-          type: SchemaType.OBJECT,
+          type: "object",
           properties: {
-            category: { type: SchemaType.STRING, description: "e.g. exempt_cat_2_surveys_interviews" },
-            fits: { type: SchemaType.BOOLEAN },
-            reason: { type: SchemaType.STRING, description: "Why this category does or does not apply" },
+            category: { type: "string", description: "e.g. exempt_cat_2_surveys_interviews" },
+            fits: { type: "boolean" },
+            reason: { type: "string", description: "One sentence (≤120 chars)" },
           },
           required: ["category", "fits", "reason"],
         },
         description: "Evaluate each potentially applicable exempt category. Include at least Cat. 2, 3, and 4.",
       },
       expedited_evaluation: {
-        type: SchemaType.ARRAY,
+        type: "array",
         items: {
-          type: SchemaType.OBJECT,
+          type: "object",
           properties: {
-            category: { type: SchemaType.STRING },
-            fits: { type: SchemaType.BOOLEAN },
-            reason: { type: SchemaType.STRING },
+            category: { type: "string" },
+            fits: { type: "boolean" },
+            reason: { type: "string" },
           },
           required: ["category", "fits", "reason"],
         },
         description: "Only evaluate expedited categories if no exempt category fits.",
       },
       predicted_category: {
-        type: SchemaType.STRING,
+        type: "string",
         description:
           "The most specific review type value matching the bracket labels in the framework, e.g. exempt_cat_2_surveys_interviews. Use an exempt category if ANY exempt category fits — only fall back to expedited if you can explain why every exempt category was ruled out.",
       },
       confidence: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: ["high", "medium", "low"],
         description: "Confidence in the determination: high = clear match, medium = probable but missing some info, low = uncertain.",
       },
       reasoning: {
-        type: SchemaType.STRING,
-        description: "2-3 sentence explanation of why this category was chosen over alternatives.",
+        type: "string",
+        description: "1–2 sentences explaining why this category was chosen",
       },
     },
     required: [
@@ -269,13 +268,12 @@ Now work through the decision framework step by step. Evaluate full board disqua
     predicted_category: string;
     confidence: string;
     reasoning: string;
-  }>({
+  }>("category-prediction", {
     systemInstruction:
       "You are an IRB review category analyst. You determine the correct regulatory review pathway using 45 CFR 46. You MUST work through the decision framework systematically. CRITICAL RULE: surveys, interviews, questionnaires, and observational studies with adult subjects almost always qualify as EXEMPT Cat. 2 (exempt_cat_2_surveys_interviews), NOT Expedited Cat. 7. You may ONLY assign expedited_cat_7 if you first prove that every exempt category (especially Cat. 2 and Cat. 3) is disqualified. If data is de-identified or disclosure poses no risk, it is Cat. 2. Do NOT use markdown bold (**text**) or italic formatting in your output.",
     history: [],
     userText,
-    declaration: categoryDeclaration,
-    toolName: "category_determination",
+    tool: categoryTool,
     maxOutputTokens: 4096,
   });
 

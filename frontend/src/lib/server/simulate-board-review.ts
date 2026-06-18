@@ -1,5 +1,4 @@
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, resolveProviderForTask, type ToolDefinition } from "@/lib/server/ai";
 import { buildAdminSummaryContext } from "@/lib/admin-summary-context";
 import type {
   SimulatedReviewerAssessment,
@@ -16,79 +15,88 @@ const REVIEW_DECISIONS = [
   "table",
 ] as const;
 
-const reviewerAssessmentDeclaration: FunctionDeclaration = {
+/** Shared style for all simulated board outputs shown to admins. */
+const CONCISE_OUTPUT_RULES = `
+Write for a busy IRB administrator scanning on screen:
+- One idea per bullet; no sub-lists or semicolon chains.
+- Each string field: at most 1–2 short sentences (roughly ≤140 characters when possible).
+- Prefer the highest-impact gaps; omit minor formatting or stylistic notes.
+- Do NOT enumerate every missing section — group related gaps (e.g. "Complete protocol narrative (design, recruitment, consent)").
+- Do NOT use markdown bold or italic.`;
+
+const reviewerAssessmentTool: ToolDefinition = {
   name: "reviewer_assessment",
   description: "Structured IRB reviewer assessment of a research proposal",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       decision: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: [...REVIEW_DECISIONS],
       },
       confidence: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: ["high", "medium", "low"],
       },
       key_findings: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "3-6 key observations about the proposal from your review perspective",
+        type: "array",
+        items: { type: "string" },
+        description: "3–5 one-line findings (≤120 chars each)",
       },
       concerns: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Specific concerns that need addressing; empty array if none",
+        type: "array",
+        items: { type: "string" },
+        description: "Up to 6 one-line concerns (≤120 chars each); empty if none",
       },
       conditions: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Conditions for approval, if applicable; empty array if unconditional",
+        type: "array",
+        items: { type: "string" },
+        description: "Up to 4 one-line approval conditions (≤120 chars each); empty if none",
       },
       narrative: {
-        type: SchemaType.STRING,
-        description: "2-3 paragraph assessment from your review perspective",
+        type: "string",
+        description: "2–4 sentences max summarizing your review",
       },
     },
     required: ["decision", "confidence", "key_findings", "concerns", "conditions", "narrative"],
   },
 };
 
-const boardSynthesisDeclaration: FunctionDeclaration = {
+const boardSynthesisTool: ToolDefinition = {
   name: "board_synthesis",
   description: "Synthesized IRB board recommendation from multiple reviewer assessments",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       board_decision: {
-        type: SchemaType.STRING,
+        type: "string",
         format: "enum",
         enum: [...REVIEW_DECISIONS],
       },
       vote_summary: {
-        type: SchemaType.STRING,
-        description: "Brief summary of how reviewers voted, e.g. '2-1 in favor of approval with modifications'",
+        type: "string",
+        description: "One sentence on reviewer votes (≤120 chars)",
       },
       dissenting_views: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Points where reviewers disagreed; empty array if unanimous",
+        type: "array",
+        items: { type: "string" },
+        description: "Up to 3 one-line dissent points; empty if unanimous",
       },
       required_modifications: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Changes required before approval; empty array if approved as-is",
+        type: "array",
+        items: { type: "string" },
+        description: "Up to 8 distinct one-line required changes (≤140 chars each); merge overlaps; empty if approved as-is",
       },
       recommended_conditions: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
-        description: "Ongoing conditions attached to approval",
+        type: "array",
+        items: { type: "string" },
+        description: "Up to 4 one-line ongoing conditions (≤120 chars each)",
       },
       rationale: {
-        type: SchemaType.STRING,
-        description: "3-4 paragraph rationale explaining the board decision and how individual assessments were weighed",
+        type: "string",
+        description: "2–4 sentences explaining the board decision",
       },
     },
     required: [
@@ -113,8 +121,7 @@ Evaluate:
 - Whether the background and rationale adequately support the proposed work
 
 Ground your assessment in the specific details of the protocol. Cite section names when referencing specific content. Be constructive but rigorous — flag genuine methodological weaknesses, not stylistic preferences.
-
-Do NOT use markdown bold or italic formatting in your output.${institutionGuidance}`;
+${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
 function ethicsReviewerSystem(institutionGuidance: string): string {
@@ -129,8 +136,7 @@ Evaluate:
 - Whether compensation creates undue influence
 
 Ground your assessment in specific consent language and protocol details. Reference 45 CFR 46 principles where relevant. Focus on substantive ethical issues, not formatting.
-
-Do NOT use markdown bold or italic formatting in your output.${institutionGuidance}`;
+${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
 function regulatoryReviewerSystem(institutionGuidance: string): string {
@@ -145,8 +151,7 @@ Evaluate:
 - Any regulatory gaps or missing documentation
 
 Work through the category determination systematically: check full board disqualifiers first, then evaluate exempt categories, then expedited. Do NOT default to expedited category 7 — most behavioral research qualifies as exempt under categories 2 or 3.
-
-Do NOT use markdown bold or italic formatting in your output.${institutionGuidance}`;
+${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
 function boardChairSystem(institutionGuidance: string): string {
@@ -161,7 +166,8 @@ Your role:
 
 The board decision should be the most appropriate outcome given all three assessments. If any reviewer identified a serious concern, it should be addressed in the required modifications even if other reviewers did not flag it.
 
-Do NOT use markdown bold or italic formatting in your output.${institutionGuidance}`;
+Deduplicate overlapping reviewer points into the fewest clear required_modifications. Prioritize blockers over nice-to-haves.
+${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
 async function runReviewerAssessment(
@@ -179,14 +185,16 @@ async function runReviewerAssessment(
 
 ${contextJson}`;
 
-  const result = await generateWithForcedToolCall<Omit<SimulatedReviewerAssessment, "role">>({
-    systemInstruction,
-    history: [],
-    userText,
-    declaration: reviewerAssessmentDeclaration,
-    toolName: "reviewer_assessment",
-    maxOutputTokens: 4096,
-  });
+  const result = await generateWithForcedToolCall<Omit<SimulatedReviewerAssessment, "role">>(
+    "board-reviewer",
+    {
+      systemInstruction,
+      history: [],
+      userText,
+      tool: reviewerAssessmentTool,
+      maxOutputTokens: 2048,
+    },
+  );
 
   return {
     role,
@@ -217,17 +225,16 @@ Conditions: ${assessment.conditions.length > 0 ? assessment.conditions.join("; "
 Narrative: ${assessment.narrative}`)
     .join("\n\n");
 
-  const userText = `Synthesize the following three independent reviewer assessments into a board recommendation.
+  const userText = `Synthesize the following three independent reviewer assessments into a board recommendation. Keep required_modifications short and deduplicated.
 
 ${assessmentSummaries}`;
 
-  const result = await generateWithForcedToolCall<SimulatedBoardSynthesis>({
+  const result = await generateWithForcedToolCall<SimulatedBoardSynthesis>("board-synthesis", {
     systemInstruction: boardChairSystem(institutionGuidance),
     history: [],
     userText,
-    declaration: boardSynthesisDeclaration,
-    toolName: "board_synthesis",
-    maxOutputTokens: 4096,
+    tool: boardSynthesisTool,
+    maxOutputTokens: 2048,
   });
 
   return {
@@ -263,7 +270,7 @@ export async function simulateBoardReview(params: {
   return {
     reviewer_assessments: assessments,
     synthesis,
-    model_used: process.env.GEMINI_MODEL?.trim() || "gemini-3-flash-preview",
+    model_used: resolveProviderForTask("board-reviewer"),
     completed_at: new Date().toISOString(),
   };
 }

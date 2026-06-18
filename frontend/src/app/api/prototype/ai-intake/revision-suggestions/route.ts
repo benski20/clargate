@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
-import { SchemaType, type FunctionDeclaration } from "@google/generative-ai";
-import { generateWithForcedToolCall } from "@/lib/server/gemini";
+import { generateWithForcedToolCall, type ToolDefinition } from "@/lib/server/ai";
 import type { ComplianceFlag, ProtocolDraft } from "@/lib/ai-proposal-types";
 import { loadInstitutionGuidanceForModel } from "@/lib/institution-guidance-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
-const suggestionsDeclaration: FunctionDeclaration = {
+const suggestionsTool: ToolDefinition = {
   name: "revision_suggestions",
   description: "Concrete revision suggestions for the PI before IRB submission",
   parameters: {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
       suggestions: {
-        type: SchemaType.ARRAY,
-        items: { type: SchemaType.STRING },
+        type: "array",
+        items: { type: "string" },
         description: "Short, actionable bullets (max 12)",
       },
     },
@@ -43,15 +42,17 @@ ${JSON.stringify(flags, null, 2)}`;
     const supabase = await createServerSupabaseClient();
     const institutionGuidance = await loadInstitutionGuidanceForModel(supabase);
 
-    const result = await generateWithForcedToolCall<{ suggestions: string[] }>({
-      systemInstruction:
-        `You return revision suggestions only via the revision_suggestions tool. Keep bullets short and actionable.${institutionGuidance}`,
-      history: [],
-      userText,
-      declaration: suggestionsDeclaration,
-      toolName: "revision_suggestions",
-      maxOutputTokens: 2048,
-    });
+    const result = await generateWithForcedToolCall<{ suggestions: string[] }>(
+      "revision-suggestions",
+      {
+        systemInstruction:
+          `You return revision suggestions only via the revision_suggestions tool. Keep bullets short and actionable.${institutionGuidance}`,
+        history: [],
+        userText,
+        tool: suggestionsTool,
+        maxOutputTokens: 2048,
+      },
+    );
 
     const suggestions = Array.isArray(result.suggestions)
       ? result.suggestions.filter((s) => typeof s === "string" && s.trim()).slice(0, 12)

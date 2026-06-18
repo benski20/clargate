@@ -250,18 +250,29 @@ export function toCoarseReviewTypeForDb(
 }
 
 /** Prefer granular AI prediction in form_data; fall back to the coarse proposals column. */
-export function getProposalReviewTypeLabel(proposal: {
+export function getProposalReviewType(proposal: {
   review_type: ReviewType | string | null | undefined;
   form_data?: Record<string, unknown> | null;
-}): string {
+}): ReviewType | string | null {
   const ws = proposal.form_data?.ai_workspace;
   if (ws && typeof ws === "object" && ws !== null) {
     const predicted = (ws as { predicted_category?: unknown }).predicted_category;
     if (typeof predicted === "string" && isValidReviewType(predicted)) {
-      return formatReviewTypeLabel(predicted);
+      return predicted;
     }
   }
-  return formatReviewTypeLabel(proposal.review_type);
+  if (typeof proposal.review_type === "string" && proposal.review_type.trim()) {
+    return proposal.review_type;
+  }
+  return null;
+}
+
+/** Prefer granular AI prediction in form_data; fall back to the coarse proposals column. */
+export function getProposalReviewTypeLabel(proposal: {
+  review_type: ReviewType | string | null | undefined;
+  form_data?: Record<string, unknown> | null;
+}): string {
+  return formatReviewTypeLabel(getProposalReviewType(proposal));
 }
 
 export function normalizeReviewType(value: string | null | undefined): ReviewType {
