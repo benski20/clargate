@@ -13,9 +13,7 @@ export function applyHighlights(
   clearHighlights(container);
 
   for (const annotation of annotations) {
-    const range = findTextRange(container, annotation.quoted_text);
-    if (!range) continue;
-    wrapRange(range, annotation.id, annotation.is_resolved, annotation.id === activeAnnotationId);
+    highlightText(container, annotation.quoted_text, annotation.id, annotation.is_resolved, annotation.id === activeAnnotationId);
   }
 }
 
@@ -34,7 +32,7 @@ export function updateActiveHighlight(
 }
 
 function clearHighlights(container: HTMLElement): void {
-  const marks = container.querySelectorAll(`mark[${DATA_ATTR}]`);
+  const marks = Array.from(container.querySelectorAll(`mark[${DATA_ATTR}]`));
   for (const mark of marks) {
     const parent = mark.parentNode;
     if (!parent) continue;
@@ -42,62 +40,102 @@ function clearHighlights(container: HTMLElement): void {
       parent.insertBefore(mark.firstChild, mark);
     }
     parent.removeChild(mark);
-    parent.normalize();
   }
+  container.normalize();
 }
 
-function findTextRange(container: HTMLElement, target: string): Range | null {
-  if (!target || target.length === 0) return null;
-
-  const normalized = target.replace(/\s+/g, " ").trim();
-  if (normalized.length === 0) return null;
-
+function collectTextNodes(container: HTMLElement): Text[] {
+  const nodes: Text[] = [];
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const textNodes: Text[] = [];
-
   let node = walker.nextNode();
   while (node) {
-    textNodes.push(node as Text);
+    nodes.push(node as Text);
     node = walker.nextNode();
   }
+  return nodes;
+}
 
-  const fullText = textNodes.map((textNode) => textNode.textContent ?? "").join("");
+function highlightText(
+  container: HTMLElement,
+  target: string,
+  annotationId: string,
+  isResolved: boolean,
+  isActive: boolean,
+): void {
+  if (!target || target.trim().length === 0) return;
+
+  const normalizedTarget = target.replace(/\s+/g, " ").trim();
+  if (normalizedTarget.length === 0) return;
+
+  const textNodes = collectTextNodes(container);
+  const match = findMatchInTextNodes(textNodes, normalizedTarget);
+  if (!match) return;
+
+  wrapTextNodeSpans(match, annotationId, isResolved, isActive);
+}
+
+interface TextNodeSpan {
+  node: Text;
+  startOffset: number;
+  endOffset: number;
+}
+
+function findMatchInTextNodes(
+  textNodes: Text[],
+  normalizedTarget: string,
+): TextNodeSpan[] | null {
+  const chunks: { node: Text; text: string; globalStart: number }[] = [];
+  let fullText = "";
+
+  for (const node of textNodes) {
+    const text = node.textContent ?? "";
+    chunks.push({ node, text, globalStart: fullText.length });
+    fullText += text;
+  }
+
   const normalizedFull = fullText.replace(/\s+/g, " ");
+  const matchIdx = normalizedFull.indexOf(normalizedTarget);
+  if (matchIdx < 0) return null;
 
-  const matchIndex = normalizedFull.indexOf(normalized);
-  if (matchIndex < 0) return null;
+  const origStart = normalizedToOriginalOffset(fullText, matchIdx);
+  const origEnd = normalizedToOriginalOffset(fullText, matchIdx + normalizedTarget.length);
 
-  const originalStart = normalizedToOriginalOffset(fullText, matchIndex);
-  const originalEnd = normalizedToOriginalOffset(fullText, matchIndex + normalized.length);
+  const spans: TextNodeSpan[] = [];
 
-  const startPoint = offsetToNodePoint(textNodes, originalStart);
-  const endPoint = offsetToNodePoint(textNodes, originalEnd);
+  for (const chunk of chunks) {
+    const chunkEnd = chunk.globalStart + chunk.text.length;
 
-  if (!startPoint || !endPoint) return null;
+    if (chunkEnd <= origStart) continue;
+    if (chunk.globalStart >= origEnd) break;
 
-  const range = document.createRange();
-  range.setStart(startPoint.node, startPoint.offset);
-  range.setEnd(endPoint.node, endPoint.offset);
-  return range;
+    const startInChunk = Math.max(0, origStart - chunk.globalStart);
+    const endInChunk = Math.min(chunk.text.length, origEnd - chunk.globalStart);
+
+    if (startInChunk < endInChunk) {
+      spans.push({ node: chunk.node, startOffset: startInChunk, endOffset: endInChunk });
+    }
+  }
+
+  return spans.length > 0 ? spans : null;
 }
 
 function normalizedToOriginalOffset(original: string, normalizedOffset: number): number {
   let normIdx = 0;
   let origIdx = 0;
-  let inWhitespace = false;
+  let prevWasSpace = false;
 
   while (origIdx < original.length && normIdx < normalizedOffset) {
     const ch = original[origIdx];
     const isWs = /\s/.test(ch);
 
     if (isWs) {
-      if (!inWhitespace) {
+      if (!prevWasSpace) {
         normIdx++;
-        inWhitespace = true;
+        prevWasSpace = true;
       }
     } else {
       normIdx++;
-      inWhitespace = false;
+      prevWasSpace = false;
     }
 
     origIdx++;
@@ -106,40 +144,33 @@ function normalizedToOriginalOffset(original: string, normalizedOffset: number):
   return origIdx;
 }
 
-function offsetToNodePoint(
-  textNodes: Text[],
-  globalOffset: number,
-): { node: Text; offset: number } | null {
-  let accumulated = 0;
+function wrapTextNodeSpans(
+  spans: TextNodeSpan[],
+  annotationId: string,
+  isResolved: boolean,
+  isActive: boolean,
+): void {
+  for (const span of spans) {
+    const textNode = span.node;
+    const parent = textNode.parentNode;
+    if (!parent) continue;
 
-  for (const textNode of textNodes) {
-    const len = textNode.textContent?.length ?? 0;
-    if (accumulated + len >= globalOffset) {
-      return { node: textNode, offset: globalOffset - accumulated };
-    }
-    accumulated += len;
-  }
+    const before = textNode.textContent?.slice(0, span.startOffset) ?? "";
+    const highlighted = textNode.textContent?.slice(span.startOffset, span.endOffset) ?? "";
+    const after = textNode.textContent?.slice(span.endOffset) ?? "";
 
-  if (textNodes.length > 0) {
-    const lastNode = textNodes[textNodes.length - 1];
-    return { node: lastNode, offset: lastNode.textContent?.length ?? 0 };
-  }
+    const mark = document.createElement("mark");
+    mark.setAttribute(DATA_ATTR, annotationId);
+    mark.classList.add(HIGHLIGHT_CLASS);
+    if (isActive) mark.classList.add(ACTIVE_CLASS);
+    if (isResolved) mark.classList.add(RESOLVED_CLASS);
+    mark.textContent = highlighted;
 
-  return null;
-}
+    const fragment = document.createDocumentFragment();
+    if (before) fragment.appendChild(document.createTextNode(before));
+    fragment.appendChild(mark);
+    if (after) fragment.appendChild(document.createTextNode(after));
 
-function wrapRange(range: Range, annotationId: string, isResolved: boolean, isActive: boolean): void {
-  const mark = document.createElement("mark");
-  mark.setAttribute(DATA_ATTR, annotationId);
-  mark.classList.add(HIGHLIGHT_CLASS);
-  if (isActive) mark.classList.add(ACTIVE_CLASS);
-  if (isResolved) mark.classList.add(RESOLVED_CLASS);
-
-  try {
-    range.surroundContents(mark);
-  } catch {
-    const fragment = range.extractContents();
-    mark.appendChild(fragment);
-    range.insertNode(mark);
+    parent.replaceChild(fragment, textNode);
   }
 }
