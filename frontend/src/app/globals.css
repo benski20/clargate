@@ -393,7 +393,16 @@
   border: 1px solid var(--border, #d1d5db);
   border-radius: 2px;
 }
+.pdf-viewer-container .react-pdf__Page {
+  position: relative;
+}
 .pdf-viewer-container .react-pdf__Page canvas {
   max-width: 100%;
   height: auto !important;
+}
+.pdf-viewer-container .textLayer {
+  user-select: text;
+}
+.docx-viewer-container {
+  user-select: text;
 }

@@ -9,7 +9,6 @@ import { DocxRenderer } from "./DocxRenderer";
 import type { DocxRendererHandle } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import type { PdfRendererHandle } from "./PdfRenderer";
-import { cn } from "@/lib/utils";
 
 interface SelectionInfo {
   text: string;
@@ -41,6 +40,7 @@ export function DocumentViewer({
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
 
@@ -102,8 +102,8 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
-    const container = getHighlightContainer();
-    if (!container) return;
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
 
     function handleMouseUp() {
       const nativeSelection = window.getSelection();
@@ -112,7 +112,7 @@ export function DocumentViewer({
         return;
       }
 
-      if (!container!.contains(nativeSelection.anchorNode)) return;
+      if (!scrollContainer!.contains(nativeSelection.anchorNode)) return;
 
       const selectedText = nativeSelection.toString();
       if (!selectedText.trim()) {
@@ -134,14 +134,14 @@ export function DocumentViewer({
       }
     }
 
-    container.addEventListener("mouseup", handleMouseUp);
-    container.addEventListener("click", handleHighlightClick);
+    scrollContainer.addEventListener("mouseup", handleMouseUp);
+    scrollContainer.addEventListener("click", handleHighlightClick);
 
     return () => {
-      container.removeEventListener("mouseup", handleMouseUp);
-      container.removeEventListener("click", handleHighlightClick);
+      scrollContainer.removeEventListener("mouseup", handleMouseUp);
+      scrollContainer.removeEventListener("click", handleHighlightClick);
     };
-  }, [renderData, rendererReady, getHighlightContainer]);
+  }, []);
 
   async function handleCreateAnnotation(body: string) {
     if (!selection) return;
@@ -216,7 +216,7 @@ export function DocumentViewer({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1 overflow-y-auto relative">
+      <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-y-auto relative">
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer
@@ -228,7 +228,7 @@ export function DocumentViewer({
         )}
 
         {isPdf && (
-          <div className={cn("pdf-viewer-container px-4 py-4")}>
+          <div className="pdf-viewer-container px-4 py-4">
             <PdfRenderer
               ref={pdfRef}
               base64={renderData!.pdfBase64!}
