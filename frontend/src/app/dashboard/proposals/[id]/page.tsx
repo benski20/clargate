@@ -26,6 +26,7 @@ import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
+import { DocumentViewerDialog } from "@/components/documents/DocumentViewerDialog";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import {
@@ -128,6 +129,7 @@ function ProposalDetailInner() {
   const [appUserId, setAppUserId] = useState<string | null>(null);
   const [piFeedbackOpen, setPiFeedbackOpen] = useState(false);
   const [piFeedbackActiveIndex, setPiFeedbackActiveIndex] = useState(0);
+  const [viewerDocument, setViewerDocument] = useState<{ id: string; name: string } | null>(null);
 
   const validFormSections = useMemo(
     () =>
@@ -543,6 +545,21 @@ function ProposalDetailInner() {
                               Word (.docx)
                             </Button>
                           ) : null}
+                          {(docxDocument || pdfDocument) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="cursor-pointer"
+                              onClick={() => {
+                                const target = docxDocument ?? pdfDocument!;
+                                setViewerDocument({ id: target.id, name: target.file_name });
+                              }}
+                            >
+                              <MessageSquare className="mr-1.5 h-4 w-4" />
+                              View Comments
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -566,15 +583,26 @@ function ProposalDetailInner() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="cursor-pointer"
-                          type="button"
-                          onClick={() => void downloadProposalDocument(doc.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="cursor-pointer"
+                            type="button"
+                            onClick={() => void downloadProposalDocument(doc.id)}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="cursor-pointer"
+                            type="button"
+                            onClick={() => setViewerDocument({ id: doc.id, name: doc.file_name })}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -756,6 +784,18 @@ function ProposalDetailInner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {viewerDocument && appUserId && (
+        <DocumentViewerDialog
+          open={!!viewerDocument}
+          onOpenChange={(open) => { if (!open) setViewerDocument(null); }}
+          proposalId={proposalId}
+          documentId={viewerDocument.id}
+          documentName={viewerDocument.name}
+          currentUserId={appUserId}
+          canAnnotate={false}
+        />
+      )}
     </div>
   );
 

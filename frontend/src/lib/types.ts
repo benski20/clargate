@@ -211,6 +211,33 @@ export interface AuditLogEntry {
   actor?: { full_name: string | null; email: string } | null;
 }
 
+export interface DocumentAnnotation {
+  id: string;
+  proposal_id: string;
+  document_id: string;
+  author_user_id: string;
+  author_name: string | null;
+  quoted_text: string;
+  prefix_context: string;
+  suffix_context: string;
+  body: string;
+  is_resolved: boolean;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  replies: AnnotationReply[];
+}
+
+export interface AnnotationReply {
+  id: string;
+  annotation_id: string;
+  author_user_id: string;
+  author_name: string | null;
+  body: string;
+  created_at: string;
+}
+
 export const STATUS_LABELS: Record<ProposalStatus, string> = {
   draft: "Draft",
   submitted: "Submitted",

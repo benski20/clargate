@@ -287,3 +287,28 @@
     pointer-events: none;
   }
 }
+
+.annotation-highlight {
+  background-color: rgba(250, 204, 21, 0.3);
+  border-bottom: 2px solid rgba(250, 204, 21, 0.7);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.annotation-highlight:hover {
+  background-color: rgba(250, 204, 21, 0.5);
+}
+
+.annotation-highlight-active {
+  background-color: rgba(250, 204, 21, 0.55);
+  border-bottom-color: rgba(250, 204, 21, 1);
+}
+
+.annotation-highlight-resolved {
+  background-color: rgba(134, 239, 172, 0.2);
+  border-bottom: 2px solid rgba(134, 239, 172, 0.5);
+}
+
+.annotation-highlight-resolved:hover {
+  background-color: rgba(134, 239, 172, 0.35);
+}
