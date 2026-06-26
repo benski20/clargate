@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase-service";
 import { requireProposalDocumentAccess } from "@/lib/require-proposal-access-server";
 import { getS3Client, getBucketName } from "@/lib/s3-server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { convertDocxToHtml, convertPdfToHtml } from "@/lib/server/document-to-html";
+import { convertPdfToHtml } from "@/lib/server/document-to-html";
 
 export const runtime = "nodejs";
 
@@ -45,8 +45,14 @@ export async function GET(
     const buffer = Buffer.from(bytes);
 
     const fileType = document.file_type as string;
-    const html = await convertToHtml({ buffer, fileType });
+    const isDocx = fileType.includes("word") || fileType.includes("docx");
 
+    if (isDocx) {
+      const base64 = buffer.toString("base64");
+      return NextResponse.json({ docx_base64: base64, file_type: fileType });
+    }
+
+    const html = await convertPdfToHtml(buffer);
     return NextResponse.json({ html, file_type: fileType });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Render failed";
@@ -55,17 +61,4 @@ export async function GET(
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-async function convertToHtml({
-  buffer,
-  fileType,
-}: {
-  buffer: Buffer;
-  fileType: string;
-}): Promise<string> {
-  if (fileType.includes("pdf")) {
-    return convertPdfToHtml(buffer);
-  }
-  return convertDocxToHtml(buffer);
 }

@@ -366,3 +366,18 @@
   padding-bottom: 1.5rem;
   border-bottom: 1px dashed var(--border, #d1d5db);
 }
+
+.docx-viewer-container .docx-preview-wrapper {
+  padding: 0;
+}
+.docx-viewer-container .docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.docx-viewer-container .docx-wrapper > section.docx {
+  box-shadow: none !important;
+  margin-bottom: 0 !important;
+  padding: 1rem !important;
+  width: 100% !important;
+  min-height: auto !important;
+}

@@ -5,7 +5,21 @@ import type { DocumentAnnotation } from "@/lib/types";
 import { applyHighlights } from "./highlight-annotations";
 import { AnnotationSidebar } from "./AnnotationSidebar";
 import { CommentForm } from "./CommentForm";
+import { DocxRenderer } from "./DocxRenderer";
+import type { DocxRendererHandle } from "./DocxRenderer";
 import { cn } from "@/lib/utils";
+
+interface SelectionInfo {
+  text: string;
+  prefixContext: string;
+  suffixContext: string;
+}
+
+interface RenderData {
+  html: string | null;
+  docxBase64: string | null;
+  fileType: string;
+}
 
 export function DocumentViewer({
   proposalId,
@@ -18,13 +32,22 @@ export function DocumentViewer({
   currentUserId: string;
   canAnnotate: boolean;
 }) {
-  const [html, setHtml] = useState<string | null>(null);
+  const [renderData, setRenderData] = useState<RenderData | null>(null);
   const [annotations, setAnnotations] = useState<DocumentAnnotation[]>([]);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [docxReady, setDocxReady] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const docxRef = useRef<DocxRendererHandle>(null);
+
+  const getHighlightContainer = useCallback((): HTMLElement | null => {
+    if (renderData?.docxBase64) {
+      return docxRef.current?.getContainer() ?? null;
+    }
+    return contentRef.current;
+  }, [renderData?.docxBase64]);
 
   const fetchAnnotations = useCallback(async () => {
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`);
@@ -38,6 +61,7 @@ export function DocumentViewer({
     async function load() {
       setLoading(true);
       setError(null);
+      setDocxReady(false);
       try {
         const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/render`);
         if (!response.ok) {
@@ -46,7 +70,11 @@ export function DocumentViewer({
           return;
         }
         const data = await response.json();
-        setHtml(data.html);
+        setRenderData({
+          html: data.html ?? null,
+          docxBase64: data.docx_base64 ?? null,
+          fileType: data.file_type,
+        });
         await fetchAnnotations();
       } catch {
         setError("Failed to load document");
@@ -58,18 +86,21 @@ export function DocumentViewer({
   }, [proposalId, documentId, fetchAnnotations]);
 
   useEffect(() => {
-    const container = contentRef.current;
-    if (!container || !html) return;
+    const container = getHighlightContainer();
+    if (!container) return;
+
+    const isDocx = !!renderData?.docxBase64;
+    if (isDocx && !docxReady) return;
 
     const timer = setTimeout(() => {
       applyHighlights(container, annotations, activeAnnotationId);
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [html, annotations, activeAnnotationId]);
+  }, [renderData, annotations, activeAnnotationId, docxReady, getHighlightContainer]);
 
   useEffect(() => {
-    const container = contentRef.current;
+    const container = getHighlightContainer();
     if (!container) return;
 
     function handleMouseUp() {
@@ -108,7 +139,7 @@ export function DocumentViewer({
       container.removeEventListener("mouseup", handleMouseUp);
       container.removeEventListener("click", handleHighlightClick);
     };
-  }, [html]);
+  }, [renderData, docxReady, getHighlightContainer]);
 
   async function handleCreateAnnotation(body: string) {
     if (!selection) return;
@@ -157,7 +188,7 @@ export function DocumentViewer({
   function handleAnnotationClick(annotationId: string) {
     setActiveAnnotationId(annotationId);
 
-    const container = contentRef.current;
+    const container = getHighlightContainer();
     if (!container) return;
 
     const mark = container.querySelector(`mark[data-annotation-id="${annotationId}"]`);
@@ -165,6 +196,10 @@ export function DocumentViewer({
       mark.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }
+
+  const handleDocxReady = useCallback(() => {
+    setDocxReady(true);
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading document…</div>;
@@ -174,17 +209,29 @@ export function DocumentViewer({
     return <div className="flex items-center justify-center h-64 text-destructive">{error}</div>;
   }
 
+  const isDocx = !!renderData?.docxBase64;
+
   return (
     <div className="flex h-full min-h-0">
       <div className="min-w-0 flex-1 overflow-y-auto relative">
-        <div
-          ref={contentRef}
-          className={cn(
-            "document-viewer-content max-w-none px-6 py-4",
-            "text-[0.9375rem] leading-relaxed text-foreground",
-          )}
-          dangerouslySetInnerHTML={{ __html: html ?? "" }}
-        />
+        {isDocx ? (
+          <div className="docx-viewer-container px-4 py-4">
+            <DocxRenderer
+              ref={docxRef}
+              base64={renderData!.docxBase64!}
+              onReady={handleDocxReady}
+            />
+          </div>
+        ) : (
+          <div
+            ref={contentRef}
+            className={cn(
+              "document-viewer-content max-w-none px-6 py-4",
+              "text-[0.9375rem] leading-relaxed text-foreground",
+            )}
+            dangerouslySetInnerHTML={{ __html: renderData?.html ?? "" }}
+          />
+        )}
 
         {canAnnotate && selection && (
           <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4">
@@ -214,10 +261,4 @@ export function DocumentViewer({
       </div>
     </div>
   );
-}
-
-interface SelectionInfo {
-  text: string;
-  prefixContext: string;
-  suffixContext: string;
 }
