@@ -4,10 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
-import type { Node as PmNode } from "@tiptap/pm/model";
 import type { DocumentAnnotation } from "@/lib/types";
-import type { AnnotationRange, AnnotationHighlightState } from "./annotation-highlight-plugin";
-import { AnnotationHighlightExtension } from "./annotation-highlight-plugin";
+import { applyHighlights, updateActiveHighlight } from "./highlight-annotations";
 import { AnnotationSidebar } from "./AnnotationSidebar";
 import { CommentForm } from "./CommentForm";
 import { cn } from "@/lib/utils";
@@ -31,12 +29,7 @@ export function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
-
-  const highlightStateRef = useRef<AnnotationHighlightState>({
-    ranges: [],
-    activeAnnotationId: null,
-    onAnnotationClick: setActiveAnnotationId,
-  });
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchAnnotations = useCallback(async () => {
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`);
@@ -76,7 +69,6 @@ export function DocumentViewer({
       extensions: [
         StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
         Link.configure({ openOnClick: false }),
-        AnnotationHighlightExtension.configure({ stateRef: highlightStateRef }),
       ],
       content: html ?? "<p></p>",
       editorProps: {
@@ -99,26 +91,34 @@ export function DocumentViewer({
   );
 
   useEffect(() => {
-    if (!editor || editor.isDestroyed || annotations.length === 0) {
-      highlightStateRef.current = { ...highlightStateRef.current, ranges: [] };
-      return;
-    }
+    const container = editorContainerRef.current;
+    if (!container || !editor || editor.isDestroyed) return;
 
-    try {
-      const ranges = findAnnotationRangesInDoc(editor.state.doc, annotations);
-      highlightStateRef.current = { ...highlightStateRef.current, ranges };
-      forceDecorationUpdate(editor);
-    } catch {
-      highlightStateRef.current = { ...highlightStateRef.current, ranges: [] };
-    }
-  }, [editor, annotations]);
+    const proseMirror = container.querySelector(".ProseMirror") as HTMLElement | null;
+    if (!proseMirror) return;
 
-  useEffect(() => {
-    highlightStateRef.current = { ...highlightStateRef.current, activeAnnotationId };
-    if (editor && !editor.isDestroyed) {
-      forceDecorationUpdate(editor);
+    const timer = setTimeout(() => {
+      applyHighlights(proseMirror, annotations, activeAnnotationId);
+
+      proseMirror.addEventListener("click", handleHighlightClick);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      proseMirror.removeEventListener("click", handleHighlightClick);
+    };
+  }, [editor, annotations, activeAnnotationId]);
+
+  function handleHighlightClick(event: Event) {
+    const target = event.target as HTMLElement;
+    const mark = target.closest("mark[data-annotation-id]");
+    if (mark) {
+      const annotationId = mark.getAttribute("data-annotation-id");
+      if (annotationId) {
+        setActiveAnnotationId(annotationId);
+      }
     }
-  }, [activeAnnotationId, editor]);
+  }
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -138,16 +138,13 @@ export function DocumentViewer({
         return;
       }
 
-      const docSize = editor.state.doc.content.size;
-      const prefixFrom = Math.max(1, from - 50);
-      const suffixTo = Math.min(docSize, to + 50);
-      const textBefore = editor.state.doc.textBetween(prefixFrom, from, BLOCK_SEP);
-      const textAfter = editor.state.doc.textBetween(to, suffixTo, BLOCK_SEP);
+      const nativeSelection = window.getSelection();
+      const selectedString = nativeSelection?.toString() ?? selectedText;
 
       setSelection({
-        text: selectedText,
-        prefixContext: textBefore.slice(-30),
-        suffixContext: textAfter.slice(0, 30),
+        text: selectedString,
+        prefixContext: "",
+        suffixContext: "",
       });
     }
 
@@ -213,6 +210,18 @@ export function DocumentViewer({
     await fetchAnnotations();
   }
 
+  function handleAnnotationClick(annotationId: string) {
+    setActiveAnnotationId(annotationId);
+
+    const container = editorContainerRef.current;
+    if (!container) return;
+
+    const mark = container.querySelector(`mark[data-annotation-id="${annotationId}"]`);
+    if (mark) {
+      mark.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading document…</div>;
   }
@@ -223,7 +232,7 @@ export function DocumentViewer({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1 overflow-y-auto relative">
+      <div className="min-w-0 flex-1 overflow-y-auto relative" ref={editorContainerRef}>
         <EditorContent editor={editor} />
 
         {canAnnotate && selection && (
@@ -247,7 +256,7 @@ export function DocumentViewer({
           activeAnnotationId={activeAnnotationId}
           currentUserId={currentUserId}
           canResolve={canAnnotate}
-          onAnnotationClick={setActiveAnnotationId}
+          onAnnotationClick={handleAnnotationClick}
           onReply={handleReply}
           onResolve={handleResolve}
         />
@@ -260,106 +269,4 @@ interface SelectionInfo {
   text: string;
   prefixContext: string;
   suffixContext: string;
-}
-
-function forceDecorationUpdate(editor: NonNullable<ReturnType<typeof useEditor>>) {
-  try {
-    const transaction = editor.state.tr.setMeta("annotationUpdate", true);
-    editor.view.dispatch(transaction);
-  } catch {
-    // view not ready
-  }
-}
-
-interface PosMapEntry {
-  virtualOffset: number;
-  pmPos: number;
-}
-
-function buildPositionMap(doc: PmNode): { virtualText: string; entries: PosMapEntry[] } {
-  const entries: PosMapEntry[] = [];
-  let virtualText = "";
-  let isFirstBlock = true;
-
-  doc.descendants((node, pos) => {
-    if (node.isTextblock) {
-      if (!isFirstBlock) {
-        entries.push({ virtualOffset: virtualText.length, pmPos: pos });
-        virtualText += BLOCK_SEP;
-      }
-      isFirstBlock = false;
-
-      node.forEach((child, childOffset) => {
-        if (child.isText && child.text) {
-          const childPmPos = pos + 1 + childOffset;
-          for (let i = 0; i < child.text.length; i++) {
-            entries.push({ virtualOffset: virtualText.length, pmPos: childPmPos + i });
-            virtualText += child.text[i];
-          }
-        }
-      });
-
-      return false;
-    }
-
-    return true;
-  });
-
-  entries.push({ virtualOffset: virtualText.length, pmPos: doc.content.size });
-
-  return { virtualText, entries };
-}
-
-function virtualOffsetToPmPos(entries: PosMapEntry[], offset: number): number | null {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].virtualOffset <= offset) {
-      return entries[i].pmPos + (offset - entries[i].virtualOffset);
-    }
-  }
-  return entries.length > 0 ? entries[0].pmPos : null;
-}
-
-function findAnnotationRangesInDoc(
-  doc: PmNode,
-  annotations: DocumentAnnotation[],
-): AnnotationRange[] {
-  const { virtualText, entries } = buildPositionMap(doc);
-  const ranges: AnnotationRange[] = [];
-
-  for (const annotation of annotations) {
-    const target = annotation.quoted_text;
-    const prefix = annotation.prefix_context;
-
-    let matchOffset = -1;
-
-    if (prefix) {
-      const withPrefix = prefix + target;
-      const prefixIdx = virtualText.indexOf(withPrefix);
-      if (prefixIdx >= 0) {
-        matchOffset = prefixIdx + prefix.length;
-      }
-    }
-
-    if (matchOffset < 0) {
-      matchOffset = virtualText.indexOf(target);
-    }
-
-    if (matchOffset < 0) continue;
-
-    const fromPos = virtualOffsetToPmPos(entries, matchOffset);
-    const toPos = virtualOffsetToPmPos(entries, matchOffset + target.length);
-
-    if (fromPos === null || toPos === null) continue;
-    if (fromPos >= toPos) continue;
-    if (toPos > doc.content.size) continue;
-
-    ranges.push({
-      annotationId: annotation.id,
-      from: fromPos,
-      to: toPos,
-      isResolved: annotation.is_resolved,
-    });
-  }
-
-  return ranges;
 }
