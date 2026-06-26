@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import type { DocumentAnnotation } from "@/lib/types";
 import type { AnnotationRange, AnnotationHighlightState } from "./annotation-highlight-plugin";
 import { AnnotationHighlightExtension } from "./annotation-highlight-plugin";
@@ -96,14 +97,14 @@ export function DocumentViewer({
   );
 
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
+    if (!editor || editor.isDestroyed || annotations.length === 0) {
+      highlightStateRef.current = { ...highlightStateRef.current, ranges: [] };
+      return;
+    }
 
     try {
-      const ranges = findAnnotationRangesInEditor(editor, annotations);
-      highlightStateRef.current = {
-        ...highlightStateRef.current,
-        ranges,
-      };
+      const ranges = findAnnotationRangesInDoc(editor.state.doc, annotations);
+      highlightStateRef.current = { ...highlightStateRef.current, ranges };
       forceDecorationUpdate(editor);
     } catch {
       highlightStateRef.current = { ...highlightStateRef.current, ranges: [] };
@@ -111,10 +112,7 @@ export function DocumentViewer({
   }, [editor, annotations]);
 
   useEffect(() => {
-    highlightStateRef.current = {
-      ...highlightStateRef.current,
-      activeAnnotationId,
-    };
+    highlightStateRef.current = { ...highlightStateRef.current, activeAnnotationId };
     if (editor && !editor.isDestroyed) {
       forceDecorationUpdate(editor);
     }
@@ -139,8 +137,10 @@ export function DocumentViewer({
       }
 
       const docSize = editor.state.doc.content.size;
-      const textBefore = editor.state.doc.textBetween(Math.max(0, from - 30), from, " ");
-      const textAfter = editor.state.doc.textBetween(to, Math.min(docSize, to + 30), " ");
+      const prefixFrom = Math.max(1, from - 30);
+      const suffixTo = Math.min(docSize, to + 30);
+      const textBefore = editor.state.doc.textBetween(prefixFrom, from, " ");
+      const textAfter = editor.state.doc.textBetween(to, suffixTo, " ");
 
       setSelection({ text: selectedText, prefixContext: textBefore, suffixContext: textAfter });
     }
@@ -265,15 +265,15 @@ function forceDecorationUpdate(editor: NonNullable<ReturnType<typeof useEditor>>
   }
 }
 
-function findAnnotationRangesInEditor(
-  editor: NonNullable<ReturnType<typeof useEditor>>,
+function findAnnotationRangesInDoc(
+  doc: PmNode,
   annotations: DocumentAnnotation[],
 ): AnnotationRange[] {
   const ranges: AnnotationRange[] = [];
-  const doc = editor.state.doc;
+  const segments = extractTextSegments(doc);
 
   for (const annotation of annotations) {
-    const result = searchDocForText(doc, annotation.quoted_text, annotation.prefix_context);
+    const result = findTextInSegments(segments, annotation.quoted_text, annotation.prefix_context);
     if (result) {
       ranges.push({
         annotationId: annotation.id,
@@ -287,56 +287,60 @@ function findAnnotationRangesInEditor(
   return ranges;
 }
 
-function searchDocForText(
-  doc: { textContent: string; nodeSize: number },
-  target: string,
-  prefix: string,
-): { from: number; to: number } | null {
-  const fullText = (doc as { textContent: string }).textContent;
-  const withContext = prefix + target;
-  const contextIndex = fullText.indexOf(withContext);
-
-  if (contextIndex >= 0) {
-    const startInFullText = contextIndex + prefix.length;
-    const position = textOffsetToPmPos(doc, startInFullText);
-    if (position !== null) {
-      return { from: position, to: position + target.length };
-    }
-  }
-
-  const simpleIndex = fullText.indexOf(target);
-  if (simpleIndex >= 0) {
-    const position = textOffsetToPmPos(doc, simpleIndex);
-    if (position !== null) {
-      return { from: position, to: position + target.length };
-    }
-  }
-
-  return null;
+interface TextSegment {
+  text: string;
+  pmPos: number;
 }
 
-function textOffsetToPmPos(
-  doc: { textContent: string; nodeSize: number },
-  textOffset: number,
-): number | null {
-  let currentOffset = 0;
-  const pmDoc = doc as unknown as import("@tiptap/pm/model").Node;
+function extractTextSegments(doc: PmNode): TextSegment[] {
+  const segments: TextSegment[] = [];
 
-  let result: number | null = null;
-
-  pmDoc.descendants((node, pos) => {
-    if (result !== null) return false;
-
-    if (node.isText) {
-      const nodeText = node.text ?? "";
-      if (currentOffset + nodeText.length > textOffset) {
-        result = pos + (textOffset - currentOffset);
-        return false;
-      }
-      currentOffset += nodeText.length;
+  doc.descendants((node, pos) => {
+    if (node.isText && node.text) {
+      segments.push({ text: node.text, pmPos: pos });
     }
     return true;
   });
 
-  return result;
+  return segments;
+}
+
+function findTextInSegments(
+  segments: TextSegment[],
+  target: string,
+  prefix: string,
+): { from: number; to: number } | null {
+  const concatenated = segments.map((segment) => segment.text).join("");
+
+  const searchWithPrefix = prefix + target;
+  let textOffset = concatenated.indexOf(searchWithPrefix);
+  if (textOffset >= 0) {
+    textOffset += prefix.length;
+  } else {
+    textOffset = concatenated.indexOf(target);
+  }
+
+  if (textOffset < 0) return null;
+
+  const fromPos = textOffsetToPmPos(segments, textOffset);
+  const toPos = textOffsetToPmPos(segments, textOffset + target.length);
+
+  if (fromPos === null || toPos === null) return null;
+  return { from: fromPos, to: toPos };
+}
+
+function textOffsetToPmPos(segments: TextSegment[], textOffset: number): number | null {
+  let accumulated = 0;
+
+  for (const segment of segments) {
+    const segmentEnd = accumulated + segment.text.length;
+
+    if (textOffset <= segmentEnd) {
+      return segment.pmPos + (textOffset - accumulated);
+    }
+
+    accumulated = segmentEnd;
+  }
+
+  return null;
 }
