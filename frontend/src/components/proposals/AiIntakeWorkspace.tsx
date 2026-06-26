@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { ReviewTypeSelect } from "@/components/proposals/ReviewTypeSelect";
+import { AiReviewProgress } from "@/components/proposals/AiReviewProgress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -156,7 +157,7 @@ export function AiIntakeWorkspace({
   const [packageViewMode, setPackageViewMode] = useState<"preview" | "source">("preview");
   const [consentViewMode, setConsentViewMode] = useState<"preview" | "source">("preview");
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewPhase, setReviewPhase] = useState<"idle" | "compliance" | "done">("idle");
+  const [reviewPhase, setReviewPhase] = useState<"idle" | "synthesizing" | "consent" | "compliance" | "done">("idle");
   const [uploadChatOpen, setUploadChatOpen] = useState(false);
   const [uploadChatMessages, setUploadChatMessages] = useState<AiChatMessage[]>([]);
   const [uploadChatInput, setUploadChatInput] = useState("");
@@ -1159,6 +1160,7 @@ export function AiIntakeWorkspace({
     };
     setWs(baseWithPreference);
     setReviewBusy(true);
+    setReviewPhase("synthesizing");
     setIngestError(null);
     setContextWarning(null);
     navigateWorkspaceTab("context");
@@ -1207,6 +1209,7 @@ export function AiIntakeWorkspace({
         protocol: synData.protocol ?? next.protocol,
       };
       setWs(next);
+      setReviewPhase("consent");
 
       if (skipConsentGeneration) {
         next = {
@@ -1241,6 +1244,7 @@ export function AiIntakeWorkspace({
         setWs(next);
       }
 
+      setReviewPhase("compliance");
       const compRes = await fetch("/api/prototype/ai-intake/compliance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1278,6 +1282,7 @@ export function AiIntakeWorkspace({
       setIngestError(e instanceof Error ? e.message : "AI review failed.");
     } finally {
       setReviewBusy(false);
+      setReviewPhase("idle");
     }
   }
 
@@ -1530,7 +1535,15 @@ export function AiIntakeWorkspace({
       {complianceBusy || reviewBusy ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          {reviewBusy ? "Running review…" : "Analyzing against 45 CFR 46 heuristics…"}
+          {reviewBusy
+            ? reviewPhase === "synthesizing"
+              ? "Analyzing materials…"
+              : reviewPhase === "consent"
+                ? "Generating consent…"
+                : reviewPhase === "compliance"
+                  ? "Running regulatory review…"
+                  : "Running review…"
+            : "Analyzing against 45 CFR 46 heuristics…"}
         </div>
       ) : null}
       {ws.compliance_flags.length === 0 && !complianceBusy && !reviewBusy ? (
@@ -1811,20 +1824,7 @@ export function AiIntakeWorkspace({
   const uploadAiReviewSection = (
     <div className="space-y-4">
       {reviewBusy ? (
-        <div
-          className="flex flex-col items-center justify-center gap-4 rounded-xl border border-border/50 bg-muted/15 px-6 py-14 text-center"
-          role="status"
-          aria-live="polite"
-          aria-label="AI review in progress"
-        >
-          <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium text-foreground">AI review is generating</p>
-            <p className="mx-auto max-w-md text-xs leading-relaxed text-muted-foreground">
-              Processing your materials through the AI review pipeline. This may take a minute.
-            </p>
-          </div>
-        </div>
+        <AiReviewProgress phase={reviewPhase} />
       ) : protocolHasReviewContent(ws.protocol) ? (
         <div className="space-y-2">
           {PROTOCOL_SECTION_KEYS.map((k) => {

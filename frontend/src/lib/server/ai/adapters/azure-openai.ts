@@ -2,29 +2,31 @@ import type { ProviderAdapter, JsonSchemaProperty, ToolDefinition } from "../typ
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
-function getConfig(): { endpoint: string; apiKey: string; apiVersion: string } {
+export type AzureOpenAiConfig = {
+  endpoint: string;
+  apiKey: string;
+  apiVersion: string;
+};
+
+export function getDefaultAzureConfig(): AzureOpenAiConfig {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT?.trim();
   const apiKey = process.env.AZURE_OPENAI_API_KEY?.trim();
   if (!endpoint || !apiKey) {
     throw new Error("AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY must be set");
   }
-  // Foundry v1 chat completions — use `v1`, not dated preview strings like 2026-03-05.
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION?.trim() || "v1";
   return { endpoint, apiKey, apiVersion };
 }
 
-/** Resource root for Azure OpenAI / Foundry (not a project-scoped URL). */
-function normalizeEndpoint(raw: string): string {
-  let base = raw.replace(/\/+$/, "");
-  // e.g. …/services.ai.azure.com/api/projects/my-project → …/services.ai.azure.com
+function normalizeEndpoint(endpoint: string): string {
+  let base = endpoint.replace(/\/+$/, "");
   base = base.replace(/\/api\/projects\/[^/]+.*$/, "");
   return base;
 }
 
-function buildChatCompletionsUrl(): string {
-  const { endpoint, apiVersion } = getConfig();
-  const base = normalizeEndpoint(endpoint);
-  return `${base}/openai/v1/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+function buildChatCompletionsUrl(config: AzureOpenAiConfig): string {
+  const base = normalizeEndpoint(config.endpoint);
+  return `${base}/openai/v1/chat/completions?api-version=${encodeURIComponent(config.apiVersion)}`;
 }
 
 function toJsonSchema(property: JsonSchemaProperty): Record<string, unknown> {
@@ -36,7 +38,6 @@ function toJsonSchema(property: JsonSchemaProperty): Record<string, unknown> {
     result.properties = Object.fromEntries(
       Object.entries(property.properties).map(([key, value]) => [key, toJsonSchema(value)]),
     );
-    // Azure strict tools: every key in properties must appear in required.
     result.required = Object.keys(property.properties);
   } else if (property.required) {
     result.required = property.required;
@@ -85,14 +86,14 @@ type CompletionResponse = {
 };
 
 async function postCompletion(
+  config: AzureOpenAiConfig,
   deployment: string,
   body: Record<string, unknown>,
 ): Promise<CompletionResponse> {
-  const { apiKey } = getConfig();
-  const response = await fetch(buildChatCompletionsUrl(), {
+  const response = await fetch(buildChatCompletionsUrl(config), {
     method: "POST",
     headers: {
-      "api-key": apiKey,
+      "api-key": config.apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model: deployment, ...body }),
@@ -105,7 +106,13 @@ async function postCompletion(
   return json;
 }
 
-export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
+export function createAzureOpenAiAdapter(
+  deployment: string,
+  configOverride?: AzureOpenAiConfig,
+): ProviderAdapter {
+  const resolveConfig = () => configOverride ?? getDefaultAzureConfig();
+  const useReasoning = !deployment.startsWith("model-router");
+
   return {
     async generateWithForcedToolCall<T extends object>({
       systemInstruction,
@@ -114,10 +121,10 @@ export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
       tool,
       maxOutputTokens = 8192,
     }: Parameters<ProviderAdapter["generateWithForcedToolCall"]>[0]) {
-      const json = await postCompletion(deployment, {
+      const json = await postCompletion(resolveConfig(), deployment, {
         messages: toOpenAiMessages(systemInstruction, history, userText),
         max_completion_tokens: maxOutputTokens,
-        reasoning_effort: "medium",
+        ...(useReasoning && { reasoning_effort: "medium" as const }),
         tools: [toOpenAiTool(tool)],
         tool_choice: { type: "function", function: { name: tool.name } },
       });
@@ -135,14 +142,14 @@ export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
       temperature = 0.4,
       maxOutputTokens = 8192,
     }: Parameters<ProviderAdapter["generatePlainText"]>[0]) {
-      const json = await postCompletion(deployment, {
+      const json = await postCompletion(resolveConfig(), deployment, {
         messages: [
           { role: "system", content: systemInstruction },
           { role: "user", content: userText },
         ],
         temperature,
         max_completion_tokens: maxOutputTokens,
-        reasoning_effort: "medium",
+        ...(useReasoning && { reasoning_effort: "medium" as const }),
       });
 
       const text = json.choices?.[0]?.message?.content;
@@ -157,11 +164,11 @@ export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
       temperature = 0.35,
       maxOutputTokens = 4096,
     }: Parameters<ProviderAdapter["generateMultiTurnText"]>[0]) {
-      const json = await postCompletion(deployment, {
+      const json = await postCompletion(resolveConfig(), deployment, {
         messages: toOpenAiMessages(systemInstruction, history, userText),
         temperature,
         max_completion_tokens: maxOutputTokens,
-        reasoning_effort: "medium",
+        ...(useReasoning && { reasoning_effort: "medium" as const }),
       });
 
       const text = json.choices?.[0]?.message?.content;
@@ -176,11 +183,11 @@ export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
       temperature = 0.35,
       maxOutputTokens = 4096,
     }: Parameters<ProviderAdapter["generateMultiTurnTextStream"]>[0]) {
-      const { apiKey } = getConfig();
-      const response = await fetch(buildChatCompletionsUrl(), {
+      const config = resolveConfig();
+      const response = await fetch(buildChatCompletionsUrl(config), {
         method: "POST",
         headers: {
-          "api-key": apiKey,
+          "api-key": config.apiKey,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -188,7 +195,7 @@ export function createAzureOpenAiAdapter(deployment: string): ProviderAdapter {
           messages: toOpenAiMessages(systemInstruction, history, userText),
           temperature,
           max_completion_tokens: maxOutputTokens,
-          reasoning_effort: "medium",
+          ...(useReasoning && { reasoning_effort: "medium" as const }),
           stream: true,
         }),
       });

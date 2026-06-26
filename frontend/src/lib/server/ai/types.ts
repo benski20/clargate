@@ -30,7 +30,7 @@ export type AiTask =
   | "upload-assistant"
   | "upload-assistant-stream";
 
-export type ProviderName = "gemini" | "azure-openai" | "openai";
+export type ProviderName = "gemini" | "azure-openai" | "azure-arbiter" | "azure-foundry" | "openai";
 
 export type ModelAssignment = {
   provider: ProviderName;

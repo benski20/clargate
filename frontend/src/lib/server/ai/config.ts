@@ -1,24 +1,24 @@
 import type { AiTask, ModelAssignment, ProviderName } from "./types";
 
 const DEFAULT_ROUTING: Record<AiTask, ModelAssignment> = {
-  "category-prediction":   { provider: "azure-openai", model: "gpt-5.4" },
+  "category-prediction":   { provider: "azure-arbiter", model: "gpt-5.4-pro" },
   "compliance-flags":      { provider: "azure-openai", model: "gpt-5.4" },
   "board-reviewer":        { provider: "azure-openai", model: "gpt-5.4" },
   "board-synthesis":       { provider: "azure-openai", model: "gpt-5.4" },
   "admin-summary":         { provider: "azure-openai", model: "gpt-5.4" },
 
-  "intake-chat":           { provider: "gemini", model: "" },
-  "intake-chat-stream":    { provider: "gemini", model: "" },
-  "upload-assistant":      { provider: "gemini", model: "" },
-  "upload-assistant-stream": { provider: "gemini", model: "" },
+  "intake-chat":           { provider: "azure-foundry", model: "model-router" },
+  "intake-chat-stream":    { provider: "azure-foundry", model: "model-router" },
+  "upload-assistant":      { provider: "azure-foundry", model: "model-router" },
+  "upload-assistant-stream": { provider: "azure-foundry", model: "model-router" },
   "consent-generation":    { provider: "azure-openai", model: "gpt-5.4" },
   "protocol-synthesis":    { provider: "azure-openai", model: "gpt-5.4" },
   "revision-suggestions":  { provider: "azure-openai", model: "gpt-5.4" },
   "revision-letter":       { provider: "azure-openai", model: "gpt-5.4" },
-  "file-extraction":       { provider: "gemini", model: "" },
+  "file-extraction":       { provider: "azure-openai", model: "gpt-5.4" },
 };
 
-const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "openai"]);
+const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "azure-arbiter", "azure-foundry", "openai"]);
 
 function parseOverride(value: string): ModelAssignment | undefined {
   const separatorIndex = value.indexOf(":");
@@ -43,5 +43,21 @@ export function isAzureOpenAiConfigured(): boolean {
   return Boolean(
     process.env.AZURE_OPENAI_API_KEY?.trim() &&
     process.env.AZURE_OPENAI_ENDPOINT?.trim(),
+  );
+}
+
+export function isAzureFoundryConfigured(): boolean {
+  return Boolean(
+    process.env.AZURE_ARBITER_API_KEY?.trim() &&
+    process.env.AZURE_ARBITER_ENDPOINT?.trim(),
+  );
+}
+
+export function isAzureArbiterConfigured(): boolean {
+  return Boolean(
+    process.env.AZURE_ARBITER_ENDPOINT?.trim() &&
+    process.env.AZURE_ARBITER_TENANT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_SECRET?.trim(),
   );
 }
