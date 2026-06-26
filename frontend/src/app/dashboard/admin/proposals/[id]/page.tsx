@@ -73,6 +73,7 @@ import type {
 import { getProposalReviewTypeLabel } from "@/lib/review-types";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
 import { DocumentViewerDialog } from "@/components/documents/DocumentViewerDialog";
+import { AnnotationCountBadge } from "@/components/documents/AnnotationCountBadge";
 import { markdownToPlainText } from "@/lib/format-ai-review-text";
 import type { SimulatedBoardReviewResult } from "@/lib/simulated-board-review-types";
 
@@ -932,7 +933,11 @@ function AdminProposalDetailInner() {
                 <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/10 px-3 py-2.5">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">Finalized submission document</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      Finalized submission document
+                      {docxDocument && <AnnotationCountBadge proposalId={proposalId} documentId={docxDocument.id} />}
+                      {pdfDocument && <AnnotationCountBadge proposalId={proposalId} documentId={pdfDocument.id} />}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
                     </p>
@@ -997,7 +1002,10 @@ function AdminProposalDetailInner() {
                       className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/10 px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">{doc.file_name}</p>
+                        <p className="text-sm font-medium flex items-center gap-2">
+                          {doc.file_name}
+                          <AnnotationCountBadge proposalId={proposalId} documentId={doc.id} />
+                        </p>
                         {extraMaterialDescriptionByDocId.get(doc.id) ? (
                           <p className="text-xs text-muted-foreground">
                             {extraMaterialDescriptionByDocId.get(doc.id)}

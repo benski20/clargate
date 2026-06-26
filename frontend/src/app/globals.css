@@ -289,10 +289,11 @@
 }
 
 .annotation-highlight {
-  background-color: rgba(250, 204, 21, 0.3);
-  border-bottom: 2px solid rgba(250, 204, 21, 0.7);
+  background-color: rgba(250, 204, 21, 0.35);
+  border-bottom: 2px solid rgba(250, 204, 21, 0.6);
+  border-radius: 2px;
   cursor: pointer;
-  transition: background-color 0.15s;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .annotation-highlight:hover {
@@ -300,13 +301,17 @@
 }
 
 .annotation-highlight-active {
-  background-color: rgba(250, 204, 21, 0.55);
-  border-bottom-color: rgba(250, 204, 21, 1);
+  background-color: rgba(250, 180, 0, 0.5);
+  border-bottom-color: rgba(220, 160, 0, 1);
+  box-shadow: 0 0 0 1px rgba(220, 160, 0, 0.3);
 }
 
 .annotation-highlight-resolved {
   background-color: rgba(134, 239, 172, 0.2);
-  border-bottom: 2px solid rgba(134, 239, 172, 0.5);
+  border-bottom: 2px solid rgba(134, 239, 172, 0.4);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s;
 }
 
 .annotation-highlight-resolved:hover {

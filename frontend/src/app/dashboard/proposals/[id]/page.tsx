@@ -27,6 +27,7 @@ import { MessagesThread } from "@/components/messages/MessagesThread";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
 import { DocumentViewerDialog } from "@/components/documents/DocumentViewerDialog";
+import { AnnotationCountBadge } from "@/components/documents/AnnotationCountBadge";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import {
@@ -509,8 +510,10 @@ function ProposalDetailInner() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-medium flex items-center gap-2">
                               {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
+                              {docxDocument && <AnnotationCountBadge proposalId={proposalId} documentId={docxDocument.id} />}
+                              {pdfDocument && <AnnotationCountBadge proposalId={proposalId} documentId={pdfDocument.id} />}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Finalized submission document ·{" "}
@@ -571,7 +574,10 @@ function ProposalDetailInner() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="text-sm font-medium">{doc.file_name}</p>
+                            <p className="text-sm font-medium flex items-center gap-2">
+                              {doc.file_name}
+                              <AnnotationCountBadge proposalId={proposalId} documentId={doc.id} />
+                            </p>
                             {extraMaterialDescriptionByDocId.get(doc.id) ? (
                               <p className="text-xs text-muted-foreground">
                                 {extraMaterialDescriptionByDocId.get(doc.id)}
