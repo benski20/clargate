@@ -7,6 +7,8 @@ import { AnnotationSidebar } from "./AnnotationSidebar";
 import { CommentForm } from "./CommentForm";
 import { DocxRenderer } from "./DocxRenderer";
 import type { DocxRendererHandle } from "./DocxRenderer";
+import { PdfRenderer } from "./PdfRenderer";
+import type { PdfRendererHandle } from "./PdfRenderer";
 import { cn } from "@/lib/utils";
 
 interface SelectionInfo {
@@ -16,8 +18,8 @@ interface SelectionInfo {
 }
 
 interface RenderData {
-  html: string | null;
   docxBase64: string | null;
+  pdfBase64: string | null;
   fileType: string;
 }
 
@@ -38,16 +40,19 @@ export function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
-  const [docxReady, setDocxReady] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const [rendererReady, setRendererReady] = useState(false);
   const docxRef = useRef<DocxRendererHandle>(null);
+  const pdfRef = useRef<PdfRendererHandle>(null);
 
   const getHighlightContainer = useCallback((): HTMLElement | null => {
     if (renderData?.docxBase64) {
       return docxRef.current?.getContainer() ?? null;
     }
-    return contentRef.current;
-  }, [renderData?.docxBase64]);
+    if (renderData?.pdfBase64) {
+      return pdfRef.current?.getContainer() ?? null;
+    }
+    return null;
+  }, [renderData?.docxBase64, renderData?.pdfBase64]);
 
   const fetchAnnotations = useCallback(async () => {
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`);
@@ -61,7 +66,7 @@ export function DocumentViewer({
     async function load() {
       setLoading(true);
       setError(null);
-      setDocxReady(false);
+      setRendererReady(false);
       try {
         const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/render`);
         if (!response.ok) {
@@ -71,8 +76,8 @@ export function DocumentViewer({
         }
         const data = await response.json();
         setRenderData({
-          html: data.html ?? null,
           docxBase64: data.docx_base64 ?? null,
+          pdfBase64: data.pdf_base64 ?? null,
           fileType: data.file_type,
         });
         await fetchAnnotations();
@@ -87,17 +92,14 @@ export function DocumentViewer({
 
   useEffect(() => {
     const container = getHighlightContainer();
-    if (!container) return;
-
-    const isDocx = !!renderData?.docxBase64;
-    if (isDocx && !docxReady) return;
+    if (!container || !rendererReady) return;
 
     const timer = setTimeout(() => {
       applyHighlights(container, annotations, activeAnnotationId);
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [renderData, annotations, activeAnnotationId, docxReady, getHighlightContainer]);
+  }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
     const container = getHighlightContainer();
@@ -139,7 +141,7 @@ export function DocumentViewer({
       container.removeEventListener("mouseup", handleMouseUp);
       container.removeEventListener("click", handleHighlightClick);
     };
-  }, [renderData, docxReady, getHighlightContainer]);
+  }, [renderData, rendererReady, getHighlightContainer]);
 
   async function handleCreateAnnotation(body: string) {
     if (!selection) return;
@@ -197,8 +199,8 @@ export function DocumentViewer({
     }
   }
 
-  const handleDocxReady = useCallback(() => {
-    setDocxReady(true);
+  const handleRendererReady = useCallback(() => {
+    setRendererReady(true);
   }, []);
 
   if (loading) {
@@ -210,27 +212,29 @@ export function DocumentViewer({
   }
 
   const isDocx = !!renderData?.docxBase64;
+  const isPdf = !!renderData?.pdfBase64;
 
   return (
     <div className="flex h-full min-h-0">
       <div className="min-w-0 flex-1 overflow-y-auto relative">
-        {isDocx ? (
+        {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer
               ref={docxRef}
               base64={renderData!.docxBase64!}
-              onReady={handleDocxReady}
+              onReady={handleRendererReady}
             />
           </div>
-        ) : (
-          <div
-            ref={contentRef}
-            className={cn(
-              "document-viewer-content max-w-none px-6 py-4",
-              "text-[0.9375rem] leading-relaxed text-foreground",
-            )}
-            dangerouslySetInnerHTML={{ __html: renderData?.html ?? "" }}
-          />
+        )}
+
+        {isPdf && (
+          <div className={cn("pdf-viewer-container px-4 py-4")}>
+            <PdfRenderer
+              ref={pdfRef}
+              base64={renderData!.pdfBase64!}
+              onReady={handleRendererReady}
+            />
+          </div>
         )}
 
         {canAnnotate && selection && (

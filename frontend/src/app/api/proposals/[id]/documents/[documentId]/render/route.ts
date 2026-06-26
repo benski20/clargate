@@ -3,8 +3,6 @@ import { createServiceClient } from "@/lib/supabase-service";
 import { requireProposalDocumentAccess } from "@/lib/require-proposal-access-server";
 import { getS3Client, getBucketName } from "@/lib/s3-server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { convertPdfToHtml } from "@/lib/server/document-to-html";
-
 export const runtime = "nodejs";
 
 export async function GET(
@@ -47,13 +45,13 @@ export async function GET(
     const fileType = document.file_type as string;
     const isDocx = fileType.includes("word") || fileType.includes("docx");
 
+    const base64 = buffer.toString("base64");
+
     if (isDocx) {
-      const base64 = buffer.toString("base64");
       return NextResponse.json({ docx_base64: base64, file_type: fileType });
     }
 
-    const html = await convertPdfToHtml(buffer);
-    return NextResponse.json({ html, file_type: fileType });
+    return NextResponse.json({ pdf_base64: base64, file_type: fileType });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Render failed";
     if (message.includes("Missing ")) {
