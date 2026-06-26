@@ -1,17 +1,12 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-const DocumentViewer = dynamic(
-  () => import("./DocumentViewer").then((mod) => ({ default: mod.DocumentViewer })),
-  { ssr: false, loading: () => <div className="flex items-center justify-center h-64 text-muted-foreground">Loading viewer…</div> },
-);
+import { DocumentViewer } from "./DocumentViewer";
 
 export function DocumentViewerDialog({
   open,
