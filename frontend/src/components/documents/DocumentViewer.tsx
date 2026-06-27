@@ -100,32 +100,49 @@ export function DocumentViewer({
     return () => clearTimeout(timer);
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
-  function handleMouseUp() {
-    const nativeSelection = window.getSelection();
-    if (!nativeSelection || nativeSelection.isCollapsed) {
-      setSelection(null);
-      return;
+  useEffect(() => {
+    function handleMouseUp() {
+      const nativeSelection = window.getSelection();
+      if (!nativeSelection || nativeSelection.isCollapsed || !nativeSelection.anchorNode) {
+        setSelection(null);
+        return;
+      }
+
+      const anchor = nativeSelection.anchorNode instanceof Element
+        ? nativeSelection.anchorNode
+        : nativeSelection.anchorNode.parentElement;
+      if (!anchor) return;
+
+      const inViewer = anchor.closest(".docx-viewer-container, .pdf-viewer-container");
+      if (!inViewer) return;
+
+      const selectedText = nativeSelection.toString();
+      if (!selectedText.trim()) {
+        setSelection(null);
+        return;
+      }
+
+      setSelection({ text: selectedText, prefixContext: "", suffixContext: "" });
     }
 
-    const selectedText = nativeSelection.toString();
-    if (!selectedText.trim()) {
-      setSelection(null);
-      return;
-    }
-
-    setSelection({ text: selectedText, prefixContext: "", suffixContext: "" });
-  }
-
-  function handleClick(event: React.MouseEvent) {
-    const target = event.target as HTMLElement;
-    const mark = target.closest("mark[data-annotation-id]");
-    if (mark) {
-      const annotationId = mark.getAttribute("data-annotation-id");
-      if (annotationId) {
-        setActiveAnnotationId(annotationId);
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      const mark = target.closest("mark[data-annotation-id]");
+      if (mark) {
+        const annotationId = mark.getAttribute("data-annotation-id");
+        if (annotationId) {
+          setActiveAnnotationId(annotationId);
+        }
       }
     }
-  }
+
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("click", handleClick);
+    return () => {
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("click", handleClick);
+    };
+  }, []);
 
   async function handleCreateAnnotation(body: string) {
     if (!selection) return;
@@ -200,11 +217,7 @@ export function DocumentViewer({
 
   return (
     <div className="flex h-full min-h-0">
-      <div
-        className="min-w-0 flex-1 overflow-y-auto relative"
-        onMouseUp={handleMouseUp}
-        onClick={handleClick}
-      >
+      <div className="min-w-0 flex-1 overflow-y-auto relative">
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer
