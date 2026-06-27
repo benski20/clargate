@@ -4,18 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DocumentAnnotation } from "@/lib/types";
 import { applyHighlights } from "./highlight-annotations";
 import { AnnotationSidebar } from "./AnnotationSidebar";
-import { CommentForm } from "./CommentForm";
 import { DocxRenderer } from "./DocxRenderer";
 import type { DocxRendererHandle } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import type { PdfRendererHandle } from "./PdfRenderer";
-import { MessageSquarePlus } from "lucide-react";
-
-interface SelectionInfo {
-  text: string;
-  floatTop: number;
-  floatRight: number;
-}
 
 interface RenderData {
   docxBase64: string | null;
@@ -39,14 +31,12 @@ export function DocumentViewer({
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingSelection, setPendingSelection] = useState<SelectionInfo | null>(null);
-  const [activeComment, setActiveComment] = useState<string | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
-  const [showManualForm, setShowManualForm] = useState(false);
+  const [detectedSelection, setDetectedSelection] = useState("");
+  const [debugInfo, setDebugInfo] = useState("Waiting…");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
-  const pollingRef = useRef<number>(0);
 
   const getHighlightContainer = useCallback((): HTMLElement | null => {
     if (renderData?.docxBase64) {
@@ -106,66 +96,42 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
-    if (!canAnnotate) return;
-
-    function pollSelection() {
+    const interval = setInterval(() => {
       const sel = window.getSelection();
-      const scrollContainer = scrollContainerRef.current;
+      const sc = scrollContainerRef.current;
 
-      if (!sel || sel.isCollapsed || !sel.anchorNode || !scrollContainer) {
-        pollingRef.current = requestAnimationFrame(pollSelection);
+      if (!sel || !sc) {
+        setDebugInfo(`sel=${!!sel} sc=${!!sc}`);
         return;
       }
 
-      const text = sel.toString().trim();
-      if (!text) {
-        pollingRef.current = requestAnimationFrame(pollSelection);
+      if (sel.isCollapsed || !sel.anchorNode) {
+        setDebugInfo(`collapsed=${sel.isCollapsed} anchor=${!!sel.anchorNode}`);
         return;
       }
 
+      const text = sel.toString();
       const anchor = sel.anchorNode instanceof Element
         ? sel.anchorNode
         : sel.anchorNode.parentElement;
+      const contained = anchor ? sc.contains(anchor) : false;
 
-      if (!anchor || !scrollContainer.contains(anchor)) {
-        pollingRef.current = requestAnimationFrame(pollSelection);
-        return;
+      setDebugInfo(`text="${text.substring(0, 30)}" contained=${contained}`);
+
+      if (text.trim() && contained) {
+        setDetectedSelection(text);
       }
+    }, 500);
 
-      const range = sel.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const containerRect = scrollContainer.getBoundingClientRect();
+    return () => clearInterval(interval);
+  }, [loading]);
 
-      const floatTop = rect.top - containerRect.top + scrollContainer.scrollTop;
-      const floatRight = 8;
-
-      setPendingSelection({ text, floatTop, floatRight });
-
-      pollingRef.current = requestAnimationFrame(pollSelection);
-    }
-
-    pollingRef.current = requestAnimationFrame(pollSelection);
-
-    return () => {
-      cancelAnimationFrame(pollingRef.current);
-    };
-  }, [canAnnotate, loading]);
-
-  function handleCommentButtonClick() {
-    if (!pendingSelection) return;
-    setActiveComment(pendingSelection.text);
-    window.getSelection()?.removeAllRanges();
-    setPendingSelection(null);
-  }
-
-  async function handleCreateAnnotation(body: string, quotedText?: string) {
-    const quote = quotedText ?? activeComment ?? "";
-
+  async function handleCreateAnnotation(body: string, quotedText: string) {
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        quoted_text: quote,
+        quoted_text: quotedText,
         prefix_context: "",
         suffix_context: "",
         body,
@@ -173,8 +139,7 @@ export function DocumentViewer({
     });
 
     if (response.ok) {
-      setActiveComment(null);
-      setShowManualForm(false);
+      setDetectedSelection("");
       await fetchAnnotations();
     }
   }
@@ -236,6 +201,10 @@ export function DocumentViewer({
         ref={scrollContainerRef}
         className="min-w-0 flex-1 overflow-y-auto relative"
       >
+        <div className="sticky top-0 z-30 bg-amber-100 text-amber-900 text-xs px-3 py-1 font-mono">
+          DEBUG: {debugInfo}
+        </div>
+
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer
@@ -255,36 +224,6 @@ export function DocumentViewer({
             />
           </div>
         )}
-
-        {canAnnotate && pendingSelection && !activeComment && (
-          <button
-            type="button"
-            className="absolute z-20 flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-primary/90 transition-colors"
-            style={{
-              top: pendingSelection.floatTop,
-              right: pendingSelection.floatRight,
-            }}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleCommentButtonClick}
-          >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            Comment
-          </button>
-        )}
-
-        {canAnnotate && activeComment && (
-          <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 z-10">
-            <p className="text-xs text-muted-foreground mb-2 line-clamp-1">
-              Commenting on: &ldquo;{activeComment}&rdquo;
-            </p>
-            <CommentForm
-              onSubmit={(body) => handleCreateAnnotation(body)}
-              onCancel={() => setActiveComment(null)}
-              placeholder="Add your comment…"
-              submitLabel="Add comment"
-            />
-          </div>
-        )}
       </div>
 
       <div className="w-80 shrink-0 border-l bg-background">
@@ -294,10 +233,9 @@ export function DocumentViewer({
           currentUserId={currentUserId}
           canResolve={canAnnotate}
           canAnnotate={canAnnotate}
-          showManualForm={showManualForm}
-          onAddComment={() => setShowManualForm(true)}
-          onCancelManualForm={() => setShowManualForm(false)}
-          onSubmitManualComment={handleCreateAnnotation}
+          detectedSelection={detectedSelection}
+          onClearDetectedSelection={() => setDetectedSelection("")}
+          onSubmitComment={handleCreateAnnotation}
           onAnnotationClick={handleAnnotationClick}
           onReply={handleReply}
           onResolve={handleResolve}

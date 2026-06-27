@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { DocumentAnnotation } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { CommentForm } from "./CommentForm";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
 
 export function AnnotationSidebar({
   annotations,
@@ -13,10 +12,9 @@ export function AnnotationSidebar({
   currentUserId,
   canResolve,
   canAnnotate,
-  showManualForm,
-  onAddComment,
-  onCancelManualForm,
-  onSubmitManualComment,
+  detectedSelection,
+  onClearDetectedSelection,
+  onSubmitComment,
   onAnnotationClick,
   onReply,
   onResolve,
@@ -26,10 +24,9 @@ export function AnnotationSidebar({
   currentUserId: string;
   canResolve: boolean;
   canAnnotate: boolean;
-  showManualForm: boolean;
-  onAddComment: () => void;
-  onCancelManualForm: () => void;
-  onSubmitManualComment: (body: string, quotedText: string) => Promise<void>;
+  detectedSelection: string;
+  onClearDetectedSelection: () => void;
+  onSubmitComment: (body: string, quotedText: string) => Promise<void>;
   onAnnotationClick: (annotationId: string) => void;
   onReply: (annotationId: string, body: string) => Promise<void>;
   onResolve: (annotationId: string, resolved: boolean) => Promise<void>;
@@ -55,22 +52,11 @@ export function AnnotationSidebar({
 
       {canAnnotate && (
         <div className="px-4 py-3 border-b">
-          {showManualForm ? (
-            <ManualCommentForm
-              onSubmit={onSubmitManualComment}
-              onCancel={onCancelManualForm}
-            />
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs gap-1.5"
-              onClick={onAddComment}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Comment
-            </Button>
-          )}
+          <NewCommentForm
+            detectedSelection={detectedSelection}
+            onClearDetectedSelection={onClearDetectedSelection}
+            onSubmit={onSubmitComment}
+          />
         </div>
       )}
 
@@ -104,33 +90,60 @@ export function AnnotationSidebar({
   );
 }
 
-function ManualCommentForm({
+function NewCommentForm({
+  detectedSelection,
+  onClearDetectedSelection,
   onSubmit,
-  onCancel,
 }: {
+  detectedSelection: string;
+  onClearDetectedSelection: () => void;
   onSubmit: (body: string, quotedText: string) => Promise<void>;
-  onCancel: () => void;
 }) {
   const [quotedText, setQuotedText] = useState("");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (detectedSelection) {
+      setQuotedText(detectedSelection);
+      setExpanded(true);
+      onClearDetectedSelection();
+    }
+  }, [detectedSelection, onClearDetectedSelection]);
 
   async function handleSubmit() {
     if (!body.trim()) return;
     setSubmitting(true);
     try {
       await onSubmit(body.trim(), quotedText.trim());
+      setBody("");
+      setQuotedText("");
+      setExpanded(false);
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="w-full text-left text-sm text-muted-foreground border rounded-md px-3 py-2 hover:border-foreground/30 transition-colors"
+      >
+        Add a comment…
+      </button>
+    );
+  }
+
   return (
     <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">New comment</p>
       <textarea
         value={quotedText}
         onChange={(event) => setQuotedText(event.target.value)}
-        placeholder="Paste or type the referenced text (optional)"
+        placeholder="Referenced text (select in doc or type here)"
         className="w-full resize-none rounded border bg-muted/30 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
         rows={2}
       />
@@ -143,7 +156,16 @@ function ManualCommentForm({
         autoFocus
       />
       <div className="flex gap-2 justify-end">
-        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={onCancel}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs h-7"
+          onClick={() => {
+            setExpanded(false);
+            setBody("");
+            setQuotedText("");
+          }}
+        >
           Cancel
         </Button>
         <Button
