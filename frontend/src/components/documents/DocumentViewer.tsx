@@ -141,7 +141,7 @@ export function DocumentViewer({
       scrollContainer.removeEventListener("mouseup", handleMouseUp);
       scrollContainer.removeEventListener("click", handleHighlightClick);
     };
-  }, []);
+  }, [loading]);
 
   async function handleCreateAnnotation(body: string) {
     if (!selection) return;
