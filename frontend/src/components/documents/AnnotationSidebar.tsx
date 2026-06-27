@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { DocumentAnnotation } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { CommentForm } from "./CommentForm";
@@ -33,12 +33,43 @@ export function AnnotationSidebar({
 }) {
   const [showResolved, setShowResolved] = useState(false);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [commentQuote, setCommentQuote] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const showCommentForm = !!commentQuote;
+
+  useEffect(() => {
+    if (detectedSelection && canAnnotate) {
+      setCommentQuote(detectedSelection);
+      onClearDetectedSelection();
+      setTimeout(() => bodyRef.current?.focus(), 50);
+    }
+  }, [detectedSelection, canAnnotate, onClearDetectedSelection]);
+
+  async function handleSubmit() {
+    if (!commentBody.trim()) return;
+    setSubmitting(true);
+    try {
+      await onSubmitComment(commentBody.trim(), commentQuote.trim());
+      setCommentBody("");
+      setCommentQuote("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleCancel() {
+    setCommentBody("");
+    setCommentQuote("");
+  }
 
   const visible = showResolved ? annotations : annotations.filter((annotation) => !annotation.is_resolved);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
         <h3 className="text-sm font-semibold">Comments ({annotations.length})</h3>
         <Button
           variant="ghost"
@@ -50,133 +81,73 @@ export function AnnotationSidebar({
         </Button>
       </div>
 
-      {canAnnotate && (
-        <div className="px-4 py-3 border-b">
-          <NewCommentForm
-            detectedSelection={detectedSelection}
-            onClearDetectedSelection={onClearDetectedSelection}
-            onSubmit={onSubmitComment}
-          />
+      {canAnnotate && showCommentForm && (
+        <div className="flex-1 flex flex-col min-h-0 border-b">
+          <div className="px-4 pt-4 pb-2 shrink-0">
+            <p className="text-xs font-medium text-muted-foreground mb-2">New comment</p>
+            <blockquote className="text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2 border-l-2 border-primary/40 line-clamp-4">
+              &ldquo;{commentQuote}&rdquo;
+            </blockquote>
+          </div>
+          <div className="flex-1 px-4 py-2 min-h-0 flex flex-col">
+            <textarea
+              ref={bodyRef}
+              value={commentBody}
+              onChange={(event) => setCommentBody(event.target.value)}
+              placeholder="Your comment…"
+              className="flex-1 w-full resize-none rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px]"
+            />
+          </div>
+          <div className="flex gap-2 justify-end px-4 pb-4 shrink-0">
+            <Button variant="ghost" size="sm" className="text-xs" onClick={handleCancel}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs"
+              onClick={handleSubmit}
+              disabled={!commentBody.trim() || submitting}
+            >
+              Add comment
+            </Button>
+          </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
-        {visible.length === 0 && (
-          <p className="text-sm text-muted-foreground px-4 py-6 text-center">
-            {annotations.length > 0 ? "All comments resolved" : "No comments yet"}
-          </p>
-        )}
+      {!showCommentForm && (
+        <div className="flex-1 overflow-y-auto">
+          {canAnnotate && (
+            <p className="text-xs text-muted-foreground px-4 py-3 border-b">
+              Select text in the document to add a comment
+            </p>
+          )}
 
-        {visible.map((annotation) => (
-          <AnnotationCard
-            key={annotation.id}
-            annotation={annotation}
-            isActive={annotation.id === activeAnnotationId}
-            currentUserId={currentUserId}
-            canResolve={canResolve}
-            isReplying={replyingTo === annotation.id}
-            onClick={() => onAnnotationClick(annotation.id)}
-            onStartReply={() => setReplyingTo(annotation.id)}
-            onCancelReply={() => setReplyingTo(null)}
-            onReply={async (body) => {
-              await onReply(annotation.id, body);
-              setReplyingTo(null);
-            }}
-            onResolve={(resolved) => onResolve(annotation.id, resolved)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+          {visible.length === 0 && (
+            <p className="text-sm text-muted-foreground px-4 py-6 text-center">
+              {annotations.length > 0 ? "All comments resolved" : "No comments yet"}
+            </p>
+          )}
 
-function NewCommentForm({
-  detectedSelection,
-  onClearDetectedSelection,
-  onSubmit,
-}: {
-  detectedSelection: string;
-  onClearDetectedSelection: () => void;
-  onSubmit: (body: string, quotedText: string) => Promise<void>;
-}) {
-  const [quotedText, setQuotedText] = useState("");
-  const [body, setBody] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    if (detectedSelection) {
-      setQuotedText(detectedSelection);
-      setExpanded(true);
-      onClearDetectedSelection();
-    }
-  }, [detectedSelection, onClearDetectedSelection]);
-
-  async function handleSubmit() {
-    if (!body.trim()) return;
-    setSubmitting(true);
-    try {
-      await onSubmit(body.trim(), quotedText.trim());
-      setBody("");
-      setQuotedText("");
-      setExpanded(false);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (!expanded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="w-full text-left text-sm text-muted-foreground border rounded-md px-3 py-2 hover:border-foreground/30 transition-colors"
-      >
-        Add a comment…
-      </button>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">New comment</p>
-      <textarea
-        value={quotedText}
-        onChange={(event) => setQuotedText(event.target.value)}
-        placeholder="Referenced text (select in doc or type here)"
-        className="w-full resize-none rounded border bg-muted/30 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-        rows={2}
-      />
-      <textarea
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
-        placeholder="Your comment…"
-        className="w-full resize-none rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        rows={3}
-        autoFocus
-      />
-      <div className="flex gap-2 justify-end">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs h-7"
-          onClick={() => {
-            setExpanded(false);
-            setBody("");
-            setQuotedText("");
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          className="text-xs h-7"
-          onClick={handleSubmit}
-          disabled={!body.trim() || submitting}
-        >
-          Add comment
-        </Button>
-      </div>
+          {visible.map((annotation) => (
+            <AnnotationCard
+              key={annotation.id}
+              annotation={annotation}
+              isActive={annotation.id === activeAnnotationId}
+              currentUserId={currentUserId}
+              canResolve={canResolve}
+              isReplying={replyingTo === annotation.id}
+              onClick={() => onAnnotationClick(annotation.id)}
+              onStartReply={() => setReplyingTo(annotation.id)}
+              onCancelReply={() => setReplyingTo(null)}
+              onReply={async (body) => {
+                await onReply(annotation.id, body);
+                setReplyingTo(null);
+              }}
+              onResolve={(resolved) => onResolve(annotation.id, resolved)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

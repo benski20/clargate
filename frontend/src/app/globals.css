@@ -403,6 +403,16 @@
 .pdf-viewer-container .textLayer {
   user-select: text;
 }
+.pdf-viewer-container .textLayer :is(span, br) {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  -webkit-text-stroke-width: 0 !important;
+}
+.pdf-viewer-container .textLayer ::selection {
+  background: rgba(59, 130, 246, 0.25);
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
 .docx-viewer-container {
   user-select: text;
 }
