@@ -95,24 +95,27 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const sel = window.getSelection();
-      const sc = scrollContainerRef.current;
+    function handleMouseUp() {
+      setTimeout(() => {
+        const sel = window.getSelection();
+        const sc = scrollContainerRef.current;
 
-      if (!sel || !sc || sel.isCollapsed || !sel.anchorNode) return;
+        if (!sel || !sc || sel.isCollapsed || !sel.anchorNode) return;
 
-      const text = sel.toString();
-      const anchor = sel.anchorNode instanceof Element
-        ? sel.anchorNode
-        : sel.anchorNode.parentElement;
-      const contained = anchor ? sc.contains(anchor) : false;
+        const text = sel.toString();
+        const anchor = sel.anchorNode instanceof Element
+          ? sel.anchorNode
+          : sel.anchorNode.parentElement;
+        const contained = anchor ? sc.contains(anchor) : false;
 
-      if (text.trim() && contained) {
-        setDetectedSelection(text);
-      }
-    }, 500);
+        if (text.trim() && contained) {
+          setDetectedSelection(text);
+        }
+      }, 10);
+    }
 
-    return () => clearInterval(interval);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
   }, [loading]);
 
   async function handleCreateAnnotation(body: string, quotedText: string) {
