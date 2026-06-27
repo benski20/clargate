@@ -96,8 +96,8 @@ export async function POST(
     body: string;
   };
 
-  if (!quoted_text || !commentBody) {
-    return NextResponse.json({ error: "quoted_text and body are required" }, { status: 400 });
+  if (!commentBody) {
+    return NextResponse.json({ error: "body is required" }, { status: 400 });
   }
 
   const svc = createServiceClient();

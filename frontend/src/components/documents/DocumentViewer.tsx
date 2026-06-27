@@ -40,8 +40,10 @@ export function DocumentViewer({
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
+  const viewerIdRef = useRef(`viewer-${documentId}`);
 
   const getHighlightContainer = useCallback((): HTMLElement | null => {
     if (renderData?.docxBase64) {
@@ -101,28 +103,31 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
-    function handleMouseUp() {
-      const nativeSelection = window.getSelection();
-      if (!nativeSelection || nativeSelection.isCollapsed || !nativeSelection.anchorNode) {
-        setSelection(null);
-        return;
-      }
+    const viewerId = viewerIdRef.current;
 
-      const anchor = nativeSelection.anchorNode instanceof Element
-        ? nativeSelection.anchorNode
-        : nativeSelection.anchorNode.parentElement;
-      if (!anchor) return;
+    let debounceTimer: ReturnType<typeof setTimeout>;
 
-      const inViewer = anchor.closest(".docx-viewer-container, .pdf-viewer-container");
-      if (!inViewer) return;
+    function handleSelectionChange() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.anchorNode) {
+          return;
+        }
 
-      const selectedText = nativeSelection.toString();
-      if (!selectedText.trim()) {
-        setSelection(null);
-        return;
-      }
+        const anchor = sel.anchorNode instanceof Element
+          ? sel.anchorNode
+          : sel.anchorNode.parentElement;
+        if (!anchor) return;
 
-      setSelection({ text: selectedText, prefixContext: "", suffixContext: "" });
+        const inViewer = anchor.closest(`[data-viewer-id="${viewerId}"]`);
+        if (!inViewer) return;
+
+        const text = sel.toString();
+        if (!text.trim()) return;
+
+        setSelection({ text, prefixContext: "", suffixContext: "" });
+      }, 300);
     }
 
     function handleClick(event: MouseEvent) {
@@ -136,30 +141,34 @@ export function DocumentViewer({
       }
     }
 
-    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("click", handleClick);
+
     return () => {
-      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("click", handleClick);
+      clearTimeout(debounceTimer);
     };
   }, []);
 
-  async function handleCreateAnnotation(body: string) {
-    if (!selection) return;
+  async function handleCreateAnnotation(body: string, quotedText?: string) {
+    const quote = quotedText ?? selection?.text ?? "";
+    if (!quote.trim() && !body.trim()) return;
 
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        quoted_text: selection.text,
-        prefix_context: selection.prefixContext,
-        suffix_context: selection.suffixContext,
+        quoted_text: quote,
+        prefix_context: "",
+        suffix_context: "",
         body,
       }),
     });
 
     if (response.ok) {
       setSelection(null);
+      setShowManualForm(false);
       await fetchAnnotations();
     }
   }
@@ -217,7 +226,10 @@ export function DocumentViewer({
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1 overflow-y-auto relative">
+      <div
+        className="min-w-0 flex-1 overflow-y-auto relative"
+        data-viewer-id={viewerIdRef.current}
+      >
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer
@@ -239,12 +251,12 @@ export function DocumentViewer({
         )}
 
         {canAnnotate && selection && (
-          <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4">
+          <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 z-10">
             <p className="text-xs text-muted-foreground mb-2 line-clamp-1">
               Commenting on: &ldquo;{selection.text}&rdquo;
             </p>
             <CommentForm
-              onSubmit={handleCreateAnnotation}
+              onSubmit={(body) => handleCreateAnnotation(body)}
               onCancel={() => setSelection(null)}
               placeholder="Add your comment…"
               submitLabel="Add comment"
@@ -259,6 +271,11 @@ export function DocumentViewer({
           activeAnnotationId={activeAnnotationId}
           currentUserId={currentUserId}
           canResolve={canAnnotate}
+          canAnnotate={canAnnotate}
+          showManualForm={showManualForm}
+          onAddComment={() => setShowManualForm(true)}
+          onCancelManualForm={() => setShowManualForm(false)}
+          onSubmitManualComment={handleCreateAnnotation}
           onAnnotationClick={handleAnnotationClick}
           onReply={handleReply}
           onResolve={handleResolve}

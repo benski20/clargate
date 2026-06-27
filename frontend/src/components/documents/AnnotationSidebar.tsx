@@ -5,12 +5,18 @@ import type { DocumentAnnotation } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { CommentForm } from "./CommentForm";
 import { cn } from "@/lib/utils";
+import { Plus } from "lucide-react";
 
 export function AnnotationSidebar({
   annotations,
   activeAnnotationId,
   currentUserId,
   canResolve,
+  canAnnotate,
+  showManualForm,
+  onAddComment,
+  onCancelManualForm,
+  onSubmitManualComment,
   onAnnotationClick,
   onReply,
   onResolve,
@@ -19,6 +25,11 @@ export function AnnotationSidebar({
   activeAnnotationId: string | null;
   currentUserId: string;
   canResolve: boolean;
+  canAnnotate: boolean;
+  showManualForm: boolean;
+  onAddComment: () => void;
+  onCancelManualForm: () => void;
+  onSubmitManualComment: (body: string, quotedText: string) => Promise<void>;
   onAnnotationClick: (annotationId: string) => void;
   onReply: (annotationId: string, body: string) => Promise<void>;
   onResolve: (annotationId: string, resolved: boolean) => Promise<void>;
@@ -41,6 +52,27 @@ export function AnnotationSidebar({
           {showResolved ? "Hide resolved" : "Show resolved"}
         </Button>
       </div>
+
+      {canAnnotate && (
+        <div className="px-4 py-3 border-b">
+          {showManualForm ? (
+            <ManualCommentForm
+              onSubmit={onSubmitManualComment}
+              onCancel={onCancelManualForm}
+            />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs gap-1.5"
+              onClick={onAddComment}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Comment
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && (
@@ -67,6 +99,61 @@ export function AnnotationSidebar({
             onResolve={(resolved) => onResolve(annotation.id, resolved)}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ManualCommentForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (body: string, quotedText: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [quotedText, setQuotedText] = useState("");
+  const [body, setBody] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    if (!body.trim()) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(body.trim(), quotedText.trim());
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={quotedText}
+        onChange={(event) => setQuotedText(event.target.value)}
+        placeholder="Paste or type the referenced text (optional)"
+        className="w-full resize-none rounded border bg-muted/30 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        rows={2}
+      />
+      <textarea
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        placeholder="Your comment…"
+        className="w-full resize-none rounded border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        rows={3}
+        autoFocus
+      />
+      <div className="flex gap-2 justify-end">
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="text-xs h-7"
+          onClick={handleSubmit}
+          disabled={!body.trim() || submitting}
+        >
+          Add comment
+        </Button>
       </div>
     </div>
   );
@@ -113,9 +200,11 @@ function AnnotationCard({
         </span>
       </div>
 
-      <blockquote className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 mb-2 line-clamp-2 border-l-2 border-muted-foreground/30">
-        &ldquo;{annotation.quoted_text}&rdquo;
-      </blockquote>
+      {annotation.quoted_text && (
+        <blockquote className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 mb-2 line-clamp-2 border-l-2 border-muted-foreground/30">
+          &ldquo;{annotation.quoted_text}&rdquo;
+        </blockquote>
+      )}
 
       <p className="text-sm mb-2">{annotation.body}</p>
 
