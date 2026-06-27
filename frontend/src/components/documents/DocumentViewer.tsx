@@ -9,11 +9,12 @@ import { DocxRenderer } from "./DocxRenderer";
 import type { DocxRendererHandle } from "./DocxRenderer";
 import { PdfRenderer } from "./PdfRenderer";
 import type { PdfRendererHandle } from "./PdfRenderer";
+import { MessageSquarePlus } from "lucide-react";
 
 interface SelectionInfo {
   text: string;
-  prefixContext: string;
-  suffixContext: string;
+  floatTop: number;
+  floatRight: number;
 }
 
 interface RenderData {
@@ -38,12 +39,14 @@ export function DocumentViewer({
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<SelectionInfo | null>(null);
+  const [activeComment, setActiveComment] = useState<string | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
-  const viewerIdRef = useRef(`viewer-${documentId}`);
+  const pollingRef = useRef<number>(0);
 
   const getHighlightContainer = useCallback((): HTMLElement | null => {
     if (renderData?.docxBase64) {
@@ -103,57 +106,60 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
-    const viewerId = viewerIdRef.current;
+    if (!canAnnotate) return;
 
-    let debounceTimer: ReturnType<typeof setTimeout>;
+    function pollSelection() {
+      const sel = window.getSelection();
+      const scrollContainer = scrollContainerRef.current;
 
-    function handleSelectionChange() {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || !sel.anchorNode) {
-          return;
-        }
-
-        const anchor = sel.anchorNode instanceof Element
-          ? sel.anchorNode
-          : sel.anchorNode.parentElement;
-        if (!anchor) return;
-
-        const inViewer = anchor.closest(`[data-viewer-id="${viewerId}"]`);
-        if (!inViewer) return;
-
-        const text = sel.toString();
-        if (!text.trim()) return;
-
-        setSelection({ text, prefixContext: "", suffixContext: "" });
-      }, 300);
-    }
-
-    function handleClick(event: MouseEvent) {
-      const target = event.target as HTMLElement;
-      const mark = target.closest("mark[data-annotation-id]");
-      if (mark) {
-        const annotationId = mark.getAttribute("data-annotation-id");
-        if (annotationId) {
-          setActiveAnnotationId(annotationId);
-        }
+      if (!sel || sel.isCollapsed || !sel.anchorNode || !scrollContainer) {
+        pollingRef.current = requestAnimationFrame(pollSelection);
+        return;
       }
+
+      const text = sel.toString().trim();
+      if (!text) {
+        pollingRef.current = requestAnimationFrame(pollSelection);
+        return;
+      }
+
+      const anchor = sel.anchorNode instanceof Element
+        ? sel.anchorNode
+        : sel.anchorNode.parentElement;
+
+      if (!anchor || !scrollContainer.contains(anchor)) {
+        pollingRef.current = requestAnimationFrame(pollSelection);
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const containerRect = scrollContainer.getBoundingClientRect();
+
+      const floatTop = rect.top - containerRect.top + scrollContainer.scrollTop;
+      const floatRight = 8;
+
+      setPendingSelection({ text, floatTop, floatRight });
+
+      pollingRef.current = requestAnimationFrame(pollSelection);
     }
 
-    document.addEventListener("selectionchange", handleSelectionChange);
-    document.addEventListener("click", handleClick);
+    pollingRef.current = requestAnimationFrame(pollSelection);
 
     return () => {
-      document.removeEventListener("selectionchange", handleSelectionChange);
-      document.removeEventListener("click", handleClick);
-      clearTimeout(debounceTimer);
+      cancelAnimationFrame(pollingRef.current);
     };
-  }, []);
+  }, [canAnnotate, loading]);
+
+  function handleCommentButtonClick() {
+    if (!pendingSelection) return;
+    setActiveComment(pendingSelection.text);
+    window.getSelection()?.removeAllRanges();
+    setPendingSelection(null);
+  }
 
   async function handleCreateAnnotation(body: string, quotedText?: string) {
-    const quote = quotedText ?? selection?.text ?? "";
-    if (!quote.trim() && !body.trim()) return;
+    const quote = quotedText ?? activeComment ?? "";
 
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`, {
       method: "POST",
@@ -167,7 +173,7 @@ export function DocumentViewer({
     });
 
     if (response.ok) {
-      setSelection(null);
+      setActiveComment(null);
       setShowManualForm(false);
       await fetchAnnotations();
     }
@@ -227,8 +233,8 @@ export function DocumentViewer({
   return (
     <div className="flex h-full min-h-0">
       <div
+        ref={scrollContainerRef}
         className="min-w-0 flex-1 overflow-y-auto relative"
-        data-viewer-id={viewerIdRef.current}
       >
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
@@ -250,14 +256,30 @@ export function DocumentViewer({
           </div>
         )}
 
-        {canAnnotate && selection && (
+        {canAnnotate && pendingSelection && !activeComment && (
+          <button
+            type="button"
+            className="absolute z-20 flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-primary/90 transition-colors"
+            style={{
+              top: pendingSelection.floatTop,
+              right: pendingSelection.floatRight,
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={handleCommentButtonClick}
+          >
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+            Comment
+          </button>
+        )}
+
+        {canAnnotate && activeComment && (
           <div className="sticky bottom-0 left-0 right-0 bg-background border-t p-4 z-10">
             <p className="text-xs text-muted-foreground mb-2 line-clamp-1">
-              Commenting on: &ldquo;{selection.text}&rdquo;
+              Commenting on: &ldquo;{activeComment}&rdquo;
             </p>
             <CommentForm
               onSubmit={(body) => handleCreateAnnotation(body)}
-              onCancel={() => setSelection(null)}
+              onCancel={() => setActiveComment(null)}
               placeholder="Add your comment…"
               submitLabel="Add comment"
             />
