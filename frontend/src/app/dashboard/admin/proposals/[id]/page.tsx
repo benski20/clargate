@@ -2608,7 +2608,7 @@ function AdminProposalDetailInner() {
           documentId={viewerDocument.id}
           documentName={viewerDocument.name}
           currentUserId={appUserId}
-          canAnnotate={staffRole === "admin" || staffRole === "reviewer"}
+          canAnnotate={true}
         />
       )}
     </div>

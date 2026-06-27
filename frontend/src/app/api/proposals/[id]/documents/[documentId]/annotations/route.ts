@@ -84,10 +84,6 @@ export async function POST(
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  if (auth.appUser.role !== "admin" && auth.appUser.role !== "reviewer") {
-    return NextResponse.json({ error: "Only reviewers and admins can create annotations" }, { status: 403 });
-  }
-
   const body = await request.json();
   const { quoted_text, prefix_context, suffix_context, body: commentBody } = body as {
     quoted_text: string;

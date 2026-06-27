@@ -33,7 +33,6 @@ export function DocumentViewer({
   const [error, setError] = useState<string | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
   const [detectedSelection, setDetectedSelection] = useState("");
-  const [debugInfo, setDebugInfo] = useState("Waiting…");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
@@ -100,23 +99,13 @@ export function DocumentViewer({
       const sel = window.getSelection();
       const sc = scrollContainerRef.current;
 
-      if (!sel || !sc) {
-        setDebugInfo(`sel=${!!sel} sc=${!!sc}`);
-        return;
-      }
-
-      if (sel.isCollapsed || !sel.anchorNode) {
-        setDebugInfo(`collapsed=${sel.isCollapsed} anchor=${!!sel.anchorNode}`);
-        return;
-      }
+      if (!sel || !sc || sel.isCollapsed || !sel.anchorNode) return;
 
       const text = sel.toString();
       const anchor = sel.anchorNode instanceof Element
         ? sel.anchorNode
         : sel.anchorNode.parentElement;
       const contained = anchor ? sc.contains(anchor) : false;
-
-      setDebugInfo(`text="${text.substring(0, 30)}" contained=${contained}`);
 
       if (text.trim() && contained) {
         setDetectedSelection(text);
@@ -201,10 +190,6 @@ export function DocumentViewer({
         ref={scrollContainerRef}
         className="min-w-0 flex-1 overflow-y-auto relative"
       >
-        <div className="sticky top-0 z-30 bg-amber-100 text-amber-900 text-xs px-3 py-1 font-mono">
-          DEBUG: {debugInfo}
-        </div>
-
         {isDocx && (
           <div className="docx-viewer-container px-4 py-4">
             <DocxRenderer

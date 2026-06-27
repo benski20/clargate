@@ -799,7 +799,7 @@ function ProposalDetailInner() {
           documentId={viewerDocument.id}
           documentName={viewerDocument.name}
           currentUserId={appUserId}
-          canAnnotate={false}
+          canAnnotate={true}
         />
       )}
     </div>
