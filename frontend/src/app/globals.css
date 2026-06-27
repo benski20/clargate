@@ -287,3 +287,132 @@
     pointer-events: none;
   }
 }
+
+.annotation-highlight {
+  background-color: rgba(250, 204, 21, 0.35);
+  border-bottom: 2px solid rgba(250, 204, 21, 0.6);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.annotation-highlight:hover {
+  background-color: rgba(250, 204, 21, 0.5);
+}
+
+.annotation-highlight-active {
+  background-color: rgba(250, 180, 0, 0.5);
+  border-bottom-color: rgba(220, 160, 0, 1);
+  box-shadow: 0 0 0 1px rgba(220, 160, 0, 0.3);
+}
+
+.annotation-highlight-resolved {
+  background-color: rgba(134, 239, 172, 0.2);
+  border-bottom: 2px solid rgba(134, 239, 172, 0.4);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.annotation-highlight-resolved:hover {
+  background-color: rgba(134, 239, 172, 0.35);
+}
+
+.document-viewer-content h1 {
+  margin-top: 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  padding-bottom: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.document-viewer-content h2 { margin-top: 2rem; font-size: 1.25rem; font-weight: 600; }
+.document-viewer-content h2:first-child { margin-top: 0; }
+.document-viewer-content h3 { margin-top: 1.5rem; font-size: 1.125rem; font-weight: 600; }
+.document-viewer-content p { margin: 0.75rem 0; }
+.document-viewer-content p:first-child { margin-top: 0; }
+.document-viewer-content ul { margin: 0.75rem 0; list-style: disc; padding-left: 1.5rem; }
+.document-viewer-content ol { margin: 0.75rem 0; list-style: decimal; padding-left: 1.5rem; }
+.document-viewer-content li { margin: 0.25rem 0; }
+
+.document-viewer-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+.document-viewer-content th,
+.document-viewer-content td {
+  border: 1px solid var(--border, #d1d5db);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.document-viewer-content th {
+  background-color: var(--muted, #f3f4f6);
+  font-weight: 600;
+}
+.document-viewer-content tr:nth-child(even) td {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.document-viewer-content img {
+  max-width: 100%;
+  height: auto;
+  margin: 1rem 0;
+}
+
+.document-viewer-content .pdf-page {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px dashed var(--border, #d1d5db);
+}
+
+.docx-viewer-container .docx-preview-wrapper {
+  padding: 0;
+}
+.docx-viewer-container .docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.docx-viewer-container .docx-wrapper > section.docx {
+  box-shadow: none !important;
+  margin-bottom: 0 !important;
+  padding: 1rem !important;
+  width: 100% !important;
+  min-height: auto !important;
+}
+
+.pdf-viewer-container .react-pdf__Document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.pdf-viewer-container .react-pdf__Page {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 2px;
+}
+.pdf-viewer-container .react-pdf__Page {
+  position: relative;
+}
+.pdf-viewer-container .react-pdf__Page canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+.pdf-viewer-container .textLayer {
+  user-select: text;
+}
+.pdf-viewer-container .textLayer :is(span, br) {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  -webkit-text-stroke-width: 0 !important;
+}
+.pdf-viewer-container .textLayer ::selection {
+  background: rgba(59, 130, 246, 0.25);
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+.docx-viewer-container {
+  user-select: text;
+}

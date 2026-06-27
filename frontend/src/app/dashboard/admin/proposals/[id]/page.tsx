@@ -72,6 +72,8 @@ import type {
 } from "@/lib/types";
 import { getProposalReviewTypeLabel } from "@/lib/review-types";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
+import { DocumentViewerDialog } from "@/components/documents/DocumentViewerDialog";
+import { AnnotationCountBadge } from "@/components/documents/AnnotationCountBadge";
 import { markdownToPlainText } from "@/lib/format-ai-review-text";
 import type { SimulatedBoardReviewResult } from "@/lib/simulated-board-review-types";
 
@@ -217,6 +219,7 @@ function AdminProposalDetailInner() {
   const [simulationRunning, setSimulationRunning] = useState(false);
   const [simulationPhase, setSimulationPhase] = useState(0);
   const [simulationJustFinished, setSimulationJustFinished] = useState(false);
+  const [viewerDocument, setViewerDocument] = useState<{ id: string; name: string } | null>(null);
   const [activeNode, setActiveNode] = useState<string | null>(null);
   /** When set, reviewers see AI summary / details / messages but not workflow or admin-only tabs. */
   const [staffRole, setStaffRole] = useState<string | null>(null);
@@ -930,36 +933,64 @@ function AdminProposalDetailInner() {
                 <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/10 px-3 py-2.5">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">Finalized submission document</p>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      Finalized submission document
+                      {docxDocument && <AnnotationCountBadge proposalId={proposalId} documentId={docxDocument.id} />}
+                      {pdfDocument && <AnnotationCountBadge proposalId={proposalId} documentId={pdfDocument.id} />}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
                     </p>
                   </div>
                   {docxDocument ? (
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      className="cursor-pointer shrink-0"
-                      onClick={() => void openStoredDocumentDownload(docxDocument.id)}
-                    >
-                      <Download className="mr-1.5 h-3.5 w-3.5" />
-                      Word (.docx)
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        className="cursor-pointer shrink-0"
+                        onClick={() => void openStoredDocumentDownload(docxDocument.id)}
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Word (.docx)
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer shrink-0"
+                        onClick={() => setViewerDocument({ id: docxDocument.id, name: docxDocument.file_name })}
+                      >
+                        <FileEdit className="mr-1.5 h-3.5 w-3.5" />
+                        View &amp; Comment
+                      </Button>
+                    </>
                   ) : submissionSnapshot.docx_file_name ? (
                     <span className="text-xs text-muted-foreground">Word file pending or missing</span>
                   ) : null}
                   {pdfDocument ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="cursor-pointer shrink-0"
-                      onClick={() => void openStoredDocumentDownload(pdfDocument.id)}
-                    >
-                      <Download className="mr-1.5 h-3.5 w-3.5" />
-                      PDF
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer shrink-0"
+                        onClick={() => void openStoredDocumentDownload(pdfDocument.id)}
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        PDF
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer shrink-0"
+                        onClick={() => setViewerDocument({ id: pdfDocument.id, name: pdfDocument.file_name })}
+                      >
+                        <FileEdit className="mr-1.5 h-3.5 w-3.5" />
+                        View &amp; Comment
+                      </Button>
+                    </>
                   ) : null}
                 </div>
               ) : null}
@@ -971,7 +1002,10 @@ function AdminProposalDetailInner() {
                       className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/10 px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">{doc.file_name}</p>
+                        <p className="text-sm font-medium flex items-center gap-2">
+                          {doc.file_name}
+                          <AnnotationCountBadge proposalId={proposalId} documentId={doc.id} />
+                        </p>
                         {extraMaterialDescriptionByDocId.get(doc.id) ? (
                           <p className="text-xs text-muted-foreground">
                             {extraMaterialDescriptionByDocId.get(doc.id)}
@@ -982,15 +1016,26 @@ function AdminProposalDetailInner() {
                           Originally uploaded {new Date(doc.uploaded_at).toLocaleString()}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="cursor-pointer shrink-0"
-                        onClick={() => void openStoredDocumentDownload(doc.id)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="cursor-pointer shrink-0"
+                          onClick={() => void openStoredDocumentDownload(doc.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="cursor-pointer shrink-0"
+                          onClick={() => setViewerDocument({ id: doc.id, name: doc.file_name })}
+                        >
+                          <FileEdit className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -2554,6 +2599,18 @@ function AdminProposalDetailInner() {
           )}
         </div>
       </div>
+
+      {viewerDocument && appUserId && (
+        <DocumentViewerDialog
+          open={!!viewerDocument}
+          onOpenChange={(open) => { if (!open) setViewerDocument(null); }}
+          proposalId={proposalId}
+          documentId={viewerDocument.id}
+          documentName={viewerDocument.name}
+          currentUserId={appUserId}
+          canAnnotate={true}
+        />
+      )}
     </div>
   );
 

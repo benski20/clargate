@@ -26,6 +26,8 @@ import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
 import { ProposalMarkdownPreview } from "@/components/proposals/ProposalMarkdownPreview";
 import { FormJsonStringValue } from "@/components/proposals/FormJsonStringValue";
+import { DocumentViewerDialog } from "@/components/documents/DocumentViewerDialog";
+import { AnnotationCountBadge } from "@/components/documents/AnnotationCountBadge";
 import { db } from "@/lib/database";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
 import {
@@ -128,6 +130,7 @@ function ProposalDetailInner() {
   const [appUserId, setAppUserId] = useState<string | null>(null);
   const [piFeedbackOpen, setPiFeedbackOpen] = useState(false);
   const [piFeedbackActiveIndex, setPiFeedbackActiveIndex] = useState(0);
+  const [viewerDocument, setViewerDocument] = useState<{ id: string; name: string } | null>(null);
 
   const validFormSections = useMemo(
     () =>
@@ -507,8 +510,10 @@ function ProposalDetailInner() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="text-sm font-medium">
+                            <p className="text-sm font-medium flex items-center gap-2">
                               {submissionSnapshot.docx_file_name || submissionSnapshot.file_name}
+                              {docxDocument && <AnnotationCountBadge proposalId={proposalId} documentId={docxDocument.id} />}
+                              {pdfDocument && <AnnotationCountBadge proposalId={proposalId} documentId={pdfDocument.id} />}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Finalized submission document ·{" "}
@@ -543,6 +548,21 @@ function ProposalDetailInner() {
                               Word (.docx)
                             </Button>
                           ) : null}
+                          {(docxDocument || pdfDocument) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="cursor-pointer"
+                              onClick={() => {
+                                const target = docxDocument ?? pdfDocument!;
+                                setViewerDocument({ id: target.id, name: target.file_name });
+                              }}
+                            >
+                              <MessageSquare className="mr-1.5 h-4 w-4" />
+                              View Comments
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -554,7 +574,10 @@ function ProposalDetailInner() {
                         <div className="flex items-center gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground" />
                           <div>
-                            <p className="text-sm font-medium">{doc.file_name}</p>
+                            <p className="text-sm font-medium flex items-center gap-2">
+                              {doc.file_name}
+                              <AnnotationCountBadge proposalId={proposalId} documentId={doc.id} />
+                            </p>
                             {extraMaterialDescriptionByDocId.get(doc.id) ? (
                               <p className="text-xs text-muted-foreground">
                                 {extraMaterialDescriptionByDocId.get(doc.id)}
@@ -566,15 +589,26 @@ function ProposalDetailInner() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="cursor-pointer"
-                          type="button"
-                          onClick={() => void downloadProposalDocument(doc.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="cursor-pointer"
+                            type="button"
+                            onClick={() => void downloadProposalDocument(doc.id)}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="cursor-pointer"
+                            type="button"
+                            onClick={() => setViewerDocument({ id: doc.id, name: doc.file_name })}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -756,6 +790,18 @@ function ProposalDetailInner() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {viewerDocument && appUserId && (
+        <DocumentViewerDialog
+          open={!!viewerDocument}
+          onOpenChange={(open) => { if (!open) setViewerDocument(null); }}
+          proposalId={proposalId}
+          documentId={viewerDocument.id}
+          documentName={viewerDocument.name}
+          currentUserId={appUserId}
+          canAnnotate={true}
+        />
+      )}
     </div>
   );
 
