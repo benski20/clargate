@@ -44,8 +44,10 @@ export function Hero() {
           <div className="z-10 flex flex-col items-start gap-[clamp(2rem,4vw,4rem)] self-start bg-transparent sm:flex-row md:pl-[10%]">
             <div className="max-w-96 border-l border-[#0A0A0A] py-2 pl-[clamp(1.5rem,2vw,2rem)]">
               <p className="mb-6 max-w-[22rem] font-sans text-[clamp(1rem,1.05vw,1.125rem)] leading-[1.65] font-light text-[#555555]">
-                A single workspace for investigators, administrators, and reviewers — from intake to
-                decision, without the noise of scattered tools and inboxes.
+                One workspace for investigators, administrators, and reviewers. Built-in knowledge
+                of federal research regulations to predict review categories, catch compliance
+                problems early, and draft determination letters — from intake to decision, without
+                scattered tools and inboxes.
               </p>
               <a
                 href="#workflow"

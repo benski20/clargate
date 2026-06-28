@@ -69,8 +69,8 @@ export function GapSection() {
           <div className="border-t border-[#0A0A0A] pt-8 md:col-span-8 md:col-start-3">
             <p className="font-sans text-base font-light leading-relaxed text-[#0A0A0A] md:text-lg">
               Legacy IRB workflows were not built for today. Most teams still stitch together tools
-              from another era. Arbiter replaces that patchwork with one governed workspace — built
-              for compliance and speed.
+              from another era. Arbiter replaces that patchwork with one governed workspace — with
+              federal regulation built in, so compliance problems surface before they slow you down.
             </p>
           </div>
         </div>
