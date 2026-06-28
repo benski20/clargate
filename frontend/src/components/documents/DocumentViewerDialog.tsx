@@ -27,10 +27,12 @@ export function DocumentViewerDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
-        <div className="flex h-[min(calc(100dvh-2rem),800px)] flex-col overflow-hidden">
-          <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
-            <DialogTitle className="font-sans text-base font-semibold truncate">{documentName}</DialogTitle>
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[1600px] p-0 sm:max-w-[1600px] sm:w-[calc(100vw-3rem)]">
+        <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden">
+          <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 py-4">
+            <DialogTitle className="font-sans text-sm font-medium truncate text-muted-foreground">
+              {documentName}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0">
             {open && (
