@@ -15,7 +15,7 @@ const ALLOWED_MIME = new Set([
 ]);
 
 /**
- * Step 1: analyze a certificate with GPT vision — does not persist to S3 or Supabase.
+ * Step 1: analyze a certificate with Azure Foundry model-router — does not persist to S3 or Supabase.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Analysis failed";
-      if (msg.includes("OPENAI_API_KEY")) {
+      if (msg.includes("AZURE_ARBITER_ENDPOINT") || msg.includes("AZURE_OPENAI")) {
         return NextResponse.json(
-          { error: "Certificate analysis is not configured (set OPENAI_API_KEY on the server)." },
+          { error: "Certificate analysis is not configured. Check Azure AI credentials on the server." },
           { status: 503 },
         );
       }

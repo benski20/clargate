@@ -1,9 +1,9 @@
 import pdf from "pdf-parse";
 import type { CertificationExtractedMetadata, ComplianceCertificationType } from "@/lib/types";
+import { generateWithForcedToolCall } from "@/lib/server/ai/router";
+import type { ToolDefinition } from "@/lib/server/ai/types";
 
 export type { CertificationExtractedMetadata };
-
-const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL?.trim() || "gpt-4o";
 
 const CERTIFICATION_TYPES: ComplianceCertificationType[] = [
   "citi_human_subjects",
@@ -25,24 +25,24 @@ Rules:
 - confidence: high when fields are clearly legible; medium when inferred; low when mostly guessed.
 - notes: brief note about ambiguity or missing fields; null if everything is clear.`;
 
-const JSON_SCHEMA = {
+const EXTRACTION_TOOL: ToolDefinition = {
   name: "certification_metadata",
-  strict: true,
-  schema: {
+  description: "Extracted metadata from a compliance training certificate",
+  parameters: {
     type: "object",
     properties: {
       certification_type: {
         type: "string",
         enum: CERTIFICATION_TYPES,
       },
-      title: { type: ["string", "null"] },
-      trainee_name: { type: ["string", "null"] },
-      issued_at: { type: ["string", "null"] },
-      expires_at: { type: ["string", "null"] },
-      issuing_organization: { type: ["string", "null"] },
-      certificate_number: { type: ["string", "null"] },
+      title: { type: "string", description: "Course or module name" },
+      trainee_name: { type: "string", description: "Full name of the trainee" },
+      issued_at: { type: "string", description: "ISO date YYYY-MM-DD or empty" },
+      expires_at: { type: "string", description: "ISO date YYYY-MM-DD or empty" },
+      issuing_organization: { type: "string", description: "Issuing org name" },
+      certificate_number: { type: "string", description: "Completion ID or record number" },
       confidence: { type: "string", enum: ["high", "medium", "low"] },
-      notes: { type: ["string", "null"] },
+      notes: { type: "string", description: "Brief note about ambiguity, or empty" },
     },
     required: [
       "certification_type",
@@ -55,89 +55,50 @@ const JSON_SCHEMA = {
       "confidence",
       "notes",
     ],
-    additionalProperties: false,
   },
 };
 
-type ContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string; detail?: "high" | "low" | "auto" } };
-
-function normalizeDate(raw: string | null | undefined): string | null {
-  if (!raw || typeof raw !== "string") return null;
-  const trimmed = raw.trim();
+function normalizeDate(value: string | null | undefined): string | null {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   const parsed = Date.parse(`${trimmed}T12:00:00`);
   if (!Number.isFinite(parsed)) return null;
   return trimmed;
 }
 
-function sanitizeExtracted(raw: CertificationExtractedMetadata): CertificationExtractedMetadata {
-  const type = CERTIFICATION_TYPES.includes(raw.certification_type)
-    ? raw.certification_type
-    : "other";
+function sanitizeExtracted(input: Record<string, string>): CertificationExtractedMetadata {
+  const certType = input.certification_type as ComplianceCertificationType;
+  const type = CERTIFICATION_TYPES.includes(certType) ? certType : "other";
+  const conf = input.confidence as "high" | "medium" | "low";
   return {
     certification_type: type,
-    title: raw.title?.trim().slice(0, 200) || null,
-    trainee_name: raw.trainee_name?.trim().slice(0, 200) || null,
-    issued_at: normalizeDate(raw.issued_at),
-    expires_at: normalizeDate(raw.expires_at),
-    issuing_organization: raw.issuing_organization?.trim().slice(0, 200) || null,
-    certificate_number: raw.certificate_number?.trim().slice(0, 100) || null,
-    confidence: raw.confidence === "high" || raw.confidence === "low" ? raw.confidence : "medium",
-    notes: raw.notes?.trim().slice(0, 500) || null,
+    title: input.title?.trim().slice(0, 200) || null,
+    trainee_name: input.trainee_name?.trim().slice(0, 200) || null,
+    issued_at: normalizeDate(input.issued_at),
+    expires_at: normalizeDate(input.expires_at),
+    issuing_organization: input.issuing_organization?.trim().slice(0, 200) || null,
+    certificate_number: input.certificate_number?.trim().slice(0, 100) || null,
+    confidence: conf === "high" || conf === "low" ? conf : "medium",
+    notes: input.notes?.trim().slice(0, 500) || null,
   };
 }
 
-async function callOpenAIForExtraction(userContent: ContentPart[]): Promise<CertificationExtractedMetadata> {
-  const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
+function extractFromText(text: string, fileName: string): Promise<CertificationExtractedMetadata> {
+  return generateWithForcedToolCall<Record<string, string>>(
+    "file-extraction",
+    {
+      systemInstruction: EXTRACTION_SYSTEM,
+      history: [],
+      userText: `Extract metadata from this compliance training certificate (${fileName}).\n\nDocument text:\n\n---\n${text.slice(0, 12000)}\n---`,
+      tool: EXTRACTION_TOOL,
+      maxOutputTokens: 1200,
     },
-    body: JSON.stringify({
-      model: OPENAI_VISION_MODEL,
-      messages: [
-        { role: "system", content: EXTRACTION_SYSTEM },
-        { role: "user", content: userContent },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: JSON_SCHEMA,
-      },
-      max_tokens: 1200,
-    }),
-  });
-
-  const json = (await res.json()) as {
-    error?: { message?: string };
-    choices?: { message?: { content?: string } }[];
-  };
-
-  if (!res.ok) {
-    throw new Error(json.error?.message || `OpenAI request failed (${res.status})`);
-  }
-
-  const text = json.choices?.[0]?.message?.content;
-  if (!text?.trim()) {
-    throw new Error("Empty model response");
-  }
-
-  const parsed = JSON.parse(text) as CertificationExtractedMetadata;
-  return sanitizeExtracted(parsed);
+  ).then(sanitizeExtracted);
 }
 
 const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-/**
- * Extract certificate metadata using GPT vision (images) or GPT + PDF text (text-based PDFs).
- */
 export async function extractCertificationMetadata(params: {
   buffer: Buffer;
   mimeType: string;
@@ -148,20 +109,7 @@ export async function extractCertificationMetadata(params: {
   const isPdf = mimeType === "application/pdf" || lower.endsWith(".pdf");
 
   if (IMAGE_MIMES.has(mimeType)) {
-    const base64 = buffer.toString("base64");
-    return callOpenAIForExtraction([
-      {
-        type: "text",
-        text: `Extract metadata from this compliance training certificate image (${fileName}).`,
-      },
-      {
-        type: "image_url",
-        image_url: {
-          url: `data:${mimeType};base64,${base64}`,
-          detail: "high",
-        },
-      },
-    ]);
+    return extractFromImage(buffer, mimeType, fileName);
   }
 
   if (isPdf) {
@@ -169,12 +117,7 @@ export async function extractCertificationMetadata(params: {
     const text = (data.text || "").trim();
 
     if (text.length >= 40) {
-      return callOpenAIForExtraction([
-        {
-          type: "text",
-          text: `Extract metadata from this compliance training certificate. Document text:\n\n---\n${text.slice(0, 12000)}\n---`,
-        },
-      ]);
+      return extractFromText(text, fileName);
     }
 
     throw new Error(
@@ -183,4 +126,99 @@ export async function extractCertificationMetadata(params: {
   }
 
   throw new Error("Unsupported file type for analysis.");
+}
+
+function getFoundryConfig(): { endpoint: string; apiKey: string } {
+  const endpoint = process.env.AZURE_ARBITER_ENDPOINT?.trim();
+  const apiKey = process.env.AZURE_ARBITER_API_KEY?.trim();
+  if (!endpoint || !apiKey) {
+    throw new Error("AZURE_ARBITER_ENDPOINT and AZURE_ARBITER_API_KEY must be set for image certificate extraction");
+  }
+  return { endpoint, apiKey };
+}
+
+async function extractFromImage(
+  imageBuffer: Buffer,
+  mimeType: string,
+  fileName: string,
+): Promise<CertificationExtractedMetadata> {
+  const { endpoint, apiKey } = getFoundryConfig();
+  let base = endpoint.replace(/\/+$/, "");
+  base = base.replace(/\/api\/projects\/[^/]+.*$/, "");
+
+  const base64 = imageBuffer.toString("base64");
+
+  const jsonSchema = {
+    name: "certification_metadata",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        certification_type: { type: "string", enum: [...CERTIFICATION_TYPES] },
+        title: { type: ["string", "null"] },
+        trainee_name: { type: ["string", "null"] },
+        issued_at: { type: ["string", "null"] },
+        expires_at: { type: ["string", "null"] },
+        issuing_organization: { type: ["string", "null"] },
+        certificate_number: { type: ["string", "null"] },
+        confidence: { type: "string", enum: ["high", "medium", "low"] },
+        notes: { type: ["string", "null"] },
+      },
+      required: [
+        "certification_type", "title", "trainee_name", "issued_at",
+        "expires_at", "issuing_organization", "certificate_number",
+        "confidence", "notes",
+      ],
+      additionalProperties: false,
+    },
+  };
+
+  const response = await fetch(`${base}/openai/v1/chat/completions?api-version=v1`, {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "model-router",
+      messages: [
+        { role: "system", content: EXTRACTION_SYSTEM },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Extract metadata from this compliance training certificate image (${fileName}).`,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64}`,
+                detail: "high",
+              },
+            },
+          ],
+        },
+      ],
+      response_format: { type: "json_schema", json_schema: jsonSchema },
+      max_tokens: 1200,
+    }),
+  });
+
+  const json = (await response.json()) as {
+    error?: { message?: string };
+    choices?: { message?: { content?: string } }[];
+  };
+
+  if (!response.ok) {
+    throw new Error(json.error?.message || `Azure Foundry request failed (${response.status})`);
+  }
+
+  const text = json.choices?.[0]?.message?.content;
+  if (!text?.trim()) {
+    throw new Error("Empty model response");
+  }
+
+  const parsed = JSON.parse(text) as Record<string, string>;
+  return sanitizeExtracted(parsed);
 }
