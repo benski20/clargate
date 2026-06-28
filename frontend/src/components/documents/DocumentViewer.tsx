@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageSquarePlus } from "lucide-react";
 import type { DocumentAnnotation } from "@/lib/types";
 import { applyHighlights } from "./highlight-annotations";
 import { AnnotationSidebar } from "./AnnotationSidebar";
@@ -13,6 +14,12 @@ interface RenderData {
   docxBase64: string | null;
   pdfBase64: string | null;
   fileType: string;
+}
+
+interface SelectionPopover {
+  text: string;
+  top: number;
+  left: number;
 }
 
 export function DocumentViewer({
@@ -32,7 +39,8 @@ export function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
-  const [detectedSelection, setDetectedSelection] = useState("");
+  const [selectionPopover, setSelectionPopover] = useState<SelectionPopover | null>(null);
+  const [commentingText, setCommentingText] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<DocxRendererHandle>(null);
   const pdfRef = useRef<PdfRendererHandle>(null);
@@ -95,28 +103,60 @@ export function DocumentViewer({
   }, [renderData, annotations, activeAnnotationId, rendererReady, getHighlightContainer]);
 
   useEffect(() => {
+    if (!canAnnotate) return;
+
     function handleMouseUp() {
       setTimeout(() => {
         const sel = window.getSelection();
         const sc = scrollContainerRef.current;
 
-        if (!sel || !sc || sel.isCollapsed || !sel.anchorNode) return;
+        if (!sel || !sc || sel.isCollapsed || !sel.anchorNode) {
+          setSelectionPopover(null);
+          return;
+        }
 
-        const text = sel.toString();
+        const text = sel.toString().trim();
         const anchor = sel.anchorNode instanceof Element
           ? sel.anchorNode
           : sel.anchorNode.parentElement;
         const contained = anchor ? sc.contains(anchor) : false;
 
-        if (text.trim() && contained) {
-          setDetectedSelection(text);
+        if (text && contained) {
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const containerRect = sc.getBoundingClientRect();
+
+          setSelectionPopover({
+            text,
+            top: rect.bottom - containerRect.top + sc.scrollTop + 6,
+            left: rect.left - containerRect.left + rect.width / 2,
+          });
+        } else {
+          setSelectionPopover(null);
         }
       }, 10);
     }
 
+    function handleMouseDown(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (target.closest("[data-comment-popover]")) return;
+      setSelectionPopover(null);
+    }
+
     document.addEventListener("mouseup", handleMouseUp);
-    return () => document.removeEventListener("mouseup", handleMouseUp);
-  }, [loading]);
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => {
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("mousedown", handleMouseDown);
+    };
+  }, [loading, canAnnotate]);
+
+  function handleStartCommenting() {
+    if (!selectionPopover) return;
+    setCommentingText(selectionPopover.text);
+    setSelectionPopover(null);
+    window.getSelection()?.removeAllRanges();
+  }
 
   async function handleCreateAnnotation(body: string, quotedText: string) {
     const response = await fetch(`/api/proposals/${proposalId}/documents/${documentId}/annotations`, {
@@ -131,7 +171,7 @@ export function DocumentViewer({
     });
 
     if (response.ok) {
-      setDetectedSelection("");
+      setCommentingText("");
       await fetchAnnotations();
     }
   }
@@ -177,11 +217,18 @@ export function DocumentViewer({
   }, []);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading document…</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+          <span className="text-sm">Loading document</span>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="flex items-center justify-center h-64 text-destructive">{error}</div>;
+    return <div className="flex items-center justify-center h-full text-destructive text-sm">{error}</div>;
   }
 
   const isDocx = !!renderData?.docxBase64;
@@ -191,10 +238,10 @@ export function DocumentViewer({
     <div className="flex h-full min-h-0">
       <div
         ref={scrollContainerRef}
-        className="min-w-0 flex-1 overflow-y-auto relative"
+        className="min-w-0 flex-1 overflow-y-auto relative bg-muted/30"
       >
         {isDocx && (
-          <div className="docx-viewer-container px-4 py-4">
+          <div className="docx-viewer-container px-6 py-6">
             <DocxRenderer
               ref={docxRef}
               base64={renderData!.docxBase64!}
@@ -204,7 +251,7 @@ export function DocumentViewer({
         )}
 
         {isPdf && (
-          <div className="pdf-viewer-container px-4 py-4">
+          <div className="pdf-viewer-container px-6 py-6">
             <PdfRenderer
               ref={pdfRef}
               base64={renderData!.pdfBase64!}
@@ -212,17 +259,33 @@ export function DocumentViewer({
             />
           </div>
         )}
+
+        {canAnnotate && selectionPopover && (
+          <button
+            data-comment-popover
+            onClick={handleStartCommenting}
+            className="absolute z-50 flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-lg transition-all hover:scale-105 active:scale-95 animate-in fade-in zoom-in-95 duration-150"
+            style={{
+              top: selectionPopover.top,
+              left: selectionPopover.left,
+              transform: "translateX(-50%)",
+            }}
+          >
+            <MessageSquarePlus className="size-3.5" />
+            Comment
+          </button>
+        )}
       </div>
 
-      <div className="w-80 shrink-0 border-l bg-background">
+      <div className="w-[340px] shrink-0 border-l bg-background flex flex-col">
         <AnnotationSidebar
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           currentUserId={currentUserId}
           canResolve={canAnnotate}
           canAnnotate={canAnnotate}
-          detectedSelection={detectedSelection}
-          onClearDetectedSelection={() => setDetectedSelection("")}
+          commentingText={commentingText}
+          onCancelCommenting={() => setCommentingText("")}
           onSubmitComment={handleCreateAnnotation}
           onAnnotationClick={handleAnnotationClick}
           onReply={handleReply}
