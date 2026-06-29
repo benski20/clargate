@@ -1,5 +1,5 @@
 import type { AiTask, ProviderAdapter } from "./types";
-import { getModelForTask, isAzureOpenAiConfigured, isAzureArbiterConfigured, isAzureFoundryConfigured } from "./config";
+import { getModelForTask, isAzureOpenAiConfigured, isAzureArbiterConfigured, isAzureFoundryConfigured, isSubmissionAgentConfigured } from "./config";
 import { createGeminiAdapter } from "./adapters/gemini";
 import { createAzureOpenAiAdapter, type AzureOpenAiConfig } from "./adapters/azure-openai";
 import { createAzureAgentAdapter } from "./adapters/azure-agent";
@@ -15,7 +15,7 @@ function getFoundryConfig(): AzureOpenAiConfig {
   return { endpoint, apiKey, apiVersion: "v1" };
 }
 
-function getAdapter(provider: string, model: string): ProviderAdapter {
+async function getAdapter(provider: string, model: string): Promise<ProviderAdapter> {
   const cacheKey = `${provider}:${model}`;
   const cached = adapterCache.get(cacheKey);
   if (cached) return cached;
@@ -31,6 +31,11 @@ function getAdapter(provider: string, model: string): ProviderAdapter {
     case "azure-arbiter":
       adapter = createAzureAgentAdapter(model);
       break;
+    case "azure-submission": {
+      const { createSubmissionAgentAdapter } = await import("./adapters/submission-agent");
+      adapter = createSubmissionAgentAdapter(model);
+      break;
+    }
     case "gemini":
       adapter = createGeminiAdapter(model || undefined);
       break;
@@ -42,7 +47,7 @@ function getAdapter(provider: string, model: string): ProviderAdapter {
   return adapter;
 }
 
-function resolveAdapter(task: AiTask): { adapter: ProviderAdapter; provider: string; model: string } {
+async function resolveAdapter(task: AiTask): Promise<{ adapter: ProviderAdapter; provider: string; model: string }> {
   const assignment = getModelForTask(task);
   let { provider, model } = assignment;
 
@@ -61,6 +66,19 @@ function resolveAdapter(task: AiTask): { adapter: ProviderAdapter; provider: str
     }
   }
 
+  if (provider === "azure-submission" && !isSubmissionAgentConfigured()) {
+    if (isAzureFoundryConfigured()) {
+      provider = "azure-foundry";
+      model = "model-router";
+    } else if (isAzureOpenAiConfigured()) {
+      provider = "azure-openai";
+      model = "gpt-5.4";
+    } else {
+      provider = "gemini";
+      model = "";
+    }
+  }
+
   if (provider === "azure-arbiter" && !isAzureArbiterConfigured()) {
     if (isAzureOpenAiConfigured()) {
       provider = "azure-openai";
@@ -71,43 +89,43 @@ function resolveAdapter(task: AiTask): { adapter: ProviderAdapter; provider: str
     }
   }
 
-  const adapter = getAdapter(provider, model);
+  const adapter = await getAdapter(provider, model);
   return { adapter, provider, model };
 }
 
-export function resolveProviderForTask(task: AiTask): string {
-  const { provider, model } = resolveAdapter(task);
+export async function resolveProviderForTask(task: AiTask): Promise<string> {
+  const { provider, model } = await resolveAdapter(task);
   return model ? `${provider}:${model}` : provider;
 }
 
-export function generateWithForcedToolCall<T extends object>(
+export async function generateWithForcedToolCall<T extends object>(
   task: AiTask,
   params: Parameters<ProviderAdapter["generateWithForcedToolCall"]>[0],
 ): Promise<T> {
-  const { adapter } = resolveAdapter(task);
+  const { adapter } = await resolveAdapter(task);
   return adapter.generateWithForcedToolCall<T>(params);
 }
 
-export function generatePlainText(
+export async function generatePlainText(
   task: AiTask,
   params: Parameters<ProviderAdapter["generatePlainText"]>[0],
 ): Promise<string> {
-  const { adapter } = resolveAdapter(task);
+  const { adapter } = await resolveAdapter(task);
   return adapter.generatePlainText(params);
 }
 
-export function generateMultiTurnText(
+export async function generateMultiTurnText(
   task: AiTask,
   params: Parameters<ProviderAdapter["generateMultiTurnText"]>[0],
 ): Promise<string> {
-  const { adapter } = resolveAdapter(task);
+  const { adapter } = await resolveAdapter(task);
   return adapter.generateMultiTurnText(params);
 }
 
-export function generateMultiTurnTextStream(
+export async function generateMultiTurnTextStream(
   task: AiTask,
   params: Parameters<ProviderAdapter["generateMultiTurnTextStream"]>[0],
-): AsyncGenerator<string, void, void> {
-  const { adapter } = resolveAdapter(task);
+): Promise<AsyncGenerator<string, void, void>> {
+  const { adapter } = await resolveAdapter(task);
   return adapter.generateMultiTurnTextStream(params);
 }

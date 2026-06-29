@@ -16,9 +16,13 @@ const DEFAULT_ROUTING: Record<AiTask, ModelAssignment> = {
   "revision-suggestions":  { provider: "azure-openai", model: "gpt-5.4" },
   "revision-letter":       { provider: "azure-openai", model: "gpt-5.4" },
   "file-extraction":       { provider: "azure-openai", model: "gpt-5.4" },
+
+  "questionnaire-analyze":      { provider: "azure-foundry",    model: "model-router" },
+  "questionnaire-chat":         { provider: "azure-foundry",    model: "model-router" },
+  "questionnaire-chat-stream":  { provider: "azure-foundry",    model: "model-router" },
 };
 
-const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "azure-arbiter", "azure-foundry", "openai"]);
+const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "azure-arbiter", "azure-foundry", "azure-submission", "openai"]);
 
 function parseOverride(value: string): ModelAssignment | undefined {
   const separatorIndex = value.indexOf(":");
@@ -50,6 +54,17 @@ export function isAzureFoundryConfigured(): boolean {
   return Boolean(
     process.env.AZURE_ARBITER_API_KEY?.trim() &&
     process.env.AZURE_ARBITER_ENDPOINT?.trim(),
+  );
+}
+
+export function isSubmissionAgentConfigured(): boolean {
+  return Boolean(
+    process.env.AZURE_SUBMISSION_AGENT_NAME?.trim() &&
+    (process.env.AZURE_SUBMISSION_AGENT_ENDPOINT?.trim() ||
+      process.env.AZURE_ARBITER_ENDPOINT?.trim()) &&
+    process.env.AZURE_ARBITER_TENANT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_SECRET?.trim(),
   );
 }
 

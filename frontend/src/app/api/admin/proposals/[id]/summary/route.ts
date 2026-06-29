@@ -123,7 +123,7 @@ Be objective and note missing information where applicable.`,
       .insert({
         proposal_id: proposal.id,
         summary,
-        model_used: resolveProviderForTask("admin-summary"),
+        model_used: await resolveProviderForTask("admin-summary"),
       })
       .select()
       .single();

@@ -46,6 +46,7 @@ import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/
 import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
 import { db } from "@/lib/database";
+import { COMPLIANCE_QUESTION_BANK } from "@/lib/compliance-question-bank";
 import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
@@ -211,6 +212,8 @@ function AdminProposalDetailInner() {
   const [aiFlagsOpen, setAiFlagsOpen] = useState(false);
   const [aiFlagsActiveIndex, setAiFlagsActiveIndex] = useState(0);
   const [revisionLetterOpen, setRevisionLetterOpen] = useState(false);
+  const [questionnaireDialogOpen, setQuestionnaireDialogOpen] = useState(false);
+  const [questionnaireActiveSection, setQuestionnaireActiveSection] = useState<string | null>(null);
   const [reviewerHubOpen, setReviewerHubOpen] = useState(false);
   const [reviewerHubPanel, setReviewerHubPanel] = useState<
     "workflow" | "assign" | "assignments" | "reviews" | "history" | "board_simulation"
@@ -652,6 +655,14 @@ function AdminProposalDetailInner() {
           {
             id: "ai_flags",
             label: "AI Flagged Items",
+          },
+        ]
+      : []),
+    ...((aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire
+      ? [
+          {
+            id: "questionnaire",
+            label: "Compliance Questionnaire",
           },
         ]
       : []),
@@ -1700,6 +1711,225 @@ function AdminProposalDetailInner() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={questionnaireDialogOpen} onOpenChange={setQuestionnaireDialogOpen}>
+        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
+          <div className="flex h-[min(calc(100dvh-2rem),700px)] flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/60 bg-background px-6 pb-4 pt-6 sm:px-7">
+              <DialogTitle className="font-sans">Compliance questionnaire</DialogTitle>
+              <DialogDescription>
+                All questions and answers from the PI&apos;s IRB compliance questionnaire, organized by Cayuse section.
+              </DialogDescription>
+            </DialogHeader>
+            {(() => {
+              const questionnaireData = (aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire as Record<string, unknown> | null;
+              if (!questionnaireData) return <div className="flex flex-1 items-center justify-center p-8"><p className="text-sm text-muted-foreground">No questionnaire data available.</p></div>;
+              const answers = Array.isArray(questionnaireData.answers) ? questionnaireData.answers as Array<Record<string, unknown>> : [];
+              const skippedIds = Array.isArray(questionnaireData.skippedQuestionIds) ? questionnaireData.skippedQuestionIds as string[] : [];
+              const activeQuestionIds = Array.isArray(questionnaireData.activeQuestionIds) ? questionnaireData.activeQuestionIds as string[] : [];
+
+              const questionMap = new Map(
+                COMPLIANCE_QUESTION_BANK.map((question) => [question.questionId, question]),
+              );
+
+              const sectionLabels: Record<string, string> = {
+                core_information: "Core Information & Funding",
+                personnel: "Personnel",
+                research_focus: "Research Focus & Concepts",
+                methods: "Methods",
+                subjects_recruitment: "Subjects & Recruitment",
+                data_collection: "Data Collection",
+                data_security: "Data Security",
+                risks_benefits: "Risks, Benefits & Compensation",
+                affiliations_coi: "Affiliations & COI",
+                consent_assent: "Informed Consent & Assent",
+              };
+              const sectionOrder = Object.keys(sectionLabels);
+
+              const answersBySection = new Map<string, Array<Record<string, unknown>>>();
+              for (const answer of answers) {
+                const question = questionMap.get(String(answer.questionId ?? ""));
+                const section = question?.cayuseSection ?? "other";
+                const group = answersBySection.get(section) ?? [];
+                group.push(answer);
+                answersBySection.set(section, group);
+              }
+
+              const skippedBySection = new Map<string, string[]>();
+              for (const questionId of skippedIds) {
+                const question = questionMap.get(questionId);
+                const section = question?.cayuseSection ?? "other";
+                const group = skippedBySection.get(section) ?? [];
+                group.push(questionId);
+                skippedBySection.set(section, group);
+              }
+
+              const orderedSections = sectionOrder.filter(
+                (section) => answersBySection.has(section) || skippedBySection.has(section),
+              );
+
+              const activeSectionKey = questionnaireActiveSection ?? orderedSections[0] ?? null;
+
+              const sectionAnswers = activeSectionKey ? (answersBySection.get(activeSectionKey) ?? []) : [];
+              const sectionSkipped = activeSectionKey ? (skippedBySection.get(activeSectionKey) ?? []) : [];
+
+              const confidenceDots = (level: string) => {
+                const filled = level === "high" ? 3 : level === "medium" ? 2 : 1;
+                return (
+                  <span className="inline-flex items-center gap-px" title={`${level} confidence`}>
+                    {[0, 1, 2].map((dot) => (
+                      <span
+                        key={dot}
+                        className={cn(
+                          "inline-block h-1.5 w-1.5 rounded-full",
+                          dot < filled ? "bg-foreground/50" : "bg-foreground/10",
+                        )}
+                      />
+                    ))}
+                  </span>
+                );
+              };
+
+              return (
+                <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[280px_1fr]">
+                  <div className="min-h-0 border-b border-border/60 bg-muted/10 p-3 sm:border-b-0 sm:border-r sm:p-4">
+                    <div className="h-full overflow-auto pr-1">
+                      <div className="space-y-1">
+                        {orderedSections.map((section) => {
+                          const sectionAnswerCount = (answersBySection.get(section) ?? []).length;
+                          const sectionSkippedCount = (skippedBySection.get(section) ?? []).length;
+                          const sectionTotal = sectionAnswerCount + sectionSkippedCount;
+                          const isActive = section === activeSectionKey;
+
+                          return (
+                            <button
+                              key={section}
+                              type="button"
+                              onClick={() => setQuestionnaireActiveSection(section)}
+                              className={cn(
+                                "w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-colors",
+                                isActive
+                                  ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
+                                  : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
+                              )}
+                            >
+                              <span className="block text-[0.7rem] font-semibold uppercase tracking-wide">
+                                {sectionLabels[section] ?? section}
+                              </span>
+                              <div className="mt-1 flex items-center gap-2">
+                                <span className="text-xs tabular-nums">
+                                  {sectionAnswerCount}/{sectionTotal} answered
+                                </span>
+                                {sectionSkippedCount > 0 && (
+                                  <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[0.55rem] font-medium text-amber-700">
+                                    {sectionSkippedCount} skipped
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="min-h-0 overflow-auto p-4 sm:p-6">
+                    {activeSectionKey ? (
+                      <div className="space-y-3">
+                        <div className="mb-4">
+                          <h3 className="text-sm font-semibold text-foreground">
+                            {sectionLabels[activeSectionKey] ?? activeSectionKey}
+                          </h3>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {sectionAnswers.length} answered{sectionSkipped.length > 0 ? `, ${sectionSkipped.length} skipped` : ""}
+                          </p>
+                        </div>
+                        {sectionAnswers.map((answer, answerIndex) => {
+                          const questionId = String(answer.questionId ?? "");
+                          const question = questionMap.get(questionId);
+                          const questionText = question?.questionText ?? questionId;
+                          const isExtracted = answer.answeredBy === "document_extraction";
+                          const confidence = String(answer.confidence ?? "medium");
+
+                          return (
+                            <div
+                              key={questionId || answerIndex}
+                              className="rounded-xl border border-border/30 bg-background px-4 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="shrink-0 text-[0.6rem] font-mono font-medium text-muted-foreground/70">
+                                      {questionId}
+                                    </span>
+                                    {confidenceDots(confidence)}
+                                  </div>
+                                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                    {questionText}
+                                  </p>
+                                </div>
+                                <span
+                                  className={cn(
+                                    "shrink-0 rounded-md px-2 py-0.5 text-[0.6rem] font-medium",
+                                    isExtracted
+                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                      : "bg-primary/8 text-primary dark:text-primary/80",
+                                  )}
+                                >
+                                  {isExtracted ? "Extracted" : "PI response"}
+                                </span>
+                              </div>
+                              <p className="mt-2.5 rounded-lg bg-muted/8 px-3 py-2 text-sm leading-relaxed text-foreground">
+                                {String(answer.answerText ?? "")}
+                              </p>
+                            </div>
+                          );
+                        })}
+                        {sectionSkipped.map((questionId) => {
+                          const question = questionMap.get(questionId);
+                          const questionText = question?.questionText ?? questionId;
+
+                          return (
+                            <div
+                              key={questionId}
+                              className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] px-4 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-[0.6rem] font-mono font-medium text-muted-foreground/70">
+                                    {questionId}
+                                  </span>
+                                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                    {questionText}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 rounded-md bg-amber-500/10 px-2 py-0.5 text-[0.6rem] font-medium text-amber-700">
+                                  Skipped
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs italic text-amber-700/70">
+                                Not answered — may require follow-up with PI.
+                              </p>
+                            </div>
+                          );
+                        })}
+                        {sectionAnswers.length === 0 && sectionSkipped.length === 0 && (
+                          <p className="py-8 text-center text-sm text-muted-foreground">
+                            No questions in this section.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <p className="text-sm text-muted-foreground">Select a section to view answers.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={fullSummaryOpen} onOpenChange={setFullSummaryOpen}>
         <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[1400px] p-0 sm:max-w-[1400px] sm:w-[calc(100vw-2rem)]">
           <div className="flex h-[min(calc(100dvh-2rem),620px)] flex-col overflow-hidden">
@@ -2277,6 +2507,107 @@ function AdminProposalDetailInner() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          ) : activeNode === "questionnaire" ? (
+            <Card className="border-0 bg-transparent shadow-none hover:border-0 hover:shadow-none">
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 pb-4">
+                <div className="space-y-1">
+                  <CardTitle className="font-sans text-base font-semibold tracking-tight">
+                    Compliance questionnaire
+                  </CardTitle>
+                  <CardDescription>
+                    Answers to targeted IRB compliance questions, collected from uploaded documents and PI responses.
+                  </CardDescription>
+                </div>
+                {(() => {
+                  const questionnaireData = (aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire as Record<string, unknown> | null;
+                  if (!questionnaireData) return null;
+                  const answers = Array.isArray(questionnaireData.answers) ? questionnaireData.answers as Array<Record<string, unknown>> : [];
+                  const skippedIds = Array.isArray(questionnaireData.skippedQuestionIds) ? questionnaireData.skippedQuestionIds as string[] : [];
+                  if (answers.length === 0 && skippedIds.length === 0) return null;
+                  return (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="cursor-pointer shrink-0"
+                      onClick={() => {
+                        setQuestionnaireActiveSection(null);
+                        setQuestionnaireDialogOpen(true);
+                      }}
+                    >
+                      View all answers
+                    </Button>
+                  );
+                })()}
+              </CardHeader>
+              <CardContent className="pt-2">
+                {(() => {
+                  const questionnaireData = (aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire as Record<string, unknown> | null;
+                  if (!questionnaireData) return <p className="text-sm text-muted-foreground">No questionnaire data available.</p>;
+                  const answers = Array.isArray(questionnaireData.answers) ? questionnaireData.answers as Array<Record<string, unknown>> : [];
+                  const skippedIds = Array.isArray(questionnaireData.skippedQuestionIds) ? questionnaireData.skippedQuestionIds as string[] : [];
+                  const activeQuestionIds = Array.isArray(questionnaireData.activeQuestionIds) ? questionnaireData.activeQuestionIds as string[] : [];
+                  if (answers.length === 0 && skippedIds.length === 0) {
+                    return <p className="text-sm text-muted-foreground">Questionnaire not yet completed.</p>;
+                  }
+
+                  const answeredCount = answers.length;
+                  const totalActive = activeQuestionIds.length || answeredCount + skippedIds.length;
+                  const completionPct = totalActive > 0 ? Math.round((answeredCount / totalActive) * 100) : 0;
+                  const extractedCount = answers.filter((answer) => answer.answeredBy === "document_extraction").length;
+                  const piCount = answeredCount - extractedCount;
+
+                  return (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg bg-muted/10 px-3 py-2.5">
+                        <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                          Answered
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-foreground">
+                          {answeredCount} / {totalActive}
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">({completionPct}%)</span>
+                        </div>
+                        <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted/30">
+                          <div
+                            className="h-full rounded-full bg-emerald-500/70 transition-all"
+                            style={{ width: `${completionPct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-muted/10 px-3 py-2.5">
+                        <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                          Sources
+                        </div>
+                        <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {extractedCount > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500/60" />
+                              {extractedCount} extracted from documents
+                            </span>
+                          )}
+                          {piCount > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-2 rounded-full bg-primary/50" />
+                              {piCount} from PI responses
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-muted/10 px-3 py-2.5">
+                        <div className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                          Skipped
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-foreground">
+                          {skippedIds.length}
+                          {skippedIds.length > 0 && (
+                            <span className="ml-1.5 text-xs font-normal text-amber-600">needs review</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           ) : activeNode === "reviewers" ? (

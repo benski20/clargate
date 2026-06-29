@@ -270,7 +270,7 @@ export async function simulateBoardReview(params: {
   return {
     reviewer_assessments: assessments,
     synthesis,
-    model_used: resolveProviderForTask("board-reviewer"),
+    model_used: await resolveProviderForTask("board-reviewer"),
     completed_at: new Date().toISOString(),
   };
 }

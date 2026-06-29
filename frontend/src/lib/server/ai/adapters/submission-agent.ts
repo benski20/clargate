@@ -1,0 +1,204 @@
+import { AIProjectClient } from "@azure/ai-projects";
+import { ClientSecretCredential } from "@azure/identity";
+import type OpenAI from "openai";
+import type { ProviderAdapter, ToolDefinition, JsonSchemaProperty } from "../types";
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+export type SubmissionAgentConfig = {
+  endpoint: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  agentName: string;
+};
+
+let cachedClient: OpenAI | null = null;
+let cachedConfigKey = "";
+
+function getOpenAIClient(config: SubmissionAgentConfig): OpenAI {
+  const key = `submission:${config.tenantId}:${config.clientId}:${config.endpoint}`;
+  if (cachedClient && cachedConfigKey === key) return cachedClient;
+
+  const credential = new ClientSecretCredential(
+    config.tenantId,
+    config.clientId,
+    config.clientSecret,
+  );
+  const project = new AIProjectClient(config.endpoint, credential);
+  cachedClient = project.getOpenAIClient({
+    azureConfig: { allowPreview: true, agentName: config.agentName },
+    timeout: 90_000,
+  });
+  cachedConfigKey = key;
+  return cachedClient;
+}
+
+function toFunctionToolSchema(
+  property: JsonSchemaProperty,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { type: property.type };
+  if (property.description) result.description = property.description;
+  if (property.enum) result.enum = property.enum;
+  if (property.items) result.items = toFunctionToolSchema(property.items);
+  if (property.properties) {
+    result.properties = Object.fromEntries(
+      Object.entries(property.properties).map(([propertyKey, value]) => [
+        propertyKey,
+        toFunctionToolSchema(value),
+      ]),
+    );
+    result.required = Object.keys(property.properties);
+  } else if (property.required) {
+    result.required = property.required;
+  }
+  result.additionalProperties = false;
+  return result;
+}
+
+function buildInput(
+  history: ChatMessage[],
+  userText: string,
+): OpenAI.Responses.ResponseInput {
+  const items: OpenAI.Responses.ResponseInputItem[] = [];
+  for (const message of history) {
+    items.push({ role: message.role, content: message.content });
+  }
+  items.push({ role: "user", content: userText });
+  return items;
+}
+
+export function getSubmissionAgentConfig(): SubmissionAgentConfig {
+  const endpoint =
+    process.env.AZURE_SUBMISSION_AGENT_ENDPOINT?.trim() ??
+    process.env.AZURE_ARBITER_ENDPOINT?.trim();
+  const tenantId = process.env.AZURE_ARBITER_TENANT_ID?.trim();
+  const clientId = process.env.AZURE_ARBITER_CLIENT_ID?.trim();
+  const clientSecret = process.env.AZURE_ARBITER_CLIENT_SECRET?.trim();
+  const agentName = process.env.AZURE_SUBMISSION_AGENT_NAME?.trim();
+
+  if (!endpoint || !tenantId || !clientId || !clientSecret || !agentName) {
+    throw new Error(
+      "AZURE_SUBMISSION_AGENT_NAME, AZURE_SUBMISSION_AGENT_ENDPOINT (or AZURE_ARBITER_ENDPOINT), " +
+        "AZURE_ARBITER_TENANT_ID, AZURE_ARBITER_CLIENT_ID, and AZURE_ARBITER_CLIENT_SECRET must be set",
+    );
+  }
+  return { endpoint, tenantId, clientId, clientSecret, agentName };
+}
+
+export function isSubmissionAgentConfigured(): boolean {
+  return Boolean(
+    process.env.AZURE_SUBMISSION_AGENT_NAME?.trim() &&
+      (process.env.AZURE_SUBMISSION_AGENT_ENDPOINT?.trim() ||
+        process.env.AZURE_ARBITER_ENDPOINT?.trim()) &&
+      process.env.AZURE_ARBITER_TENANT_ID?.trim() &&
+      process.env.AZURE_ARBITER_CLIENT_ID?.trim() &&
+      process.env.AZURE_ARBITER_CLIENT_SECRET?.trim(),
+  );
+}
+
+export function createSubmissionAgentAdapter(model: string): ProviderAdapter {
+  const agentModel =
+    process.env.AZURE_SUBMISSION_AGENT_MODEL?.trim() || model;
+
+  return {
+    async generateWithForcedToolCall<T extends object>({
+      systemInstruction,
+      history,
+      userText,
+      tool,
+    }: Parameters<ProviderAdapter["generateWithForcedToolCall"]>[0]) {
+      const config = getSubmissionAgentConfig();
+      const client = getOpenAIClient(config);
+
+      const jsonPrompt =
+        `\n\nYou MUST respond with a single JSON object matching this schema ` +
+        `(no markdown, no code fences, no extra text):\n` +
+        JSON.stringify(toFunctionToolSchema(tool.parameters), null, 2);
+
+      const stream = await client.responses.create({
+        model: agentModel,
+        stream: true,
+        input: buildInput(history, userText + jsonPrompt),
+      });
+
+      let fullText = "";
+      for await (const event of stream) {
+        if (event.type === "response.output_text.delta")
+          fullText += event.delta ?? "";
+      }
+
+      const cleaned = fullText
+        .replace(/```(?:json)?\s*/g, "")
+        .replace(/```\s*/g, "");
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]) as T;
+      throw new Error("Submission agent did not return valid JSON");
+    },
+
+    async generatePlainText({
+      userText,
+    }: Parameters<ProviderAdapter["generatePlainText"]>[0]) {
+      const config = getSubmissionAgentConfig();
+      const client = getOpenAIClient(config);
+
+      const stream = await client.responses.create({
+        model: agentModel,
+        stream: true,
+        input: userText,
+      });
+
+      let text = "";
+      for await (const event of stream) {
+        if (event.type === "response.output_text.delta")
+          text += event.delta ?? "";
+      }
+
+      if (!text.trim()) throw new Error("Empty submission agent response");
+      return text.trim();
+    },
+
+    async generateMultiTurnText({
+      history,
+      userText,
+    }: Parameters<ProviderAdapter["generateMultiTurnText"]>[0]) {
+      const config = getSubmissionAgentConfig();
+      const client = getOpenAIClient(config);
+
+      const stream = await client.responses.create({
+        model: agentModel,
+        stream: true,
+        input: buildInput(history, userText),
+      });
+
+      let text = "";
+      for await (const event of stream) {
+        if (event.type === "response.output_text.delta")
+          text += event.delta ?? "";
+      }
+
+      if (!text.trim()) throw new Error("Empty submission agent response");
+      return text.trim();
+    },
+
+    async *generateMultiTurnTextStream({
+      history,
+      userText,
+    }: Parameters<ProviderAdapter["generateMultiTurnTextStream"]>[0]) {
+      const config = getSubmissionAgentConfig();
+      const client = getOpenAIClient(config);
+
+      const stream = await client.responses.create({
+        model: agentModel,
+        stream: true,
+        input: buildInput(history, userText),
+      });
+
+      for await (const event of stream) {
+        if (event.type === "response.output_text.delta" && event.delta) {
+          yield event.delta;
+        }
+      }
+    },
+  };
+}

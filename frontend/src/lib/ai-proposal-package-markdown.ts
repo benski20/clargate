@@ -3,6 +3,8 @@ import {
   PROTOCOL_SECTION_LABELS,
   type AiWorkspaceState,
 } from "@/lib/ai-proposal-types";
+import { COMPLIANCE_QUESTION_BANK } from "@/lib/compliance-question-bank";
+import { CAYUSE_SECTION_LABELS, type QuestionnaireAnswer } from "@/lib/compliance-questionnaire-types";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 /** e.g. "April 5, 2026 at 3:45 PM" (locale-aware). */
@@ -90,6 +92,41 @@ export function buildProposalPackageMarkdown(
   if (includedSections === 0) {
     lines.push("Protocol content will appear here once sections are completed.", "");
   }
+
+  if (ws.compliance_questionnaire?.answers && ws.compliance_questionnaire.answers.length > 0) {
+    lines.push("## Compliance Questionnaire", "");
+    const questionMap = new Map(
+      COMPLIANCE_QUESTION_BANK.map((question) => [question.questionId, question]),
+    );
+    const answersBySection = new Map<string, QuestionnaireAnswer[]>();
+    for (const answer of ws.compliance_questionnaire.answers) {
+      const question = questionMap.get(answer.questionId);
+      const sectionKey = question?.cayuseSection ?? "general";
+      const existing = answersBySection.get(sectionKey) ?? [];
+      existing.push(answer);
+      answersBySection.set(sectionKey, existing);
+    }
+    for (const [sectionKey, sectionAnswers] of answersBySection) {
+      const sectionLabel = CAYUSE_SECTION_LABELS[sectionKey as keyof typeof CAYUSE_SECTION_LABELS] ?? sectionKey;
+      lines.push(`### ${sectionLabel}`, "");
+      for (const answer of sectionAnswers) {
+        const question = questionMap.get(answer.questionId);
+        const questionText = question?.questionText ?? answer.questionId;
+        const source = answer.answeredBy === "document_extraction" ? " *(extracted from documents)*" : "";
+        lines.push(`**${answer.questionId}. ${questionText}**`, "");
+        lines.push(`${answer.answerText}${source}`, "");
+      }
+    }
+
+    if (ws.compliance_questionnaire.skippedQuestionIds.length > 0) {
+      lines.push("### Skipped Questions", "");
+      lines.push(
+        `The following questions were skipped: ${ws.compliance_questionnaire.skippedQuestionIds.join(", ")}`,
+        "",
+      );
+    }
+  }
+
   return lines.join("\n");
 }
 
