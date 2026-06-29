@@ -227,7 +227,7 @@ export async function POST(request: Request) {
     const questionHierarchy = formatQuestionHierarchy(activeQuestions);
 
     const category = workspace.predicted_category ?? "unknown";
-    const resolvedProvider = resolveProviderForTask("questionnaire-analyze");
+    const resolvedProvider = await resolveProviderForTask("questionnaire-analyze");
     const systemInstruction =
       "You are an IRB compliance document analyst. Find answers to compliance questions in the provided material. Be concise. Only report questions you find answers for. Pay attention to the question hierarchy — ▶ follow-up questions only apply when their parent triggers them.";
 

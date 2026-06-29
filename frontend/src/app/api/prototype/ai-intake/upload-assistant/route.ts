@@ -87,7 +87,7 @@ ${extra}`;
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const t of generateMultiTurnTextStream("upload-assistant-stream", {
+            for await (const t of await generateMultiTurnTextStream("upload-assistant-stream", {
               systemInstruction,
               history: prior,
               userText: user_message,

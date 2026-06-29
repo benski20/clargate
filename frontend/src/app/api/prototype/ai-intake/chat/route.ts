@@ -131,7 +131,7 @@ export async function POST(req: Request) {
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           try {
-            for await (const t of generateMultiTurnTextStream("intake-chat-stream", {
+            for await (const t of await generateMultiTurnTextStream("intake-chat-stream", {
               systemInstruction: streamSystem,
               history: prior,
               userText: user_message,
