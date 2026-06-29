@@ -46,6 +46,7 @@ import { dashboardCardClass, dashboardInputClass } from "@/components/dashboard/
 import { TreeView } from "@/components/ui/tree-view";
 import { MessagesThread } from "@/components/messages/MessagesThread";
 import { db } from "@/lib/database";
+import { COMPLIANCE_QUESTION_BANK } from "@/lib/compliance-question-bank";
 import { assignReviewersViaApi } from "@/lib/assign-reviewers-api";
 import { updateProposalStatusViaApi } from "@/lib/update-proposal-status-api";
 import { getSubmissionSnapshot } from "@/lib/submission-snapshot";
@@ -652,6 +653,14 @@ function AdminProposalDetailInner() {
           {
             id: "ai_flags",
             label: "AI Flagged Items",
+          },
+        ]
+      : []),
+    ...((aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire
+      ? [
+          {
+            id: "questionnaire",
+            label: "Compliance Questionnaire",
           },
         ]
       : []),
@@ -2277,6 +2286,230 @@ function AdminProposalDetailInner() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          ) : activeNode === "questionnaire" ? (
+            <Card className={cn(dashboardCardClass, "border-0 bg-transparent shadow-none hover:shadow-none")}>
+              <CardHeader className="space-y-1 pb-2">
+                <CardTitle className="font-sans text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                  Compliance questionnaire
+                </CardTitle>
+                <CardDescription className="text-sm leading-relaxed">
+                  Answers to targeted IRB compliance questions, collected from uploaded documents and PI responses.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                {(() => {
+                  const questionnaireData = (aiWorkspace as Record<string, unknown> | null)?.compliance_questionnaire as Record<string, unknown> | null;
+                  if (!questionnaireData) return <p className="text-sm text-muted-foreground">No questionnaire data available.</p>;
+                  const answers = Array.isArray(questionnaireData.answers) ? questionnaireData.answers as Array<Record<string, unknown>> : [];
+                  const skippedIds = Array.isArray(questionnaireData.skippedQuestionIds) ? questionnaireData.skippedQuestionIds as string[] : [];
+                  const activeQuestionIds = Array.isArray(questionnaireData.activeQuestionIds) ? questionnaireData.activeQuestionIds as string[] : [];
+                  if (answers.length === 0 && skippedIds.length === 0) {
+                    return <p className="text-sm text-muted-foreground">Questionnaire not yet completed.</p>;
+                  }
+
+                  const questionMap = new Map(
+                    COMPLIANCE_QUESTION_BANK.map((question) => [question.questionId, question]),
+                  );
+
+                  const sectionLabels: Record<string, string> = {
+                    core_information: "Core Information & Funding",
+                    personnel: "Personnel",
+                    research_focus: "Research Focus & Concepts",
+                    methods: "Methods",
+                    subjects_recruitment: "Subjects & Recruitment",
+                    data_collection: "Data Collection",
+                    data_security: "Data Security",
+                    risks_benefits: "Risks, Benefits & Compensation",
+                    affiliations_coi: "Affiliations & Conflicts of Interest",
+                    consent_assent: "Informed Consent & Assent",
+                  };
+                  const sectionOrder = Object.keys(sectionLabels);
+
+                  const answeredCount = answers.length;
+                  const totalActive = activeQuestionIds.length || answeredCount + skippedIds.length;
+                  const completionPct = totalActive > 0 ? Math.round((answeredCount / totalActive) * 100) : 0;
+                  const extractedCount = answers.filter((answer) => answer.answeredBy === "document_extraction").length;
+                  const piCount = answeredCount - extractedCount;
+
+                  const answersBySection = new Map<string, Array<Record<string, unknown>>>();
+                  for (const answer of answers) {
+                    const question = questionMap.get(String(answer.questionId ?? ""));
+                    const section = question?.cayuseSection ?? "other";
+                    const group = answersBySection.get(section) ?? [];
+                    group.push(answer);
+                    answersBySection.set(section, group);
+                  }
+
+                  const skippedBySection = new Map<string, string[]>();
+                  for (const questionId of skippedIds) {
+                    const question = questionMap.get(questionId);
+                    const section = question?.cayuseSection ?? "other";
+                    const group = skippedBySection.get(section) ?? [];
+                    group.push(questionId);
+                    skippedBySection.set(section, group);
+                  }
+
+                  const orderedSections = sectionOrder.filter(
+                    (section) => answersBySection.has(section) || skippedBySection.has(section),
+                  );
+
+                  const confidenceDots = (level: string) => {
+                    const filled = level === "high" ? 3 : level === "medium" ? 2 : 1;
+                    return (
+                      <span className="inline-flex items-center gap-px" title={`${level} confidence`}>
+                        {[0, 1, 2].map((dot) => (
+                          <span
+                            key={dot}
+                            className={cn(
+                              "inline-block h-1.5 w-1.5 rounded-full",
+                              dot < filled ? "bg-foreground/50" : "bg-foreground/10",
+                            )}
+                          />
+                        ))}
+                      </span>
+                    );
+                  };
+
+                  return (
+                    <div className="space-y-5">
+                      <div className="rounded-xl border border-border/40 bg-muted/5 px-5 py-4">
+                        <div className="flex items-baseline justify-between gap-4">
+                          <p className="text-sm font-medium text-foreground">
+                            {answeredCount} of {totalActive} answered
+                          </p>
+                          <span className="text-xs tabular-nums text-muted-foreground">{completionPct}%</span>
+                        </div>
+                        <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted/30">
+                          <div
+                            className="h-full rounded-full bg-emerald-500/70 transition-all"
+                            style={{ width: `${completionPct}%` }}
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+                          {extractedCount > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500/60" />
+                              {extractedCount} extracted from documents
+                            </span>
+                          )}
+                          {piCount > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-2 rounded-full bg-primary/50" />
+                              {piCount} from PI responses
+                            </span>
+                          )}
+                          {skippedIds.length > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block h-2 w-2 rounded-full bg-amber-500/60" />
+                              {skippedIds.length} skipped
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {orderedSections.map((section) => {
+                        const sectionAnswers = answersBySection.get(section) ?? [];
+                        const sectionSkipped = skippedBySection.get(section) ?? [];
+                        const sectionLabel = sectionLabels[section] ?? section;
+                        const sectionTotal = sectionAnswers.length + sectionSkipped.length;
+
+                        return (
+                          <details key={section} className="group">
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-1 py-2 transition-colors hover:bg-muted/10 [&::-webkit-details-marker]:hidden">
+                              <div className="flex items-center gap-2.5">
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                                <span className="text-sm font-medium text-foreground">{sectionLabel}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {sectionSkipped.length > 0 && (
+                                  <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[0.6rem] font-medium text-amber-700">
+                                    {sectionSkipped.length} skipped
+                                  </span>
+                                )}
+                                <span className="text-xs tabular-nums text-muted-foreground">
+                                  {sectionAnswers.length}/{sectionTotal}
+                                </span>
+                              </div>
+                            </summary>
+                            <div className="mt-1 space-y-2 pb-2 pl-6">
+                              {sectionAnswers.map((answer, answerIndex) => {
+                                const questionId = String(answer.questionId ?? "");
+                                const question = questionMap.get(questionId);
+                                const questionText = question?.questionText ?? questionId;
+                                const isExtracted = answer.answeredBy === "document_extraction";
+                                const confidence = String(answer.confidence ?? "medium");
+
+                                return (
+                                  <div
+                                    key={questionId || answerIndex}
+                                    className="rounded-xl border border-border/30 bg-background px-4 py-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="shrink-0 text-[0.6rem] font-mono font-medium text-muted-foreground/70">
+                                            {questionId}
+                                          </span>
+                                          {confidenceDots(confidence)}
+                                        </div>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                          {questionText}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={cn(
+                                          "shrink-0 rounded-md px-2 py-0.5 text-[0.6rem] font-medium",
+                                          isExtracted
+                                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                            : "bg-primary/8 text-primary dark:text-primary/80",
+                                        )}
+                                      >
+                                        {isExtracted ? "Extracted" : "PI response"}
+                                      </span>
+                                    </div>
+                                    <p className="mt-2.5 rounded-lg bg-muted/8 px-3 py-2 text-sm leading-relaxed text-foreground">
+                                      {String(answer.answerText ?? "")}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                              {sectionSkipped.map((questionId) => {
+                                const question = questionMap.get(questionId);
+                                const questionText = question?.questionText ?? questionId;
+
+                                return (
+                                  <div
+                                    key={questionId}
+                                    className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] px-4 py-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <span className="text-[0.6rem] font-mono font-medium text-muted-foreground/70">
+                                          {questionId}
+                                        </span>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                          {questionText}
+                                        </p>
+                                      </div>
+                                      <span className="shrink-0 rounded-md bg-amber-500/10 px-2 py-0.5 text-[0.6rem] font-medium text-amber-700">
+                                        Skipped
+                                      </span>
+                                    </div>
+                                    <p className="mt-2 text-xs italic text-amber-700/70">
+                                      Not answered — may require follow-up with PI.
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           ) : activeNode === "reviewers" ? (

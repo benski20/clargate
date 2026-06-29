@@ -67,6 +67,8 @@ import {
   proposalPackagePdfFilename,
   buildProposalPackagePdfBytes,
 } from "@/lib/ai-proposal-package-markdown";
+import { ComplianceQuestionnaire } from "@/components/proposals/ComplianceQuestionnaire";
+import type { ComplianceQuestionnaireState } from "@/lib/compliance-questionnaire-types";
 import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import {
   MAX_INGEST_BYTES_PER_FILE,
@@ -88,12 +90,13 @@ const UPLOAD_WIZARD_STEPS = [
   { label: "AI review", description: "Section-by-section review notes" },
   { label: "Consent", description: "Consent draft" },
   { label: "Compliance", description: "Checks and revision ideas" },
+  { label: "Questionnaire", description: "Targeted compliance questions" },
   { label: "Extra materials", description: "Additional documents for reviewers" },
   { label: "Submit", description: "Submit to the IRB" },
 ] as const;
 
 /** Compact labels for the header step strip only */
-const UPLOAD_WIZARD_STRIP_LABELS = ["Materials", "Review", "Consent", "Compliance", "Extra", "Submit"] as const;
+const UPLOAD_WIZARD_STRIP_LABELS = ["Materials", "Review", "Consent", "Compliance", "Questions", "Extra", "Submit"] as const;
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -146,7 +149,7 @@ export function AiIntakeWorkspace({
   const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [rightTab, setRightTab] = useState<"context" | "consent" | "compliance" | "package">("context");
+  const [rightTab, setRightTab] = useState<"context" | "consent" | "compliance" | "questionnaire" | "package">("context");
   const [consentBusy, setConsentBusy] = useState(false);
   const [complianceBusy, setComplianceBusy] = useState(false);
   const [ingestBusy, setIngestBusy] = useState(false);
@@ -220,10 +223,14 @@ export function AiIntakeWorkspace({
   }, [blockWorkspace]);
 
   const complianceComplete =
-    (ws.phase === "compliance" || ws.phase === "submit") && Boolean(ws.predicted_category);
+    (ws.phase === "compliance" || ws.phase === "questionnaire" || ws.phase === "submit") && Boolean(ws.predicted_category);
+
+  const questionnaireComplete =
+    ws.compliance_questionnaire?.status === "complete" ||
+    ws.compliance_questionnaire?.status === undefined;
 
   const canSubmitProposal =
-    Boolean(proposalId) && complianceComplete;
+    Boolean(proposalId) && complianceComplete && questionnaireComplete;
 
   useEffect(() => {
     const prev = prevReviewBusyRef.current;
@@ -267,7 +274,7 @@ export function AiIntakeWorkspace({
 
   const navigateWorkspaceTab = useCallback(
     (
-      tab: "context" | "consent" | "compliance" | "package",
+      tab: "context" | "consent" | "compliance" | "questionnaire" | "package",
       uploadWizardStepOverride?: number,
     ) => {
       setRightTab(tab);
@@ -279,6 +286,7 @@ export function AiIntakeWorkspace({
       if (tab === "context") setUploadWizardStep(1);
       else if (tab === "consent") setUploadWizardStep(2);
       else if (tab === "compliance") setUploadWizardStep(3);
+      else if (tab === "questionnaire") setUploadWizardStep(4);
     },
     [effectiveVariant],
   );
@@ -286,7 +294,7 @@ export function AiIntakeWorkspace({
   const goToUploadWizardStep = useCallback(
     (stepIndex: number) => {
       if (effectiveVariant !== "upload") return;
-      const clamped = Math.max(0, Math.min(5, stepIndex));
+      const clamped = Math.max(0, Math.min(6, stepIndex));
       if (clamped === 0) {
         setUploadWizardStep(0);
         return;
@@ -294,8 +302,9 @@ export function AiIntakeWorkspace({
       if (clamped === 1) navigateWorkspaceTab("context");
       else if (clamped === 2) navigateWorkspaceTab("consent");
       else if (clamped === 3) navigateWorkspaceTab("compliance");
-      else if (clamped === 4) navigateWorkspaceTab("compliance", 4);
-      else navigateWorkspaceTab("compliance", 5);
+      else if (clamped === 4) navigateWorkspaceTab("questionnaire");
+      else if (clamped === 5) navigateWorkspaceTab("package", 5);
+      else navigateWorkspaceTab("package", 6);
     },
     [effectiveVariant, navigateWorkspaceTab],
   );
@@ -527,10 +536,14 @@ export function AiIntakeWorkspace({
   }, [ws.messages, aiBusy]);
 
   useEffect(() => {
-    if (effectiveVariant === "upload" && rightTab === "package") {
+    if (
+      effectiveVariant === "upload" &&
+      rightTab === "package" &&
+      uploadWizardStep < 5
+    ) {
       navigateWorkspaceTab("context");
     }
-  }, [effectiveVariant, rightTab, navigateWorkspaceTab]);
+  }, [effectiveVariant, rightTab, uploadWizardStep, navigateWorkspaceTab]);
 
   useLayoutEffect(() => {
     const el = uploadChatScrollRef.current;
@@ -1051,6 +1064,7 @@ export function AiIntakeWorkspace({
     }
   }
 
+
   async function runCompliance() {
     setComplianceBusy(true);
     navigateWorkspaceTab("compliance");
@@ -1072,7 +1086,7 @@ export function AiIntakeWorkspace({
       if (!res.ok) throw new Error(data.error || "Compliance review failed");
       setWs((w) => ({
         ...w,
-        phase: "compliance",
+        phase: "compliance" as const,
         predicted_category: isValidReviewType(data.predicted_category) ? data.predicted_category : null,
         compliance_flags: normalizeComplianceFlags(data.flags ?? []),
       }));
@@ -1127,7 +1141,7 @@ export function AiIntakeWorkspace({
       setReviewPhase("done");
       setWs((w) => ({
         ...w,
-        phase: "compliance",
+        phase: "compliance" as const,
         predicted_category: cat,
         compliance_flags: normalizeComplianceFlags(compData.flags ?? []),
       }));
@@ -2415,7 +2429,30 @@ export function AiIntakeWorkspace({
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Step 5 · Extra materials
+                      Step 5 · Compliance questionnaire
+                    </p>
+                    <h2 className="font-semibold text-2xl tracking-tight text-foreground md:text-3xl">
+                      Compliance questionnaire
+                    </h2>
+                  </div>
+                  <ComplianceQuestionnaire
+                    workspace={ws}
+                    onUpdate={(next: ComplianceQuestionnaireState) => {
+                      setWs((prev) => ({
+                        ...prev,
+                        compliance_questionnaire: next,
+                        phase: next.status === "complete" ? "questionnaire" : prev.phase,
+                      }));
+                    }}
+                    onContinueToSubmission={() => goToUploadWizardStep(5)}
+                  />
+                </div>
+              ) : null}
+              {uploadWizardStep === 5 ? (
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Step 6 · Extra materials
                     </p>
                     <h2 className="font-semibold text-2xl tracking-tight text-foreground md:text-3xl">
                       Extra materials
@@ -2424,10 +2461,10 @@ export function AiIntakeWorkspace({
                   {extraMaterialsSection}
                 </div>
               ) : null}
-              {uploadWizardStep === 5 ? (
+              {uploadWizardStep === 6 ? (
                 <div className="space-y-4">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Step 6 · Submit
+                    Step 7 · Submit
                   </p>
                   <h2 className="font-semibold text-2xl tracking-tight text-foreground md:text-3xl">
                     Submit to the IRB
@@ -2446,7 +2483,7 @@ export function AiIntakeWorkspace({
                     <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-muted-foreground">
                       <li>All files uploaded in the Materials step</li>
                       <li>Optional consent form (if included)</li>
-                      <li>Any extra materials attached in Step 5</li>
+                      <li>Any extra materials attached in Step 6</li>
                     </ul>
                   </div>
                 </div>
@@ -2466,7 +2503,7 @@ export function AiIntakeWorkspace({
                   type="button"
                   variant="outline"
                   className="cursor-pointer"
-                  disabled={uploadWizardStep >= 5 || blockWorkspace}
+                  disabled={uploadWizardStep >= 6 || blockWorkspace}
                   onClick={() => goToUploadWizardStep(uploadWizardStep + 1)}
                 >
                   Continue
@@ -2890,6 +2927,18 @@ export function AiIntakeWorkspace({
                         ) : null}
                         {complianceReviewSection}
                       </div>
+                    ) : null}
+                    {rightTab === "questionnaire" ? (
+                      <ComplianceQuestionnaire
+                        workspace={ws}
+                        onUpdate={(next: ComplianceQuestionnaireState) => {
+                          setWs((prev) => ({
+                            ...prev,
+                            compliance_questionnaire: next,
+                            phase: next.status === "complete" ? "questionnaire" : prev.phase,
+                          }));
+                        }}
+                      />
                     ) : null}
                     {draftWizardStep !== 2 && rightTab === "package" ? (
                       <div className="flex min-h-0 flex-1 flex-col gap-3">

@@ -1,8 +1,9 @@
 import type { AiTask, ProviderAdapter } from "./types";
-import { getModelForTask, isAzureOpenAiConfigured, isAzureArbiterConfigured, isAzureFoundryConfigured } from "./config";
+import { getModelForTask, isAzureOpenAiConfigured, isAzureArbiterConfigured, isAzureFoundryConfigured, isSubmissionAgentConfigured } from "./config";
 import { createGeminiAdapter } from "./adapters/gemini";
 import { createAzureOpenAiAdapter, type AzureOpenAiConfig } from "./adapters/azure-openai";
 import { createAzureAgentAdapter } from "./adapters/azure-agent";
+import { createSubmissionAgentAdapter } from "./adapters/submission-agent";
 
 const adapterCache = new Map<string, ProviderAdapter>();
 
@@ -31,6 +32,9 @@ function getAdapter(provider: string, model: string): ProviderAdapter {
     case "azure-arbiter":
       adapter = createAzureAgentAdapter(model);
       break;
+    case "azure-submission":
+      adapter = createSubmissionAgentAdapter(model);
+      break;
     case "gemini":
       adapter = createGeminiAdapter(model || undefined);
       break;
@@ -53,6 +57,19 @@ function resolveAdapter(task: AiTask): { adapter: ProviderAdapter; provider: str
 
   if (provider === "azure-foundry" && !isAzureFoundryConfigured()) {
     if (isAzureOpenAiConfigured()) {
+      provider = "azure-openai";
+      model = "gpt-5.4";
+    } else {
+      provider = "gemini";
+      model = "";
+    }
+  }
+
+  if (provider === "azure-submission" && !isSubmissionAgentConfigured()) {
+    if (isAzureFoundryConfigured()) {
+      provider = "azure-foundry";
+      model = "model-router";
+    } else if (isAzureOpenAiConfigured()) {
       provider = "azure-openai";
       model = "gpt-5.4";
     } else {

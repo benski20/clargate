@@ -1,6 +1,8 @@
 /** AI-assisted draft flow stored under proposal.form_data.ai_workspace */
 
 import type { ReviewType } from "@/lib/review-types";
+import type { ComplianceQuestionnaireState } from "@/lib/compliance-questionnaire-types";
+import { emptyQuestionnaireState } from "@/lib/compliance-questionnaire-types";
 
 export const PROTOCOL_SECTION_KEYS = [
   "background_rationale",
@@ -104,7 +106,7 @@ export type ExtraMaterial = {
 
 export type AiWorkspaceState = {
   version: 2;
-  phase: "intake" | "consent" | "compliance" | "submit";
+  phase: "intake" | "consent" | "compliance" | "questionnaire" | "submit";
   messages: AiChatMessage[];
   protocol: ProtocolDraft;
   /** Freeform notes included in every Gemini call. */
@@ -119,6 +121,7 @@ export type AiWorkspaceState = {
   consent_missing: string[];
   predicted_category: ReviewType | null;
   compliance_flags: ComplianceFlag[];
+  compliance_questionnaire: ComplianceQuestionnaireState | null;
   last_intake_focus?: string;
 };
 
@@ -149,6 +152,7 @@ export function emptyAiWorkspace(): AiWorkspaceState {
     consent_missing: [],
     predicted_category: null,
     compliance_flags: [],
+    compliance_questionnaire: null,
   };
 }
 
@@ -197,6 +201,10 @@ export function normalizeAiWorkspace(raw: unknown): AiWorkspaceState {
     compliance_flags: Array.isArray(o.compliance_flags)
       ? normalizeComplianceFlags(o.compliance_flags)
       : base.compliance_flags,
+    compliance_questionnaire:
+      o.compliance_questionnaire && typeof o.compliance_questionnaire === "object"
+        ? { ...emptyQuestionnaireState(), ...o.compliance_questionnaire }
+        : base.compliance_questionnaire,
     phase: o.phase ?? base.phase,
     predicted_category: o.predicted_category ?? base.predicted_category,
   };

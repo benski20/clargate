@@ -28,9 +28,12 @@ export type AiTask =
   | "revision-letter"
   | "file-extraction"
   | "upload-assistant"
-  | "upload-assistant-stream";
+  | "upload-assistant-stream"
+  | "questionnaire-analyze"
+  | "questionnaire-chat"
+  | "questionnaire-chat-stream";
 
-export type ProviderName = "gemini" | "azure-openai" | "azure-arbiter" | "azure-foundry" | "openai";
+export type ProviderName = "gemini" | "azure-openai" | "azure-arbiter" | "azure-foundry" | "azure-submission" | "openai";
 
 export type ModelAssignment = {
   provider: ProviderName;
