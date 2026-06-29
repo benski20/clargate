@@ -139,8 +139,7 @@ export function createBoardAgentAdapter(model: string): ProviderAdapter {
           const fallbackStream = await client.responses.create({
             model: agentModel,
             stream: true,
-            instructions: systemInstruction,
-            input: buildInput(history, userText + jsonPrompt),
+            input: buildInput(history, contextPrompt),
           });
 
           for await (const event of fallbackStream) {
