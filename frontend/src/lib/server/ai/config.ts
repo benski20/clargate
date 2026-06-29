@@ -3,8 +3,8 @@ import type { AiTask, ModelAssignment, ProviderName } from "./types";
 const DEFAULT_ROUTING: Record<AiTask, ModelAssignment> = {
   "category-prediction":   { provider: "azure-arbiter", model: "gpt-5.4-pro" },
   "compliance-flags":      { provider: "azure-openai", model: "gpt-5.4" },
-  "board-reviewer":        { provider: "azure-openai", model: "gpt-5.4" },
-  "board-synthesis":       { provider: "azure-openai", model: "gpt-5.4" },
+  "board-reviewer":        { provider: "azure-board", model: "gpt-5.4" },
+  "board-synthesis":       { provider: "azure-board", model: "gpt-5.4" },
   "admin-summary":         { provider: "azure-openai", model: "gpt-5.4" },
 
   "intake-chat":           { provider: "azure-foundry", model: "model-router" },
@@ -14,7 +14,7 @@ const DEFAULT_ROUTING: Record<AiTask, ModelAssignment> = {
   "consent-generation":    { provider: "azure-openai", model: "gpt-5.4" },
   "protocol-synthesis":    { provider: "azure-openai", model: "gpt-5.4" },
   "revision-suggestions":  { provider: "azure-openai", model: "gpt-5.4" },
-  "revision-letter":       { provider: "azure-openai", model: "gpt-5.4" },
+  "revision-letter":       { provider: "azure-foundry", model: "model-router" },
   "file-extraction":       { provider: "azure-openai", model: "gpt-5.4" },
 
   "questionnaire-analyze":      { provider: "azure-foundry",    model: "model-router" },
@@ -22,7 +22,7 @@ const DEFAULT_ROUTING: Record<AiTask, ModelAssignment> = {
   "questionnaire-chat-stream":  { provider: "azure-foundry",    model: "model-router" },
 };
 
-const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "azure-arbiter", "azure-foundry", "azure-submission", "openai"]);
+const VALID_PROVIDERS = new Set<ProviderName>(["gemini", "azure-openai", "azure-arbiter", "azure-foundry", "azure-submission", "azure-board", "openai"]);
 
 function parseOverride(value: string): ModelAssignment | undefined {
   const separatorIndex = value.indexOf(":");
@@ -61,6 +61,17 @@ export function isSubmissionAgentConfigured(): boolean {
   return Boolean(
     process.env.AZURE_SUBMISSION_AGENT_NAME?.trim() &&
     (process.env.AZURE_SUBMISSION_AGENT_ENDPOINT?.trim() ||
+      process.env.AZURE_ARBITER_ENDPOINT?.trim()) &&
+    process.env.AZURE_ARBITER_TENANT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_ID?.trim() &&
+    process.env.AZURE_ARBITER_CLIENT_SECRET?.trim(),
+  );
+}
+
+export function isBoardAgentConfigured(): boolean {
+  return Boolean(
+    process.env.AZURE_BOARD_AGENT_NAME?.trim() &&
+    (process.env.AZURE_BOARD_AGENT_ENDPOINT?.trim() ||
       process.env.AZURE_ARBITER_ENDPOINT?.trim()) &&
     process.env.AZURE_ARBITER_TENANT_ID?.trim() &&
     process.env.AZURE_ARBITER_CLIENT_ID?.trim() &&

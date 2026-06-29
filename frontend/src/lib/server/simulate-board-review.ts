@@ -120,7 +120,9 @@ Evaluate:
 - Quality and completeness of the methodology description
 - Whether the background and rationale adequately support the proposed work
 
-Ground your assessment in the specific details of the protocol. Cite section names when referencing specific content. Be constructive but rigorous — flag genuine methodological weaknesses, not stylistic preferences.
+The proposal context includes a compliance_questionnaire section with the PI's answers to targeted IRB compliance questions (organized by Cayuse section). Use these answers as primary evidence — they contain specific details about methods, data collection, and procedures that may not appear in the protocol narrative. Flag any contradictions between the questionnaire answers and the protocol.
+
+Ground your assessment in the specific details of the protocol and questionnaire. Cite section names when referencing specific content. Be constructive but rigorous — flag genuine methodological weaknesses, not stylistic preferences.
 ${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
@@ -135,7 +137,9 @@ Evaluate:
 - Special protections needed for vulnerable populations (children, prisoners, pregnant women, cognitively impaired)
 - Whether compensation creates undue influence
 
-Ground your assessment in specific consent language and protocol details. Reference 45 CFR 46 principles where relevant. Focus on substantive ethical issues, not formatting.
+The proposal context includes a compliance_questionnaire section with the PI's answers to targeted IRB compliance questions. Pay particular attention to answers in the Consent & Assent, Subjects & Recruitment, and Risks/Benefits sections — these contain specifics about consent procedures, vulnerable populations, and compensation that inform your ethical assessment. Also check for skipped questions, which may indicate missing information about participant protections.
+
+Ground your assessment in specific consent language, questionnaire answers, and protocol details. Reference 45 CFR 46 principles where relevant. Focus on substantive ethical issues, not formatting.
 ${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
 
@@ -150,6 +154,8 @@ Evaluate:
 - Whether the predicted review category from the AI intake is accurate
 - Any regulatory gaps or missing documentation
 
+The proposal context includes a compliance_questionnaire section with the PI's answers to IRB compliance questions organized by Cayuse section. These answers contain critical regulatory details: data security measures, international collaborations, use of recordings, biological samples, and online platforms. Cross-reference the PI's questionnaire answers with your regulatory knowledge base to verify the review category and identify gaps. Skipped questions are especially important — they may indicate missing regulatory documentation.
+
 Work through the category determination systematically: check full board disqualifiers first, then evaluate exempt categories, then expedited. Do NOT default to expedited category 7 — most behavioral research qualifies as exempt under categories 2 or 3.
 ${CONCISE_OUTPUT_RULES}${institutionGuidance}`;
 }
@@ -163,6 +169,7 @@ Your role:
 - Apply the most protective standard when reviewers disagree on risk level
 - Ensure the final decision reflects the collective assessment, not just a majority vote
 - List specific modifications or conditions that emerged from the reviews
+- If skipped compliance questionnaire questions were flagged by reviewers, include them as required modifications
 
 The board decision should be the most appropriate outcome given all three assessments. If any reviewer identified a serious concern, it should be addressed in the required modifications even if other reviewers did not flag it.
 

@@ -17,6 +17,9 @@ import {
   Download,
   FileText,
   Check,
+  X,
+  Scale,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -1556,147 +1559,196 @@ function AdminProposalDetailInner() {
                                 initial={simulationJustFinished ? { opacity: 0, y: 12 } : false}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.4 }}
-                                className="space-y-3"
+                                className="space-y-4"
                               >
-                                <div className="rounded-xl border border-border bg-muted/5 p-4">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className={cn(
-                                      "rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide",
-                                      boardSimulation.synthesis.board_decision === "approve"
-                                        ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
-                                        : boardSimulation.synthesis.board_decision === "reject"
-                                          ? "border border-red-500/40 bg-red-500/10 text-red-700"
-                                          : "border border-amber-500/40 bg-amber-500/10 text-amber-700",
-                                    )}>
-                                      {boardSimulation.synthesis.board_decision.replace(/_/g, " ")}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {boardSimulation.synthesis.vote_summary}
-                                    </span>
-                                  </div>
+                                {(() => {
+                                  const decision = boardSimulation.synthesis.board_decision;
+                                  const decisionConfig = decision === "approve"
+                                    ? { label: "Approved", bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-800/60", badge: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400" }
+                                    : decision === "reject"
+                                      ? { label: "Rejected", bg: "bg-red-50 dark:bg-red-950/30", border: "border-red-200 dark:border-red-800/60", badge: "bg-red-500", text: "text-red-700 dark:text-red-400" }
+                                      : decision === "minor_modifications"
+                                        ? { label: "Minor Modifications", bg: "bg-sky-50 dark:bg-sky-950/30", border: "border-sky-200 dark:border-sky-800/60", badge: "bg-sky-500", text: "text-sky-700 dark:text-sky-400" }
+                                        : { label: decision.replace(/_/g, " "), bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-200 dark:border-amber-800/60", badge: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" };
 
-                                  {boardSimulation.synthesis.required_modifications.length > 0 ? (
-                                    <div className="mt-3">
-                                      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Required modifications</p>
-                                      <ul className="mt-1.5 space-y-1">
-                                        {boardSimulation.synthesis.required_modifications.map((mod, i) => (
-                                          <li key={i} className="flex gap-2 text-sm text-foreground/90">
-                                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-500" />
-                                            {mod}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  ) : null}
+                                  const reviewerDecisions = boardSimulation.reviewer_assessments.map((a) => a.decision);
+                                  const unanimous = reviewerDecisions.every((d) => d === reviewerDecisions[0]);
 
-                                  {boardSimulation.synthesis.recommended_conditions.length > 0 ? (
-                                    <div className="mt-3">
-                                      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Conditions</p>
-                                      <ul className="mt-1.5 space-y-1">
-                                        {boardSimulation.synthesis.recommended_conditions.map((cond, i) => (
-                                          <li key={i} className="flex gap-2 text-sm text-foreground/90">
-                                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
-                                            {cond}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  ) : null}
-
-                                  <details className="mt-3 group">
-                                    <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-                                      Full rationale
-                                    </summary>
-                                    <p className="mt-2 text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
-                                      {boardSimulation.synthesis.rationale}
-                                    </p>
-                                    {boardSimulation.synthesis.dissenting_views.length > 0 ? (
-                                      <div className="mt-2">
-                                        <p className="text-xs font-medium text-muted-foreground">Dissenting views</p>
-                                        <ul className="mt-1 space-y-1">
-                                          {boardSimulation.synthesis.dissenting_views.map((v, i) => (
-                                            <li key={i} className="text-sm text-foreground/80">{v}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    ) : null}
-                                  </details>
-                                </div>
-
-                                {boardSimulation.reviewer_assessments.map((assessment) => {
-                                  const roleLabels: Record<string, string> = {
-                                    primary: "Primary",
-                                    ethics: "Ethics",
-                                    regulatory: "Regulatory",
-                                  };
                                   return (
-                                    <details key={assessment.role} className="group rounded-lg border border-border/60">
-                                      <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs font-medium">{roleLabels[assessment.role] ?? assessment.role}</span>
-                                          <span className={cn(
-                                            "rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase",
-                                            assessment.decision === "approve"
-                                              ? "bg-emerald-500/10 text-emerald-700"
-                                              : assessment.decision === "reject"
-                                                ? "bg-red-500/10 text-red-700"
-                                                : "bg-amber-500/10 text-amber-700",
-                                          )}>
-                                            {assessment.decision.replace(/_/g, " ")}
-                                          </span>
-                                        </div>
-                                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
-                                      </summary>
-                                      <div className="border-t border-border/40 px-3 py-3 space-y-2">
-                                        <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
-                                          {assessment.narrative}
-                                        </p>
-                                        {assessment.concerns.length > 0 ? (
-                                          <div>
-                                            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Concerns</p>
-                                            <ul className="mt-1 space-y-0.5">
-                                              {assessment.concerns.map((c, i) => (
-                                                <li key={i} className="flex gap-2 text-sm text-foreground/80">
-                                                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-red-400/60" />
-                                                  {c}
-                                                </li>
-                                              ))}
-                                            </ul>
+                                    <>
+                                      <div className={cn("rounded-xl border p-5", decisionConfig.bg, decisionConfig.border)}>
+                                        <div className="flex items-start justify-between gap-4">
+                                          <div className="flex items-center gap-3">
+                                            <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", decisionConfig.badge)}>
+                                              {decision === "approve" ? (
+                                                <Check className="h-5 w-5 text-white" />
+                                              ) : decision === "reject" ? (
+                                                <X className="h-5 w-5 text-white" />
+                                              ) : (
+                                                <Scale className="h-5 w-5 text-white" />
+                                              )}
+                                            </div>
+                                            <div>
+                                              <p className={cn("text-base font-semibold capitalize", decisionConfig.text)}>
+                                                {decisionConfig.label}
+                                              </p>
+                                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {boardSimulation.synthesis.vote_summary}
+                                              </p>
+                                            </div>
                                           </div>
-                                        ) : null}
-                                        {assessment.conditions.length > 0 ? (
-                                          <div>
-                                            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Conditions</p>
-                                            <ul className="mt-1 space-y-0.5">
-                                              {assessment.conditions.map((c, i) => (
-                                                <li key={i} className="flex gap-2 text-sm text-foreground/80">
-                                                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-400/60" />
-                                                  {c}
+                                          <div className="flex shrink-0 items-center gap-1">
+                                            {boardSimulation.reviewer_assessments.map((assessment) => {
+                                              const color = assessment.decision === "approve"
+                                                ? "bg-emerald-500"
+                                                : assessment.decision === "reject"
+                                                  ? "bg-red-500"
+                                                  : "bg-amber-500";
+                                              return (
+                                                <div
+                                                  key={assessment.role}
+                                                  className={cn("h-2.5 w-2.5 rounded-full", color)}
+                                                  title={`${assessment.role}: ${assessment.decision.replace(/_/g, " ")}`}
+                                                />
+                                              );
+                                            })}
+                                            <span className="ml-1.5 text-[0.6rem] text-muted-foreground">
+                                              {unanimous ? "Unanimous" : "Split"}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="rounded-xl border border-border/60 bg-background">
+                                        <p className="border-b border-border/40 px-4 py-2.5 text-xs font-semibold text-foreground">
+                                          Board rationale
+                                        </p>
+                                        <p className="px-4 py-3 text-sm leading-relaxed text-foreground/85 whitespace-pre-line">
+                                          {boardSimulation.synthesis.rationale}
+                                        </p>
+                                        {boardSimulation.synthesis.dissenting_views.length > 0 ? (
+                                          <div className="border-t border-border/40 px-4 py-3">
+                                            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Dissenting views</p>
+                                            <ul className="mt-1.5 space-y-1">
+                                              {boardSimulation.synthesis.dissenting_views.map((view, viewIndex) => (
+                                                <li key={viewIndex} className="flex gap-2.5 text-sm text-foreground/80">
+                                                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/30" />
+                                                  {view}
                                                 </li>
                                               ))}
                                             </ul>
                                           </div>
                                         ) : null}
                                       </div>
-                                    </details>
-                                  );
-                                })}
 
-                                <div className="flex items-center justify-between pt-1">
-                                  <p className="text-[0.62rem] text-muted-foreground">
-                                    {new Date(boardSimulation.completed_at).toLocaleString()} · Advisory only
-                                  </p>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 cursor-pointer px-2 text-xs text-muted-foreground"
-                                    disabled={simulationRunning || isDemo}
-                                    onClick={() => void runBoardSimulation()}
-                                  >
-                                    Re-run
-                                  </Button>
-                                </div>
+                                      {boardSimulation.synthesis.required_modifications.length > 0 ? (
+                                        <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-950/20">
+                                          <div className="flex items-center gap-2 border-b border-amber-200/60 dark:border-amber-800/30 px-4 py-2.5">
+                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600">
+                                              <span className="text-[0.6rem] font-bold">{boardSimulation.synthesis.required_modifications.length}</span>
+                                            </span>
+                                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">Required modifications</p>
+                                          </div>
+                                          <ol className="space-y-0 divide-y divide-amber-200/40 dark:divide-amber-800/20">
+                                            {boardSimulation.synthesis.required_modifications.map((mod, modIndex) => (
+                                              <li key={modIndex} className="flex gap-3 px-4 py-2.5">
+                                                <span className="mt-0.5 shrink-0 text-xs font-semibold tabular-nums text-amber-500/70">{modIndex + 1}</span>
+                                                <span className="text-sm leading-relaxed text-foreground/90">{mod}</span>
+                                              </li>
+                                            ))}
+                                          </ol>
+                                        </div>
+                                      ) : null}
+
+                                      {boardSimulation.synthesis.recommended_conditions.length > 0 ? (
+                                        <div className="rounded-xl border border-border/60 bg-background">
+                                          <div className="flex items-center gap-2 border-b border-border/40 px-4 py-2.5">
+                                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted/40 text-muted-foreground">
+                                              <span className="text-[0.6rem] font-bold">{boardSimulation.synthesis.recommended_conditions.length}</span>
+                                            </span>
+                                            <p className="text-xs font-semibold text-foreground">Ongoing conditions</p>
+                                          </div>
+                                          <ul className="divide-y divide-border/30">
+                                            {boardSimulation.synthesis.recommended_conditions.map((cond, condIndex) => (
+                                              <li key={condIndex} className="flex gap-3 px-4 py-2.5">
+                                                <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                                                <span className="text-sm leading-relaxed text-foreground/85">{cond}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      ) : null}
+
+                                      <div className="grid gap-2 sm:grid-cols-3">
+                                        {boardSimulation.reviewer_assessments.map((assessment) => {
+                                          const roleLabels: Record<string, string> = {
+                                            primary: "Primary Reviewer",
+                                            ethics: "Ethics Reviewer",
+                                            regulatory: "Regulatory Specialist",
+                                          };
+                                          const roleDescriptions: Record<string, string> = {
+                                            primary: "Scientific merit & methodology",
+                                            ethics: "Participant protections",
+                                            regulatory: "Compliance & category",
+                                          };
+                                          const assessmentColor = assessment.decision === "approve"
+                                            ? "border-emerald-200 dark:border-emerald-800/50"
+                                            : assessment.decision === "reject"
+                                              ? "border-red-200 dark:border-red-800/50"
+                                              : "border-amber-200 dark:border-amber-800/50";
+                                          const confidenceLabel = assessment.confidence === "high" ? "High" : assessment.confidence === "medium" ? "Med" : "Low";
+                                          const confidenceColor = assessment.confidence === "high"
+                                            ? "text-emerald-600"
+                                            : assessment.confidence === "medium"
+                                              ? "text-amber-600"
+                                              : "text-red-600";
+
+                                          return (
+                                            <div key={assessment.role} className={cn("rounded-xl border bg-background px-3.5 py-3", assessmentColor)}>
+                                              <p className="text-xs font-semibold text-foreground">
+                                                {roleLabels[assessment.role] ?? assessment.role}
+                                              </p>
+                                              <p className="mt-0.5 text-[0.6rem] text-muted-foreground">
+                                                {roleDescriptions[assessment.role] ?? ""}
+                                              </p>
+                                              <div className="mt-2 flex items-center gap-2">
+                                                <span className={cn(
+                                                  "rounded-md px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase",
+                                                  assessment.decision === "approve"
+                                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                                    : assessment.decision === "reject"
+                                                      ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                                                      : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                                                )}>
+                                                  {assessment.decision.replace(/_/g, " ")}
+                                                </span>
+                                                <span className={cn("text-[0.55rem] font-medium", confidenceColor)}>
+                                                  {confidenceLabel} conf.
+                                                </span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      <div className="flex items-center justify-between rounded-lg bg-muted/10 px-3 py-2">
+                                        <p className="text-[0.6rem] text-muted-foreground">
+                                          {new Date(boardSimulation.completed_at).toLocaleString()} · {boardSimulation.model_used} · Advisory only — not a regulatory determination
+                                        </p>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 cursor-pointer px-2 text-xs text-muted-foreground"
+                                          disabled={simulationRunning || isDemo}
+                                          onClick={() => void runBoardSimulation()}
+                                        >
+                                          Re-run
+                                        </Button>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </motion.div>
                             </AnimatePresence>
                           ) : null}

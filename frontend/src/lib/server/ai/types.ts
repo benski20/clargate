@@ -33,7 +33,7 @@ export type AiTask =
   | "questionnaire-chat"
   | "questionnaire-chat-stream";
 
-export type ProviderName = "gemini" | "azure-openai" | "azure-arbiter" | "azure-foundry" | "azure-submission" | "openai";
+export type ProviderName = "gemini" | "azure-openai" | "azure-arbiter" | "azure-foundry" | "azure-submission" | "azure-board" | "openai";
 
 export type ModelAssignment = {
   provider: ProviderName;
