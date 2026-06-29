@@ -5,6 +5,8 @@ import {
   type ProtocolSectionKey,
 } from "@/lib/ai-proposal-types";
 import { getProposalReviewTypeLabel } from "@/lib/review-types";
+import { COMPLIANCE_QUESTION_BANK } from "@/lib/compliance-question-bank";
+import { CAYUSE_SECTION_LABELS, type CayuseSection } from "@/lib/compliance-questionnaire-types";
 
 const CONSENT_MAX = 6_000;
 const NOTES_MAX = 4_000;
@@ -110,6 +112,57 @@ export function buildAdminSummaryContext(
 
   const structuredForm = omitKeys(fd, ["ai_workspace", "submission_snapshot"]);
 
+  const questionMap = new Map(
+    COMPLIANCE_QUESTION_BANK.map((question) => [question.questionId, question]),
+  );
+
+  const questionnaireData = ws.compliance_questionnaire;
+  let complianceQuestionnaire: Record<string, unknown> | undefined;
+
+  if (questionnaireData) {
+    const answers = Array.isArray(questionnaireData.answers) ? questionnaireData.answers : [];
+    const skippedIds = Array.isArray(questionnaireData.skippedQuestionIds) ? questionnaireData.skippedQuestionIds : [];
+
+    if (answers.length > 0 || skippedIds.length > 0) {
+      const answersBySection = new Map<string, Array<Record<string, string>>>();
+      for (const answer of answers) {
+        const question = questionMap.get(answer.questionId);
+        const section = question?.cayuseSection ?? "other";
+        const group = answersBySection.get(section) ?? [];
+        group.push({
+          id: answer.questionId,
+          question: question?.questionText ?? answer.questionId,
+          answer: answer.answerText,
+          source: answer.answeredBy === "document_extraction" ? "extracted" : "pi_response",
+          confidence: answer.confidence,
+        });
+        answersBySection.set(section, group);
+      }
+
+      const sectionSummaries: Record<string, Array<Record<string, string>>> = {};
+      for (const [section, sectionAnswers] of answersBySection) {
+        const label = CAYUSE_SECTION_LABELS[section as CayuseSection] ?? section;
+        sectionSummaries[label] = sectionAnswers;
+      }
+
+      const skippedQuestions = skippedIds.map((questionId) => {
+        const question = questionMap.get(questionId);
+        return {
+          id: questionId,
+          question: question?.questionText ?? questionId,
+          section: question ? (CAYUSE_SECTION_LABELS[question.cayuseSection] ?? question.cayuseSection) : "unknown",
+        };
+      });
+
+      complianceQuestionnaire = {
+        total_answered: answers.length,
+        total_skipped: skippedIds.length,
+        answers_by_section: sectionSummaries,
+        ...(skippedQuestions.length > 0 ? { skipped_questions: skippedQuestions } : {}),
+      };
+    }
+  }
+
   const payload = {
     title,
     submitted_review_category: getProposalReviewTypeLabel({
@@ -128,6 +181,7 @@ export function buildAdminSummaryContext(
         cfr_reference: f.cfr_reference,
         actionable: f.actionable,
       })),
+      compliance_questionnaire: complianceQuestionnaire,
       consent_excerpt: ws.consent_markdown ? truncate(ws.consent_markdown, CONSENT_MAX) : undefined,
       researcher_notes: ws.context_notes.trim() ? truncate(ws.context_notes, NOTES_MAX) : undefined,
       chat_excerpt: chatExcerpt.length > 0 ? chatExcerpt : undefined,
