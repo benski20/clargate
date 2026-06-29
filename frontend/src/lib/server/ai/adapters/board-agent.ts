@@ -120,16 +120,36 @@ export function createBoardAgentAdapter(model: string): ProviderAdapter {
         ? `${systemInstruction}\n\n${userText}${jsonPrompt}`
         : `${userText}${jsonPrompt}`;
 
-      const stream = await client.responses.create({
-        model: agentModel,
-        stream: true,
-        input: buildInput(history, contextPrompt),
-      });
-
       let fullText = "";
-      for await (const event of stream) {
-        if (event.type === "response.output_text.delta")
-          fullText += event.delta ?? "";
+      try {
+        const stream = await client.responses.create({
+          model: agentModel,
+          stream: true,
+          input: buildInput(history, contextPrompt),
+        });
+
+        for await (const event of stream) {
+          if (event.type === "response.output_text.delta")
+            fullText += event.delta ?? "";
+        }
+      } catch (streamError: unknown) {
+        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+        if (errorMessage.includes("tool_user_error") || errorMessage.includes("Authentication failed")) {
+          console.warn("[board-agent] Knowledge base auth failed, retrying without agent KB:", errorMessage);
+          const fallbackStream = await client.responses.create({
+            model: agentModel,
+            stream: true,
+            instructions: systemInstruction,
+            input: buildInput(history, userText + jsonPrompt),
+          });
+
+          for await (const event of fallbackStream) {
+            if (event.type === "response.output_text.delta")
+              fullText += event.delta ?? "";
+          }
+        } else {
+          throw streamError;
+        }
       }
 
       const cleaned = fullText
