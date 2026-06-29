@@ -355,12 +355,17 @@ export const db = {
       .select("summary")
       .eq("proposal_id", proposalId)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
     if (error) throw error;
-    const raw = data?.summary;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      return raw as Record<string, unknown>;
+    const row = (data ?? []).find((record) => {
+      const summary = record.summary;
+      if (!summary || typeof summary !== "object" || Array.isArray(summary)) return false;
+      return (summary as Record<string, unknown>).type !== "simulated_board_review";
+    });
+    if (!row) return null;
+    const summary = row.summary;
+    if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+      return summary as Record<string, unknown>;
     }
     return null;
   },
