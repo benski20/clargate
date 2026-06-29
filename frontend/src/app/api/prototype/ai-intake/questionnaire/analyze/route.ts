@@ -212,6 +212,8 @@ export async function POST(request: Request) {
       );
     }
 
+    const hasComplianceData = workspace.compliance_flags.length > 0 || workspace.predicted_category !== null;
+
     const signals = extractComplianceSignals(
       workspace.protocol,
       workspace.compliance_flags,
@@ -219,10 +221,9 @@ export async function POST(request: Request) {
       workspace.context_notes,
     );
 
-    const activeQuestions = resolveActiveQuestions(
-      signals,
-      COMPLIANCE_QUESTION_BANK,
-    );
+    const activeQuestions = hasComplianceData
+      ? resolveActiveQuestions(signals, COMPLIANCE_QUESTION_BANK)
+      : [...COMPLIANCE_QUESTION_BANK];
 
     const questionHierarchy = formatQuestionHierarchy(activeQuestions);
 

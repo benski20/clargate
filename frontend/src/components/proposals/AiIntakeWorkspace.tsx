@@ -68,7 +68,10 @@ import {
   buildProposalPackagePdfBytes,
 } from "@/lib/ai-proposal-package-markdown";
 import { ComplianceQuestionnaire } from "@/components/proposals/ComplianceQuestionnaire";
-import type { ComplianceQuestionnaireState } from "@/lib/compliance-questionnaire-types";
+import type { ComplianceQuestionnaireState, AnalysisResult } from "@/lib/compliance-questionnaire-types";
+import { extractComplianceSignals } from "@/lib/compliance-questionnaire-signals";
+import { resolveActiveQuestions } from "@/lib/compliance-questionnaire-resolver";
+import { COMPLIANCE_QUESTION_BANK } from "@/lib/compliance-question-bank";
 import { TourDemoShell } from "@/components/dashboard/tour-demo/tour-demo-shell";
 import {
   MAX_INGEST_BYTES_PER_FILE,
@@ -1065,30 +1068,94 @@ export function AiIntakeWorkspace({
   }
 
 
+  async function fetchQuestionnaireAnalysis(
+    workspace: AiWorkspaceState,
+  ): Promise<{ results: AnalysisResult[]; activeQuestionIds: string[] } | null> {
+    try {
+      const response = await fetch("/api/prototype/ai-intake/questionnaire/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace }),
+      });
+      if (!response.ok) return null;
+      return (await response.json()) as { results: AnalysisResult[]; activeQuestionIds: string[] };
+    } catch {
+      return null;
+    }
+  }
+
+  function buildQuestionnaireStateFromAnalysis(
+    analysisData: { results: AnalysisResult[]; activeQuestionIds: string[] },
+    complianceFlags: AiWorkspaceState["compliance_flags"],
+    predictedCategory: AiWorkspaceState["predicted_category"],
+    protocol: AiWorkspaceState["protocol"],
+    contextNotes: string,
+  ): ComplianceQuestionnaireState {
+    const signals = extractComplianceSignals(protocol, complianceFlags, predictedCategory, contextNotes);
+    const filteredActiveIds = resolveActiveQuestions(signals, COMPLIANCE_QUESTION_BANK).map(
+      (question) => question.questionId,
+    );
+
+    const activeIdSet = new Set(filteredActiveIds);
+    const filteredResults = analysisData.results.filter((result) => activeIdSet.has(result.questionId));
+
+    const extractedAnswers: ComplianceQuestionnaireState["answers"] = filteredResults
+      .filter((result) => result.status === "answered" && result.extractedAnswer)
+      .map((result) => ({
+        questionId: result.questionId,
+        answerText: result.extractedAnswer ?? "",
+        answeredBy: "document_extraction" as const,
+        confidence: result.confidence,
+      }));
+
+    return {
+      status: "in_progress",
+      analysisResults: filteredResults,
+      messages: [],
+      answers: extractedAnswers,
+      activeQuestionIds: filteredActiveIds,
+      skippedQuestionIds: [],
+    };
+  }
+
   async function runCompliance() {
     setComplianceBusy(true);
     navigateWorkspaceTab("compliance");
     try {
-      const res = await fetch("/api/prototype/ai-intake/compliance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protocol: ws.protocol,
-          consent_markdown: ws.consent_markdown ?? "",
-          supplementary_context: supplementaryFromWorkspace(ws),
+      const [complianceData, questionnaireData] = await Promise.all([
+        fetch("/api/prototype/ai-intake/compliance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            protocol: ws.protocol,
+            consent_markdown: ws.consent_markdown ?? "",
+            supplementary_context: supplementaryFromWorkspace(ws),
+          }),
+        }).then(async (response) => {
+          const data = (await response.json()) as {
+            predicted_category?: string;
+            flags?: AiWorkspaceState["compliance_flags"];
+            error?: string;
+          };
+          if (!response.ok) throw new Error(data.error || "Compliance review failed");
+          return data;
         }),
-      });
-      const data = (await res.json()) as {
-        predicted_category?: string;
-        flags?: AiWorkspaceState["compliance_flags"];
-        error?: string;
-      };
-      if (!res.ok) throw new Error(data.error || "Compliance review failed");
+        fetchQuestionnaireAnalysis(ws),
+      ]);
+
+      const category = isValidReviewType(complianceData.predicted_category) ? complianceData.predicted_category : null;
+      const flags = normalizeComplianceFlags(complianceData.flags ?? []);
+
+      const questionnaireState = questionnaireData
+        ? buildQuestionnaireStateFromAnalysis(questionnaireData, flags, category, ws.protocol, ws.context_notes)
+        : null;
+
       setWs((w) => ({
         ...w,
         phase: "compliance" as const,
-        predicted_category: isValidReviewType(data.predicted_category) ? data.predicted_category : null,
-        compliance_flags: normalizeComplianceFlags(data.flags ?? []),
+        predicted_category: category,
+        compliance_flags: flags,
+        ...(questionnaireState ? { compliance_questionnaire: questionnaireState } : {}),
       }));
     } catch {
       setWs((w) => ({
@@ -1114,36 +1181,49 @@ export function AiIntakeWorkspace({
     setContextWarning(null);
     try {
       const warnings: string[] = [];
-      const compRes = await fetch("/api/prototype/ai-intake/compliance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protocol: ws.protocol,
-          consent_markdown: ws.consent_markdown ?? "",
-          supplementary_context: supplementaryFromWorkspace(ws),
+      const [compData, questionnaireData] = await Promise.all([
+        fetch("/api/prototype/ai-intake/compliance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            protocol: ws.protocol,
+            consent_markdown: ws.consent_markdown ?? "",
+            supplementary_context: supplementaryFromWorkspace(ws),
+          }),
+        }).then(async (response) => {
+          const data = (await response.json()) as {
+            predicted_category?: string;
+            category_confidence?: string;
+            category_reasoning?: string;
+            flags?: AiWorkspaceState["compliance_flags"];
+            error?: string;
+          };
+          if (!response.ok) throw new Error(data.error || "Compliance review failed");
+          return data;
         }),
-      });
-      const compData = (await compRes.json()) as {
-        predicted_category?: string;
-        category_confidence?: string;
-        category_reasoning?: string;
-        flags?: AiWorkspaceState["compliance_flags"];
-        error?: string;
-      };
-      if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
+        fetchQuestionnaireAnalysis(ws),
+      ]);
+
       const cat = isValidReviewType(compData.predicted_category) ? compData.predicted_category : null;
+      const flags = normalizeComplianceFlags(compData.flags ?? []);
       if (compData.category_confidence === "low") {
         warnings.push(
           `Category prediction confidence is low: ${compData.category_reasoning ?? "insufficient information to determine review type"}`,
         );
       }
       if (warnings.length > 0) setContextWarning(warnings.join(" "));
+
+      const questionnaireState = questionnaireData
+        ? buildQuestionnaireStateFromAnalysis(questionnaireData, flags, cat, ws.protocol, ws.context_notes)
+        : null;
+
       setReviewPhase("done");
       setWs((w) => ({
         ...w,
         phase: "compliance" as const,
         predicted_category: cat,
-        compliance_flags: normalizeComplianceFlags(compData.flags ?? []),
+        compliance_flags: flags,
+        ...(questionnaireState ? { compliance_questionnaire: questionnaireState } : {}),
       }));
     } catch (e) {
       setIngestError(e instanceof Error ? e.message : "AI review failed.");
@@ -1259,24 +1339,31 @@ export function AiIntakeWorkspace({
       }
 
       setReviewPhase("compliance");
-      const compRes = await fetch("/api/prototype/ai-intake/compliance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protocol: next.protocol,
-          consent_markdown: next.consent_markdown ?? "",
-          supplementary_context: supplementaryFromWorkspace(next),
+      const [compData, questionnaireData] = await Promise.all([
+        fetch("/api/prototype/ai-intake/compliance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            protocol: next.protocol,
+            consent_markdown: next.consent_markdown ?? "",
+            supplementary_context: supplementaryFromWorkspace(next),
+          }),
+        }).then(async (response) => {
+          const data = (await response.json()) as {
+            predicted_category?: string;
+            category_confidence?: string;
+            category_reasoning?: string;
+            flags?: AiWorkspaceState["compliance_flags"];
+            error?: string;
+          };
+          if (!response.ok) throw new Error(data.error || "Compliance review failed");
+          return data;
         }),
-      });
-      const compData = (await compRes.json()) as {
-        predicted_category?: string;
-        category_confidence?: string;
-        category_reasoning?: string;
-        flags?: AiWorkspaceState["compliance_flags"];
-        error?: string;
-      };
-      if (!compRes.ok) throw new Error(compData.error || "Compliance review failed");
+        fetchQuestionnaireAnalysis(next),
+      ]);
+
       const cat = isValidReviewType(compData.predicted_category) ? compData.predicted_category : null;
+      const flags = normalizeComplianceFlags(compData.flags ?? []);
       if (compData.category_confidence === "low") {
         setContextWarning(
           (prev) =>
@@ -1285,11 +1372,17 @@ export function AiIntakeWorkspace({
               .join(" "),
         );
       }
+
+      const questionnaireState = questionnaireData
+        ? buildQuestionnaireStateFromAnalysis(questionnaireData, flags, cat, next.protocol, next.context_notes)
+        : null;
+
       next = {
         ...next,
         phase: "compliance",
         predicted_category: cat,
-        compliance_flags: normalizeComplianceFlags(compData.flags ?? []),
+        compliance_flags: flags,
+        ...(questionnaireState ? { compliance_questionnaire: questionnaireState } : {}),
       };
       setWs(next);
     } catch (e) {
