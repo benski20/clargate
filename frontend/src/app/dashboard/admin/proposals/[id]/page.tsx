@@ -215,6 +215,8 @@ function AdminProposalDetailInner() {
   const [aiFlagsOpen, setAiFlagsOpen] = useState(false);
   const [aiFlagsActiveIndex, setAiFlagsActiveIndex] = useState(0);
   const [revisionLetterOpen, setRevisionLetterOpen] = useState(false);
+  const [draftInstructionsOpen, setDraftInstructionsOpen] = useState(false);
+  const [draftInstructions, setDraftInstructions] = useState("");
   const [questionnaireDialogOpen, setQuestionnaireDialogOpen] = useState(false);
   const [questionnaireActiveSection, setQuestionnaireActiveSection] = useState<string | null>(null);
   const [reviewerHubOpen, setReviewerHubOpen] = useState(false);
@@ -444,7 +446,7 @@ function AdminProposalDetailInner() {
     void generateSummary();
   }, [isDemo, loading, summarizing, summary, proposal?.status, proposalId]);
 
-  async function draftRevisionLetter() {
+  async function draftRevisionLetter(instructions?: string) {
     setDrafting(true);
     setError(null);
     try {
@@ -452,7 +454,9 @@ function AdminProposalDetailInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          additional_instructions: instructions?.trim() || undefined,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string } & Partial<Letter>;
       if (!res.ok) {
@@ -2156,7 +2160,10 @@ function AdminProposalDetailInner() {
                     size="sm"
                     variant="outline"
                     className="h-9 cursor-pointer gap-2"
-                    onClick={() => void draftRevisionLetter()}
+                    onClick={() => {
+                      setDraftInstructions("");
+                      setDraftInstructionsOpen(true);
+                    }}
                     disabled={drafting}
                   >
                     {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
@@ -2267,6 +2274,98 @@ function AdminProposalDetailInner() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={draftInstructionsOpen}
+        onOpenChange={(open) => {
+          setDraftInstructionsOpen(open);
+          if (!open) setDraftInstructions("");
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-sans">AI draft instructions</DialogTitle>
+            <DialogDescription>
+              Choose a template or write custom instructions to guide the AI-generated revision letter.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Quick templates
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Focus on methodology gaps and missing details",
+                  "Emphasize informed consent and participant safety concerns",
+                  "Highlight data privacy and confidentiality issues",
+                  "Keep the tone encouraging and supportive",
+                  "Be concise — limit to the top 5 most critical items",
+                ].map((template) => (
+                  <button
+                    key={template}
+                    type="button"
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-left text-xs transition-colors cursor-pointer",
+                      draftInstructions.includes(template)
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/40 text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                    )}
+                    onClick={() => {
+                      setDraftInstructions((prev) => {
+                        if (prev.includes(template)) {
+                          return prev
+                            .replace(template, "")
+                            .replace(/\n{2,}/g, "\n")
+                            .trim();
+                        }
+                        return prev.trim() ? `${prev.trim()}\n${template}` : template;
+                      });
+                    }}
+                  >
+                    {template}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="draft-instructions" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Custom instructions
+              </Label>
+              <Textarea
+                id="draft-instructions"
+                rows={4}
+                placeholder="e.g. &quot;Address the missing IRB training certificates and ask for an updated conflict of interest disclosure…&quot;"
+                value={draftInstructions}
+                onChange={(e) => setDraftInstructions(e.target.value)}
+                className="resize-y text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="ghost"
+              className="cursor-pointer"
+              onClick={() => setDraftInstructionsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="cursor-pointer gap-2"
+              disabled={drafting}
+              onClick={() => {
+                setDraftInstructionsOpen(false);
+                void draftRevisionLetter(draftInstructions);
+              }}
+            >
+              {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+              Generate draft
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2723,7 +2822,10 @@ function AdminProposalDetailInner() {
                 <Button
                   size="sm"
                   className="gap-2 cursor-pointer shrink-0"
-                  onClick={() => void draftRevisionLetter()}
+                  onClick={() => {
+                    setDraftInstructions("");
+                    setDraftInstructionsOpen(true);
+                  }}
                   disabled={drafting}
                 >
                   {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
